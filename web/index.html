@@ -16,21 +16,24 @@
   -->
   <main id="dock" class="stack" aria-label="QuickDock">
     <section id="panelA" class="panel" aria-label="输入面板">
-      <!-- 第一行：会话标题 + 窗口按钮（顶置/关闭） -->
+      <!--
+        一行搞定：会话标题 + 当前工作区（只读，跟在标题后面当上下文）
+        + 状态点 + 新建对话 + 顶置 + 关闭。
+
+        dock 绑定哪个会话，只由 DSH 里点「Dock」决定 —— 这里不提供切换。
+        工作区不值得独占一行，挂在标题后面一眼就能看到"这条消息发去哪"。
+      -->
       <div class="bar">
         <span class="sess-title blank" id="sessTitle">正在连接…</span>
         <span class="sess-meta" id="sessMeta"></span>
+        <span class="ws-chip" title="当前工作区"><span class="pk-icon">▣</span><span class="pk-name" id="wsName">工作区</span></span>
         <span class="bar-spacer"></span>
         <span class="status-dot" id="statusDot" title="状态" aria-label="状态"></span>
+        <button class="icon-btn" id="openBtn" title="在 DSH 中打开当前会话" aria-label="在 DSH 中打开当前会话">↗</button>
+        <button class="icon-btn" id="listBtn" title="显示 / 隐藏执行过程窗口" aria-label="显示或隐藏执行过程窗口" aria-pressed="true">▤</button>
+        <button class="icon-btn" id="newBtn" title="新建对话（Shift/Alt 点 = 从当前会话分叉）" aria-label="新建对话">＋</button>
         <button class="icon-btn" id="pinBtnA" title="顶置" aria-label="顶置" aria-pressed="false">⤒</button>
         <button class="icon-btn" id="hideBtnA" title="关闭 QuickDock (Esc)" aria-label="关闭 QuickDock">✕</button>
-      </div>
-      <!-- 第二行：工作区 / 会话 选择 + 新建对话 -->
-      <div class="sess-head">
-        <button class="picker ws" id="wsPicker" aria-haspopup="menu" aria-expanded="false"><span class="pk-icon">▣</span><span class="pk-name" id="wsName">工作区</span><span class="pk-caret">▼</span></button>
-        <button class="picker sess" id="sessPicker" aria-haspopup="menu" aria-expanded="false"><span class="pk-icon">◌</span><span class="pk-name" id="sessName">会话</span><span class="pk-caret">▼</span></button>
-        <span class="bar-spacer"></span>
-        <button class="new-btn" id="newBtn" title="新建对话">＋ 新对话</button>
       </div>
       <!--
         输入框：一个圆角容器内同时放文本域和底部控件行
@@ -53,8 +56,12 @@
 
     <!--
       运行态面板：Agent 在跑的时候替换掉输入面板。
-      运行时用不到工作区/会话/模型/权限这些开关，全部收起来，
-      只留状态、当前动作、已运行时长和停止按钮。
+
+      这里**不是**展示窗口那些步骤行的复读机 —— 展示窗口是"列表"
+      （一行一个动作，够看进度就行），这里是"详情"：
+        · runAction：正在跑什么工具、什么命令/参数（截尾）
+        · runNow：正在逐字输出的内容（思考 / 正文，贴底显示最新几行）
+      内容从底部往上贴，最新的一行永远靠近底部的统计栏。
     -->
     <section id="runPanel" class="panel hidden" aria-label="运行状态">
       <div class="run-head">
@@ -63,7 +70,8 @@
         <span class="run-elapsed" id="runElapsed">0:00</span>
         <button class="icon-btn" id="hideBtnR" title="关闭 QuickDock (Esc)" aria-label="关闭 QuickDock">✕</button>
       </div>
-      <div class="run-now-wrap">
+      <div class="run-body">
+        <div class="run-action" id="runAction" hidden></div>
         <div class="run-now" id="runNow">正在启动…</div>
       </div>
       <div class="run-foot">

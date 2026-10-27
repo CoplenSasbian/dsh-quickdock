@@ -20,8 +20,12 @@ const http = require('node:http');
 
 // 临时调试：Electron 侧没有可用控制台，落盘看现场
 const TRACE = path.join(process.env.LOCALAPPDATA || process.env.TEMP || '.', 'dsh-quickdock', 'dock.log');
+/** 目录可能还不存在（窗口状态在别处才创建它）—— 先建再写，否则整份日志静默消失。 */
 function trace(msg) {
-  try { fs.appendFileSync(TRACE, '[' + new Date().toISOString() + '] ' + String(msg) + '\n') } catch (_) {}
+  try {
+    fs.mkdirSync(path.dirname(TRACE), { recursive: true });
+    fs.appendFileSync(TRACE, '[' + new Date().toISOString() + '] ' + String(msg) + '\n');
+  } catch (_) {}
 }
 let tracedError = false
 process.on('uncaughtException', (e) => { trace('UNCAUGHT ' + (e && e.stack || e)); tracedError = true })
@@ -124,7 +128,7 @@ class DockRuntime {
   }
 
   async start() {
-    const { app, BrowserWindow, ipcMain, powerMonitor, screen } = this.electron;
+    const { app, BrowserWindow, ipcMain, powerMonitor, screen, shell } = this.electron;
     trace('start: platform=' + this.platform + ' url=' + this.config.url);
     if (this.platform === 'win32') {
       // 硬件加速默认开启：关掉它会让透明窗口的透明区在重绘前被合成成不透明。
@@ -172,8 +176,40 @@ class DockRuntime {
     this.displayWantH = initialSize[1];
     trace('display want size = ' + initialSize);
     this.placeDisplayWindow(true);
+
+    /**
+     * 两个窗口的**层级要联动**。
+     *
+     * 问题：焦点在别的应用上时点输入窗口，输入窗口会升到最前，
+     * 但展示窗口还留在后面（甚至被别的应用盖住）—— 两块面板就分家了。
+     * moveTop() 只改 z 序、不抢焦点，所以联动是安全的。
+     */
+    this.win.on('focus', () => this.raiseDisplay());
+    this.displayWin.on('focus', () => {
+      if (this.win && !this.win.isDestroyed()) {
+        try { this.win.moveTop(); } catch (_) {}
+      }
+    });
+
     // 点击穿透在 show() 之后、首帧画完再启用（见 ensurePainted）：
     // 显示前就处于穿透态会让首帧带着 WS_EX_TRANSPARENT 合成，透明区画不出来。
+
+    /**
+     * 正文里的链接：交给系统浏览器打开，**绝不在 dock 里导航**。
+     * （renderMarkdown 给 <a> 加了 target=_blank，会走 setWindowOpenHandler）
+     */
+    const openExternal = (url) => {
+      try {
+        if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+      } catch (_) {}
+    };
+    for (const target of [this.win, this.displayWin]) {
+      if (!target || target.isDestroyed()) continue;
+      target.webContents.setWindowOpenHandler(({ url }) => {
+        openExternal(url);
+        return { action: 'deny' };
+      });
+    }
 
     const wc = this.win.webContents;
     wc.on('will-navigate', (event, url) => {
@@ -605,6 +641,12 @@ class DockRuntime {
     this.later(() => { if (this.win) this.win.setSkipTaskbar(true); }, 0);
   }
 
+  /** 把展示窗口提到输入窗口所在的那一层（不抢焦点、不改变相对位置）。 */
+  raiseDisplay() {
+    if (!this.displayWin || this.displayWin.isDestroyed() || !this.displayWin.isVisible()) return;
+    try { this.displayWin.moveTop(); } catch (_) {}
+  }
+
   show() {
     if (!this.win || this.destroyed) return;
     this.clearTimer(this.showFallback);
@@ -612,6 +654,8 @@ class DockRuntime {
     if (this.config.focusOnSummon) this.win.show();
     else this.win.showInactive();
     this.placeDisplayWindow(true);
+    // show() 会把输入窗口提到最前，展示窗口要跟着上来，否则两块面板会分居
+    this.raiseDisplay();
     // 显示后主动重绘一次：否则透明区要等鼠标移入才变透明
     this.ensurePainted();
     this.status('shown');

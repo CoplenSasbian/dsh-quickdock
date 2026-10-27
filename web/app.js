@@ -21,8 +21,13 @@
         : { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body)
     }).then(function (r) {
-      if (!r.ok) throw new Error('api ' + path + ' ' + r.status);
-      return r.status === 204 ? null : r.json();
+      // 宿主把失败原因放在 body 里（{ok:false,error}）。先把 body 读出来，
+      // 这样 toast 能显示「为什么」而不是只有一句 "400"。
+      return r.json().catch(function () { return null; }).then(function (data) {
+        if (data && data.ok === false && data.error) throw new Error(String(data.error));
+        if (!r.ok) throw new Error((data && data.error) ? String(data.error) : ('请求失败 HTTP ' + r.status));
+        return data;
+      });
     });
   }
 
@@ -37,28 +42,34 @@
 
   var els = {
     panelA: $('panelA'),
-    wsName: $('wsName'), sessName: $('sessName'), sessTitle: $('sessTitle'), sessMeta: $('sessMeta'),
+    wsName: $('wsName'), sessTitle: $('sessTitle'), sessMeta: $('sessMeta'),
     composer: $('composer'), sendBtn: $('sendBtn'), newBtn: $('newBtn'),
     permText: $('permText'), modelText: $('modelText'), thinkText: $('thinkText'), agentText: $('agentText'),
     agentBtn: $('agentBtn'), statusDot: $('statusDot'),
     menu: $('menu'), toast: $('toast'),
     confirm: $('confirm'), confirmOk: $('confirmOk'), confirmCancel: $('confirmCancel'),
-    pinBtnA: $('pinBtnA'), hideBtnA: $('hideBtnA'),
+    pinBtnA: $('pinBtnA'), hideBtnA: $('hideBtnA'), listBtn: $('listBtn'), openBtn: $('openBtn'),
+    // 展示窗口专属：工具条 + 行容器
+    dhOpen: $('dhOpen'), dhPin: $('dhPin'), dhHide: $('dhHide'), dhDot: $('dhDot'), dhTitle: $('dhTitle'),
+    drows: $('drows'),
     // 输入窗口的「运行态」面板（Agent 在跑时替换掉输入面板）
     runPanel: $('runPanel'), runDot: $('runDot'), runTitle: $('runTitle'),
-    runElapsed: $('runElapsed'), runNow: $('runNow'), runSub: $('runSub'),
+    runElapsed: $('runElapsed'), runAction: $('runAction'), runNow: $('runNow'), runSub: $('runSub'),
     stopBtnRun: $('stopBtnRun'), hideBtnR: $('hideBtnR'),
     // 展示窗口的面板容器
     blocks: $('blocks')
   };
   // 展示窗口没有输入窗口的那套 DOM，统一置空，渲染时按需判空
   if (isDisplay) {
-    ['panelA', 'wsName', 'sessName', 'sessTitle', 'sessMeta', 'composer', 'sendBtn',
+    ['panelA', 'wsName', 'sessTitle', 'sessMeta', 'composer', 'sendBtn',
       'newBtn', 'permText', 'modelText', 'thinkText', 'agentText', 'agentBtn', 'statusDot',
-      'menu', 'toast', 'confirm', 'confirmOk', 'confirmCancel',
-      'pinBtnA', 'hideBtnA', 'runPanel', 'runDot', 'runTitle', 'runElapsed', 'runNow', 'runSub',
+      'menu', 'confirm', 'confirmOk', 'confirmCancel',
+      'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn', 'runPanel', 'runDot', 'runTitle', 'runElapsed', 'runAction', 'runNow', 'runSub',
       'stopBtnRun', 'hideBtnR'
     ].forEach(function (k) { els[k] = null; });
+  } else {
+    // 输入窗口没有展示窗口的工具条
+    ['dhOpen', 'dhPin', 'dhHide', 'dhDot', 'dhTitle', 'drows'].forEach(function (k) { els[k] = null; });
   }
 
   var state = null;
@@ -153,17 +164,6 @@
     if (!state) return null;
     return state.workspaces.find(function (w) { return w.id === state.workspaceId; }) || null;
   }
-  function findWorkspaceOfSession(sessionId) {
-    if (!sessionId || !state) return null;
-    for (var i = 0; i < state.workspaces.length; i++) {
-      var w = state.workspaces[i];
-      for (var j = 0; j < w.sessions.length; j++) {
-        if (w.sessions[j].id === sessionId) return w;
-      }
-    }
-    return null;
-  }
-
   function applyState(next) {
     var first = !state;
     state = next;
@@ -175,17 +175,12 @@
   function render(first) {
     if (isDisplay) { renderDisplay(); return; }
     var ws = currentWorkspace();
-    var boundWs = state.sessionId ? findWorkspaceOfSession(state.sessionId) : null;
-    var locked = Boolean(state.sessionId);
-    var effWs = locked ? boundWs : ws;
 
-    // 顶栏 pickers
-    els.wsName.textContent = effWs ? effWs.name : (state.workspaceId ? '…' : '选择工作区');
-    els.sessName.textContent = state.session ? state.session.title : '新对话';
+    // 顶栏：只读展示（会话由 DSH 侧点 Dock 决定，这里不提供切换）
+    els.wsName.textContent = ws ? ws.name : '未绑定工作区';
     els.sessTitle.textContent = state.session ? state.session.title : '新对话';
     els.sessTitle.classList.toggle('blank', !state.session);
-    els.sessMeta.textContent = state.session ? relTime(lastUpdated(effWs, state.session.id)) : '';
-    els.newBtn.hidden = locked;
+    els.sessMeta.textContent = state.session ? relTime(state.session.updatedAt || 0) : '';
 
     // 功能键
     var perms = state.catalogs.permissions || [];
@@ -195,7 +190,7 @@
     var model = models.find(function (m) { return m.id === state.settings.model; });
     els.modelText.textContent = model ? model.name : (state.settings.model ? state.settings.model.split('/')[1] : '模型');
     els.thinkText.textContent = state.settings.reasoning ? reasoningLabel(state.settings.reasoning) : '思考';
-    els.agentBtn.classList.toggle('hidden', !(state.newSession && !locked));
+    els.agentBtn.classList.toggle('hidden', !state.newSession);
     if (!els.agentBtn.classList.contains('hidden')) {
       var agents = state.catalogs.agents || [];
       var ag = agents.find(function (a) { return a.id === state.settings.agentPreset; });
@@ -287,19 +282,52 @@
       els.runElapsed.textContent = runStartedAt ? formatElapsed(Date.now() - runStartedAt) : '';
     }
 
-    // 当前动作：取最新一条有内容的记录
+    var stream = state.stream;
     var steps = state.steps || [];
+
+    // ①「正在跑什么」：流里的工具调用优先，否则最近一条工具步骤。
+    //    展示窗口是列表（一行一个动作），这里是详情，所以把命令/参数也带出来。
+    var action = '';
+    if (stream && stream.tools && stream.tools.length) {
+      var tool = stream.tools[stream.tools.length - 1];
+      action = (tool.name || '工具') + '  ' + compactArgs(tool.args);
+    }
+    if (!action) {
+      for (var a = steps.length - 1; a >= 0; a--) {
+        var step = steps[a];
+        if (step && step.kind === 'tool') {
+          action = (step.tool || '工具') + '  ' + compactArgs(step.command);
+          break;
+        }
+      }
+    }
+    if (els.runAction) {
+      var shownAction = shortText(action, 150);
+      if (els.runAction.textContent !== shownAction) els.runAction.textContent = shownAction;
+      els.runAction.hidden = !shownAction;
+    }
+
+    // ②「正在输出什么」：优先逐字流（思考链 / 正文），没有流才退回最近一条记录。
+    //    长文本一律取**尾部**：人要看的是最新在写什么，而不是开头。
+    var live = stream ? (stream.text || stream.thinking || '') : '';
     var latest = '';
     for (var i = steps.length - 1; i >= 0; i--) {
       var s = steps[i];
       if (!s) continue;
       var text = s.kind === 'think' ? (s.text || '')
         : s.kind === 'say' ? (s.text || '')
-        : (s.command || s.label || s.text || '');
+        : (s.description || '');
       if (text) { latest = text; break; }
     }
+    var body = shortText(live, 400) || shortText(latest, 400);
     if (els.runNow) {
-      els.runNow.textContent = latest || (status === 'running' ? '正在启动…' : '');
+      var shown = body || (status === 'running' ? '正在启动…' : '');
+      if (els.runNow.textContent !== shown) els.runNow.textContent = shown;
+      els.runNow.classList.toggle('streaming', Boolean(live));
+      // 只在"思考中"这一阶段用紫色，肉眼能分清是在想还是在说
+      els.runNow.classList.toggle('thinking', Boolean(stream && stream.thinking && !stream.text));
+      // 贴底：CSS 给了固定高度，长文本要把最新几行露出来
+      if (els.runNow.scrollHeight > els.runNow.clientHeight) els.runNow.scrollTop = els.runNow.scrollHeight;
     }
     if (els.runSub) {
       var running = 0, done = 0, failed = 0;
@@ -350,31 +378,265 @@
     return '⚙';
   }
 
+  /** 上一次渲染的结构签名（步骤/交互卡/是否有流）。相同时不重建 DOM。 */
+  var displaySig = null;
+  /* ---------- 执行过程窗口的显示/隐藏（两个窗口共享） ---------- */
+  // 用 localStorage 而不是内存变量：输入窗口和展示窗口是两个独立的渲染进程，
+  // 只有存储事件能可靠地把"用户把它藏起来了"这件事传过去。
+  var LIST_KEY = 'qd-list-hidden';
+  var listHidden = readListHidden();
+
+  /** 2 小时后自动恢复显示：藏起来是个临时动作，不该永远生效把用户关在门外。 */
+  var LIST_TTL = 2 * 60 * 60 * 1000;
+
+  function readListHidden() {
+    try {
+      var raw = localStorage.getItem(LIST_KEY);
+      if (!raw) return false;
+      var saved = JSON.parse(raw);
+      if (!saved || saved.hidden !== true) return false;
+      if (!Number.isFinite(saved.at) || Date.now() - saved.at > LIST_TTL) return false;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function writeListHidden(value) {
+    listHidden = Boolean(value);
+    try {
+      localStorage.setItem(LIST_KEY, JSON.stringify({ hidden: listHidden, at: Date.now() }));
+    } catch (e) {}
+  }
+
+  /** 同步标题栏按钮的外观（输入窗口才有这个按钮）。 */
+  function syncListButton() {
+    if (!els.listBtn) return;
+    els.listBtn.classList.toggle('off', listHidden);
+    els.listBtn.setAttribute('aria-pressed', listHidden ? 'false' : 'true');
+    els.listBtn.title = listHidden ? '显示执行过程窗口' : '隐藏执行过程窗口';
+  }
+
+  // 另一个窗口改了状态 → 这边跟着走
+  window.addEventListener('storage', function (ev) {
+    if (ev.key !== LIST_KEY) return;
+    listHidden = readListHidden();
+    syncListButton();
+    if (isDisplay) renderDisplay(); else refreshDisplayVisibility();
+  });
+
+  /** 输入窗口用：按当前 state 重新决定展示窗口该不该出现。 */
+  function refreshDisplayVisibility() {
+    var steps = (state && state.steps) || [];
+    var inter = state && state.interaction;
+    var hasInter = Boolean(inter && inter.status === 'open');
+    applyDisplayVisibility(Boolean(steps.length || hasInter || hasLiveText(state && state.stream)));
+  }
+  /** 行 id → 用户显式选择的展开状态（覆盖"运行中自动展开"的默认值）。 */
+  var expandedSteps = {};
+  /** 行 id → 从宿主取回的完整细节 { args, result }。 */
+  var stepDetails = {};
+
   function renderDisplay() {
-    var host = els.blocks;
+    var host = els.drows;
     if (!host) return;
+
+    var steps = state.steps || [];
+    var inter = state.interaction;
+    var hasInter = Boolean(inter && inter.status === 'open');
+    var stream = state.stream;
+    var hasStream = hasLiveText(stream);
+
+    updateDisplayHead(hasInter);
+
+    var hasContent = Boolean(steps.length || hasInter || hasStream);
+    // 内容为空**或用户手动藏起来** → 通知宿主隐藏展示窗口
+    applyDisplayVisibility(hasContent);
+    if (!hasContent) {
+      displaySig = null;
+      host.textContent = '';
+      return;
+    }
+
+    // 只有「结构」变了才重建 DOM（详见 buildDisplayRows 的注释）
+    var sig = steps.map(function (s) {
+      return s.id + ':' + s.status + ':' + ((s.text || s.command || '').length);
+    }).join('|')
+      + '#' + (hasInter ? inter.id + ':' + inter.status : '')
+      + '#' + (hasStream ? 'live' : '');
 
     // 重建前先记住滚动位置：跟随中→重建后贴底；用户翻上去了→保持原位置
     var sc0 = scrollHost();
     var prevTop = sc0 ? sc0.scrollTop : 0;
     var wasAuto = autoScroll;
 
-    host.textContent = '';
+    if (sig !== displaySig) {
+      displaySig = sig;
+      host.textContent = '';
+      buildDisplayRows(host, steps, inter, hasInter);
+    }
 
-    var steps = state.steps || [];
-    var inter = state.interaction;
-    var hasInter = Boolean(inter && inter.status === 'open');
-    if (!steps.length && !hasInter) {
-      // 没有内容 → 通知宿主隐藏展示窗口
-      if (window.quickDock && window.quickDock.setDisplayEmpty) {
-        try { window.quickDock.setDisplayEmpty(true); } catch (e) {}
+    updateLiveRow();
+    applyAutoScroll(prevTop, wasAuto);
+    scheduleHitReport();
+  }
+
+  /* ---------- 工具行展开 ---------- */
+
+  /** 折叠 / 展开一行的详情（就地切换，不重建整个列表）。 */
+  function toggleStepDetail(id, block, status) {
+    var row = block.querySelector('.step');
+    var detail = block.querySelector('.step-detail');
+    if (!row || !detail) return;
+    var open = !row.classList.contains('open');
+    expandedSteps[id] = open;
+    row.classList.toggle('open', open);
+    var chev = row.querySelector('.step-chev');
+    if (chev) chev.textContent = open ? '▾' : '▸';
+    detail.hidden = !open;
+    if (open) fillStepDetail(detail, id, status);
+    scheduleHitReport();
+  }
+
+  /**
+   * 取某一行的完整细节（首次展开时才请求）。
+   *
+   * 缓存键带 status：工具跑完时结果才落库，同一行的 done 版本和 run 版本
+   * 内容不一样，只按 id 缓存会一直显示"没有输出"。
+   */
+  function fillStepDetail(el, id, status) {
+    var key = id + '@' + (status || '');
+    var cached = stepDetails[key];
+    if (cached) { renderStepDetail(el, cached); return; }
+    if (el.dataset.loading === '1') return;
+    el.dataset.loading = '1';
+    el.textContent = '加载中…';
+    api('step-detail?id=' + encodeURIComponent(id)).then(function (detail) {
+      stepDetails[key] = detail || {};
+      delete el.dataset.loading;
+      if (!el.isConnected) return;
+      renderStepDetail(el, stepDetails[key]);
+    }).catch(function (error) {
+      delete el.dataset.loading;
+      el.textContent = '详情加载失败：' + String(error && error.message || error);
+    });
+  }
+
+  function renderStepDetail(el, detail) {
+    var args = String(detail.args || '');
+    var result = String(detail.result || '');
+    el.textContent = '';
+    el.classList.toggle('empty', !args && !result);
+    if (!args && !result) { el.textContent = '（这一步没有更多细节）'; return; }
+    if (args) {
+      var pre = document.createElement('pre');
+      pre.className = 'sd-args';
+      pre.textContent = prettyArgs(args);
+      el.appendChild(pre);
+    }
+    if (result) {
+      var wrap = document.createElement('div');
+      wrap.className = 'sd-result';
+      var label = document.createElement('span');
+      label.className = 'sd-label';
+      label.textContent = '输出';
+      var out = document.createElement('pre');
+      out.className = 'sd-out';
+      out.textContent = result;
+      wrap.appendChild(label);
+      wrap.appendChild(out);
+      el.appendChild(wrap);
+    }
+  }
+
+  /** 参数尽量格式化成可读 JSON；流式/被截断的 JSON 原样显示。 */
+  function prettyArgs(raw) {
+    try { return JSON.stringify(JSON.parse(raw), null, 2); } catch (e) { return raw; }
+  }
+
+  /** 让宿主按「有内容 & 没被手动隐藏」决定展示窗口的可见性。 */
+  function applyDisplayVisibility(hasContent) {
+    if (!window.quickDock || !window.quickDock.setDisplayEmpty) return;
+    try { window.quickDock.setDisplayEmpty(listHidden || !hasContent); } catch (e) {}
+  }
+
+  /** 渲染 Markdown；万一 markdown.js 没加载成功就退回纯文本（绝不用原始 innerHTML）。 */
+  function mdHtml(text) {
+    if (typeof renderMarkdown === 'function') {
+      try { return renderMarkdown(text); } catch (error) { console.warn('[QuickDock] markdown failed:', error); }
+    }
+    return mdFallbackEscape(text);
+  }
+
+  function mdFallbackEscape(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+  }
+
+  /** 展示窗口工具条：状态点 / 标题 / 顶置态。 */
+  function updateDisplayHead(hasInter) {
+    if (els.dhDot) {
+      els.dhDot.className = 'status-dot ' + ({
+        running: 'running', ask: 'ask', done: 'done', error: 'error'
+      }[state.status] || '');
+      els.dhDot.title = ({
+        running: '正在执行', ask: '等待确认', done: '已完成', error: '失败'
+      }[state.status] || '空闲');
+    }
+    if (els.dhTitle) {
+      els.dhTitle.textContent = hasInter
+        ? '等待确认'
+        : state.status === 'running' ? '执行中' : '执行过程';
+    }
+    if (els.dhPin) {
+      var pinned = Boolean(state.runtime && state.runtime.alwaysOnTop);
+      els.dhPin.classList.toggle('on', pinned);
+      els.dhPin.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+    }
+  }
+
+  /** 有没有可显示的流式内容。 */
+  function hasLiveText(stream) {
+    if (!stream) return false;
+    return Boolean(stream.text || stream.thinking || (stream.tools && stream.tools.length));
+  }
+
+  /**
+   * 从工具参数里挑出最有用的一段：命令 / 描述 / 路径 / 查询词。
+   * 流式参数可能还没闭合，解析失败就原样返回。
+   */
+  function compactArgs(raw) {
+    var text = String(raw || '').trim();
+    if (!text) return '';
+    var parsed = null;
+    try { parsed = JSON.parse(text); } catch (e) {}
+    if (parsed && typeof parsed === 'object') {
+      var keys = ['command', 'description', 'file_path', 'path', 'query', 'pattern', 'url', 'text'];
+      for (var i = 0; i < keys.length; i++) {
+        var value = parsed[keys[i]];
+        if (typeof value === 'string' && value.trim()) return value.trim();
       }
-      return;
+      return text;
     }
-    if (window.quickDock && window.quickDock.setDisplayEmpty) {
-      try { window.quickDock.setDisplayEmpty(false); } catch (e) {}
-    }
+    return text;
+  }
 
+  /** 压成一行、只留尾部（运行态面板只有两行位置）。 */
+  function shortText(text, limit) {
+    var value = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!value) return '';
+    return value.length > limit ? '…' + value.slice(-limit) : value;
+  }
+
+  /** 长文本只显示最后一截，避免整窗滚不完。 */
+  function tailText(text, limit) {
+    var value = String(text || '');
+    return value.length > limit ? '…' + value.slice(-limit) : value;
+  }
+
+  /** （重）建步骤与交互卡，末尾留一个流式块的坑位。 */
+  function buildDisplayRows(host, steps, inter, hasInter) {
     // 只有**最后一条**处于 run 的才算是「正在执行」。
     // 会话被中断（重启/任务被杀）时步骤会一直停在 run 状态，
     // 全部照 run 渲染会同时出现一堆转圈，所以只让最后一条显示为进行中。
@@ -388,9 +650,10 @@
       if (s.kind === 'think') {
         block.appendChild(thinkBlock(s));
       } else if (s.kind === 'say') {
+        // 正文按 Markdown 渲染（markdown.js 里的 renderMarkdown，先把整段转义再拼 HTML）
         var say = document.createElement('div');
-        say.className = 'say' + (isRunning ? ' streaming' : '');
-        say.textContent = s.text || '';
+        say.className = 'say md' + (isRunning ? ' streaming' : '');
+        say.innerHTML = mdHtml(s.text || '');
         block.appendChild(say);
       } else {
         var row = document.createElement('div');
@@ -431,7 +694,34 @@
         var showTiming = !state.config || state.config.showTiming !== false;
         time.textContent = showTiming && s.time ? String(s.time).slice(11, 19) : '';
         row.appendChild(time);
+
         block.appendChild(row);
+
+        // 和思考链同一条规矩：**运行中默认展开，完成后自动折叠**，点一下可再展开。
+        // 展开的是完整参数与输出，按需向宿主取（不进 state，避免逐字流把包撑大）。
+        // 只有真正的工具调用才可展开（审批行也标成 kind:'tool'，但它没有参数）。
+        if (s.id.indexOf('tool-') === 0) {
+          row.classList.add('expandable');
+          var chev = document.createElement('span');
+          chev.className = 'step-chev';
+          row.appendChild(chev);
+
+          var detail = document.createElement('div');
+          detail.className = 'step-detail';
+          detail.hidden = true;
+          block.appendChild(detail);
+
+          var open = typeof expandedSteps[s.id] === 'boolean' ? expandedSteps[s.id] : isRunning;
+          if (open) {
+            row.classList.add('open');
+            chev.textContent = '▾';
+            detail.hidden = false;
+            fillStepDetail(detail, s.id, s.status);
+          } else {
+            chev.textContent = '▸';
+          }
+          row.addEventListener('click', function () { toggleStepDetail(s.id, block, s.status); });
+        }
       }
       host.appendChild(block);
     });
@@ -446,12 +736,68 @@
       }
     }
 
-    applyAutoScroll(prevTop, wasAuto);
+    // 流式块的坑位：内容由 updateLiveRow() 就地更新（不重建节点）
+    var live = document.createElement('div');
+    live.className = 'drow';
+    live.id = 'liveRow';
+    live.hidden = true;
+    host.appendChild(live);
+  }
 
-    // 内容变化后必须重新上报命中区：
-    // 空状态下 .blocks 高度是 0，collectRects 会跳过它 → 上报的是空数组，
-    // 窗口就一直保持穿透（点不动、滚不了）。内容出现后要补报一次。
-    scheduleHitReport();
+  /**
+   * 就地更新流式块。
+   *
+   * 逐字流每秒推送 10+ 次，如果每次都重建 DOM，行的淡入动画会反复重放（整屏闪动）；
+   * 这里只改 textContent，节点不动。
+   */
+  function updateLiveRow() {
+    var row = document.getElementById('liveRow');
+    if (!row) return;
+    var stream = state.stream;
+    if (!hasLiveText(stream)) {
+      row.hidden = true;
+      row.textContent = '';
+      return;
+    }
+    row.hidden = false;
+    var box = row.firstElementChild;
+    if (!box || box.className !== 'live') {
+      row.textContent = '';
+      box = document.createElement('div');
+      box.className = 'live';
+      var think = document.createElement('div');
+      think.className = 'live-think';
+      var tools = document.createElement('div');
+      tools.className = 'live-tools';
+      var say = document.createElement('div');
+      say.className = 'live-say';
+      box.appendChild(think);
+      box.appendChild(tools);
+      box.appendChild(say);
+      row.appendChild(box);
+    }
+    var thinkEl = box.children[0];
+    var toolsEl = box.children[1];
+    var sayEl = box.children[2];
+
+    // 思考链：只显示尾部（长思考不必整段滚）
+    var thinking = stream.thinking ? tailText(stream.thinking, 900) : '';
+    if (thinkEl.textContent !== thinking) thinkEl.textContent = thinking;
+    thinkEl.hidden = !thinking;
+
+    var list = stream.tools || [];
+    var tools = list.length
+      ? list.map(function (t) { return (t.name || '工具') + ' ' + (t.args || ''); }).join(' ')
+      : '';
+    if (toolsEl.textContent !== tools) toolsEl.textContent = tools;
+    toolsEl.hidden = !tools;
+
+    var say = stream.text ? tailText(stream.text, 4000) : '';
+    if (sayEl.textContent !== say) sayEl.textContent = say;
+    sayEl.hidden = !say;
+    box.classList.toggle('idle', !thinking && !say && !tools);
+    // 光标画在"最后一行内容"上（CSS 用 data-tail 选选择器）
+    box.setAttribute('data-tail', say ? 'say' : (tools ? 'tools' : (thinking ? 'think' : '')));
   }
 
   /* ================= 展示窗口的自动滚动 ================= */
@@ -488,12 +834,6 @@
       // 用户滚到底 = 恢复跟随；滚上去 = 暂停跟随
       autoScroll = isNearBottom(sc, 24);
     }, { passive: true });
-  }
-
-  function lastUpdated(ws, sessionId) {
-    if (!ws) return 0;
-    var s = ws.sessions.find(function (x) { return x.id === sessionId; });
-    return s ? s.updatedAt : 0;
   }
 
   var REASONING_LABELS = { low: '低', medium: '中', high: '高', max: '最高' };
@@ -679,6 +1019,14 @@
         els.menu.appendChild(sep);
         return;
       }
+      if (it.head) {
+        // 分组标题（跨工作区的会话列表用）
+        var head = document.createElement('div');
+        head.className = 'menu-group';
+        head.textContent = it.head;
+        els.menu.appendChild(head);
+        return;
+      }
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'menu-item' + (it.sel ? ' sel' : '');
@@ -707,16 +1055,34 @@
       els.menu.appendChild(b);
     });
     // 锁定宽度到面板内（DESIGN：绝不超出窗口）
-    els.menu.style.width = '344px';
-    els.menu.style.left = '8px';
-    var anchor = owner.getBoundingClientRect ? owner : null;
-    if (anchor) {
-      var r = anchor.getBoundingClientRect();
-      els.menu.style.top = Math.min(r.bottom + 4, window.innerHeight - 60) + 'px';
+    var MENU_W = Math.max(220, Math.min(344, window.innerWidth - 16));
+    els.menu.style.width = MENU_W + 'px';
+    els.menu.style.left = Math.max(8, Math.min(8, window.innerWidth - MENU_W - 8)) + 'px';
+
+    // 先显示出来量一次自然高度（visibility 藏住，避免闪一下）
+    els.menu.style.visibility = 'hidden';
+    els.menu.style.maxHeight = '440px';
+    els.menu.classList.add('open');
+    var natural = els.menu.offsetHeight;
+
+    var rect = owner && owner.getBoundingClientRect ? owner.getBoundingClientRect() : null;
+    var PAD = 6;
+    if (rect) {
+      var spaceBelow = Math.max(0, window.innerHeight - rect.bottom - PAD);
+      var spaceAbove = Math.max(0, rect.top - PAD);
+      // 窗口只有 190px 高：下方放不下就往上翻（以前固定往下开，菜单整个被窗口裁掉）
+      var openUp = natural > spaceBelow && spaceAbove > spaceBelow;
+      var available = Math.max(openUp ? spaceAbove : spaceBelow, 96);
+      var height = Math.min(natural, available, 440);
+      els.menu.style.maxHeight = height + 'px';
+      els.menu.style.top = (openUp
+        ? Math.max(PAD, rect.top - height - 4)
+        : Math.min(rect.bottom + 4, window.innerHeight - PAD - height)) + 'px';
     } else {
+      els.menu.style.maxHeight = '440px';
       els.menu.style.top = '40px';
     }
-    els.menu.classList.add('open');
+    els.menu.style.visibility = '';
   }
 
   document.addEventListener('click', function (ev) {
@@ -730,38 +1096,6 @@
   // 以下到「danger confirm」结束都是**输入窗口专属**的交互绑定。
   // 展示窗口没有这些元素（els.* 为 null），整段跳过。
   if (!isDisplay) {
-
-  $('wsPicker').addEventListener('click', function (ev) {
-    ev.stopPropagation();
-    if (state.sessionId) { // 绑定态置灰（DESIGN 2.5）
-      toast('已绑定会话，点「＋ 新对话」解除');
-      return;
-    }
-    var items = (state.workspaces || []).map(function (w) {
-      return { name: w.name, sub: w.path, sel: w.id === state.workspaceId, onPick: function () {
-        api('select', { workspaceId: w.id }).catch(toastErr);
-      } };
-    });
-    openMenu(ev.currentTarget, '工作区', items.length ? items : [{ name: '（无工作区）', disabled: true }]);
-  });
-
-  $('sessPicker').addEventListener('click', function (ev) {
-    ev.stopPropagation();
-    var ws = state.sessionId ? findWorkspaceOfSession(state.sessionId) : currentWorkspace();
-    if (!ws) { openMenu(ev.currentTarget, '会话', [{ name: '先选择工作区', disabled: true }]); return; }
-    var items = [{ name: '新对话', sel: state.newSession && !state.sessionId, onPick: function () {
-      api('select', { newSession: true }).catch(toastErr);
-    } }, { sep: true }];
-    (ws.sessions || []).forEach(function (s) {
-      items.push({
-        name: s.title || s.id,
-        sub: (s.running ? '● 运行中 · ' : '') + relTime(s.updatedAt),
-        sel: s.id === state.sessionId,
-        onPick: function () { api('select', { sessionId: s.id, newSession: false }).catch(toastErr); }
-      });
-    });
-    openMenu(ev.currentTarget, ws.name + ' 的会话', items);
-  });
 
   $('permBtn').addEventListener('click', function (ev) {
     ev.stopPropagation();
@@ -855,21 +1189,20 @@
     }
   });
 
-  /** 安全绑定：元素不存在时跳过，避免脚本中断。 */
-  function on(el, event, handler) {
-    if (el && el.addEventListener) el.addEventListener(event, handler);
-  }
-
   on(els.stopBtnRun, 'click', function () {
     api('stop', {}).catch(toastErr);
   });
 
-  function togglePin() {
-    var next = !(state.runtime && state.runtime.alwaysOnTop);
-    api('window', { alwaysOnTop: next }).catch(toastErr);
-    if (window.quickDock && window.quickDock.setAlwaysOnTop) window.quickDock.setAlwaysOnTop(next);
-  }
-  on(els.pinBtnA, 'click', togglePin);
+  on(els.pinBtnA, 'click', function (ev) { ev.stopPropagation(); togglePin(); });
+
+  on(els.openBtn, 'click', function (ev) { ev.stopPropagation(); openInDsh(); });
+
+  on(els.listBtn, 'click', function (ev) {
+    ev.stopPropagation();
+    writeListHidden(!listHidden);
+    syncListButton();
+    refreshDisplayVisibility();
+  });
 
   on(els.hideBtnA, 'click', hide);
   on(els.hideBtnR, 'click', hide);
@@ -912,6 +1245,43 @@
   });
 
   } // end if (!isDisplay) —— 输入窗口专属绑定到此结束
+
+  /* ================= 两个窗口共用的按钮行为 ================= */
+
+  /** 安全绑定：元素不存在时跳过，避免脚本中断。 */
+  function on(el, event, handler) {
+    if (el && el.addEventListener) el.addEventListener(event, handler);
+  }
+
+  /** 顶置开关：两个窗口的 ⤒ 是同一个状态。 */
+  function togglePin() {
+    var next = !(state.runtime && state.runtime.alwaysOnTop);
+    api('window', { alwaysOnTop: next }).catch(toastErr);
+    if (window.quickDock && window.quickDock.setAlwaysOnTop) window.quickDock.setAlwaysOnTop(next);
+  }
+
+  /**
+   * 在 DSH 主窗口里打开当前会话。
+   *
+   * dock 是独立进程，碰不到浏览器里的 SPA；这条命令经由宿主转到
+   * client 半（浏览器插件），由它调 ctx.uiWorkspace.openSession()。
+   */
+  function openInDsh() {
+    if (!state || !state.sessionId) { toast('还没有绑定会话'); return; }
+    api('open-in-dsh', {}).catch(toastErr);
+  }
+
+  /* ================= 展示窗口的工具条 ================= */
+
+  if (isDisplay) {
+    on(els.dhOpen, 'click', function (ev) { ev.stopPropagation(); openInDsh(); });
+    on(els.dhPin, 'click', function (ev) { ev.stopPropagation(); togglePin(); });
+    on(els.dhHide, 'click', function (ev) {
+      ev.stopPropagation();
+      writeListHidden(true);
+      applyDisplayVisibility(false);
+    });
+  }
 
   /* ================= 点击穿透（异形命中区） ================= */
   // 窗口默认是 OS 级穿透（setIgnoreMouseEvents），靠 forward 把鼠标事件转发进来。
@@ -993,6 +1363,7 @@
     markOffline();
   }
   if (!isDisplay && els.sendBtn) els.sendBtn.disabled = true;
+  if (!isDisplay) { syncListButton(); }
 
   /**
    * 展示窗口：跟随主进程的「贴上/贴下」切换内容对齐方向。

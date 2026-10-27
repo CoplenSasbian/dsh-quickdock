@@ -24,3 +24,10 @@ nul
 .idea/
 .DS_Store
 Thumbs.db
+
+# 本地调试用的 Electron 解压目录（scripts/dev-harness.mjs 冒烟用）
+.electron-test/
+
+# 调试期临时产物
+scripts/_*
+.playwright-mcp/

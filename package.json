@@ -1,7 +1,7 @@
 {
   "name": "dsh-quickdock",
-  "version": "0.1.0",
-  "description": "常驻屏幕角落的 QuickDock：输入面板 + 执行流程面板，从 DSH 侧栏唤出",
+  "version": "0.2.0",
+  "description": "常驻屏幕角落的 QuickDock：输入面板 + 执行流程面板，从 DSH 会话标题栏唤出",
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -15,8 +15,14 @@
     "cordis.patch.yml",
     "web",
     "runtime",
+    "scripts",
     "icon.svg"
   ],
+  "scripts": {
+    "test": "node --test \"runtime/test/**/*.test.js\"",
+    "dev": "node --import ./scripts/register-hook.mjs scripts/dev-harness.mjs",
+    "ensure-electron": "node scripts/ensure-electron.mjs"
+  },
   "engines": {
     "dsh": ">=0.2.0"
   },

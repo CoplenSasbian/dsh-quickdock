@@ -74,3 +74,422 @@ body.above .blocks{margin-top:auto;margin-bottom:0}
 .run-now{width:100%;font-size:11.5px;line-height:1.55;color:var(--text-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .run-foot{display:flex;align-items:center;gap:8px;height:34px;padding:0 8px 0 12px;border-top:1px solid var(--border-1);flex:none}
 .run-sub{flex:1;min-width:0;font-size:10.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+
+/* ============================================================================
+   视觉打磨（覆盖层）
+   ---------------------------------------------------------------------------
+   只做「看起来更像 DSH 自己的一部分」这件事，不改任何尺寸契约：
+   两个窗口的宽高、面板间距、拖动区、命中区都必须保持原样。
+   所有颜色都走 --qd-* / --qd-fill-* 变量，深浅两套主题自动跟着变。
+   ========================================================================== */
+
+/* ---------- 面板：更柔的投影，玻璃感来自内高光而不是不透明背景 ---------- */
+.panel{
+  border-radius:14px;
+  box-shadow:
+    0 18px 40px -12px rgba(0,0,0,.55),
+    0 4px 14px -4px rgba(0,0,0,.4),
+    inset 0 1px 0 rgba(255,255,255,.045);
+}
+html[data-theme="light"] .panel{
+  box-shadow:
+    0 18px 40px -14px rgba(20,26,40,.28),
+    0 4px 12px -4px rgba(20,26,40,.16),
+    inset 0 1px 0 rgba(255,255,255,.9);
+}
+
+/* ---------- 标题条 ---------- */
+.bar{height:38px;padding:0 8px 0 13px;gap:5px}
+.sess-title{font-size:12.5px;font-weight:600;letter-spacing:.01em;line-height:1.2}
+.sess-title.blank{font-weight:500;letter-spacing:0}
+.sess-meta{font-size:10.5px;letter-spacing:.02em;opacity:.85}
+
+/* 状态点：空闲时是灰点，运行时带一圈光环 */
+.status-dot{transition:box-shadow .18s,background .18s}
+.status-dot.running{box-shadow:0 0 0 3px rgba(77,142,255,.22)}
+.status-dot.ask{box-shadow:0 0 0 3px rgba(245,166,35,.22)}
+.status-dot.error{box-shadow:0 0 0 3px rgba(240,82,82,.22)}
+
+/* ---------- 图标按钮 ---------- */
+.icon-btn{width:26px;height:26px;border-radius:7px;font-size:12.5px;transition:background .12s,color .12s,transform .12s}
+.icon-btn:hover{background:var(--qd-interactive-hover);color:var(--qd-label-primary)}
+.icon-btn:active{background:var(--qd-interactive-active);transform:scale(.94)}
+.icon-btn.on{color:var(--qd-brand-primary);background:var(--qd-fill-mid)}
+
+/* ---------- 工作区 / 会话选择器 ---------- */
+.picker{padding:4px 8px;border-radius:8px}
+.picker:hover{background:var(--qd-interactive-hover)}
+.picker.open{background:var(--qd-interactive-active)}
+.pk-icon{opacity:.55}
+.pk-name{font-size:12px;font-weight:500}
+.picker.sess .pk-name{font-weight:400;color:var(--qd-label-secondary)}
+.picker.locked{opacity:.55}
+.pk-caret{font-size:8px;opacity:.42;transition:opacity .13s}
+.picker:hover .pk-caret{opacity:.75}
+.new-btn{border-radius:8px}
+
+/* ---------- 输入框容器 ---------- */
+.composer{border-radius:12px;transition:border-color .16s,background .16s,box-shadow .16s}
+.composer:focus-within{box-shadow:0 0 0 3px rgba(77,142,255,.1)}
+.composer textarea{font-size:12.5px;line-height:1.55}
+
+/* ---------- 功能键 ---------- */
+.fkey{gap:4px;padding:4px 8px;border-radius:7px}
+.fkey:hover{background:var(--qd-interactive-hover);color:var(--qd-label-primary)}
+.fkey:active{background:var(--qd-interactive-active)}
+.fk-icon{font-size:10.5px;opacity:.6}
+.fk-caret{font-size:8px;opacity:.4}
+
+/* ---------- 发送键 ---------- */
+.send-btn{
+  width:30px;height:30px;font-size:14px;
+  box-shadow:0 4px 12px -3px rgba(77,142,255,.55);
+  transition:transform .12s,box-shadow .16s,filter .12s;
+}
+.send-btn:hover:not(:disabled){filter:brightness(1.06);box-shadow:0 6px 16px -3px rgba(77,142,255,.62)}
+.send-btn:active:not(:disabled){transform:translateY(1px) scale(.97)}
+.send-btn:disabled{background:var(--qd-fill-mid);color:var(--qd-label-tertiary);box-shadow:none}
+
+/* ---------- 下拉菜单 ---------- */
+.menu{
+  border-radius:12px;padding:6px;
+  -webkit-backdrop-filter:blur(18px) saturate(140%);
+  backdrop-filter:blur(18px) saturate(140%);
+  box-shadow:0 22px 48px -12px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.05);
+  animation:qdMenuIn .13s ease-out;
+}
+html[data-theme="light"] .menu{box-shadow:0 22px 44px -14px rgba(20,26,40,.3), inset 0 1px 0 rgba(255,255,255,.9)}
+@keyframes qdMenuIn{from{opacity:0;transform:translateY(-4px) scale(.99)}to{opacity:1;transform:none}}
+.menu-title{font-size:10.5px;letter-spacing:.06em;padding:6px 9px 5px;opacity:.75}
+.menu-item{border-radius:8px;padding:6px 9px;transition:background .12s}
+.menu-item.sel{background:rgba(77,142,255,.13)}
+.mi-name{font-size:12px}
+.mi-sub{font-size:10.5px;margin-top:1px;opacity:.9}
+.mi-check{color:var(--qd-brand-primary);font-size:12px}
+.menu-sep{margin:5px 6px;opacity:.8}
+
+/* ---------- 展示窗口：每一行都像 DSH 里的一条流式记录 ---------- */
+.blocks{padding:2px 0}
+.drow{animation:qdRowIn .16s ease-out}
+@keyframes qdRowIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.drow .step{border-radius:8px;margin:1px 8px;padding:4px 9px;transition:background .12s}
+.drow:hover .step{background:var(--qd-fill-weak)}
+.drow .step.run{margin:2px 8px;box-shadow:inset 2px 0 0 var(--qd-brand-primary)}
+.drow .step.done .step-icon{color:var(--qd-state-success)}
+.drow .step.fail .step-icon{color:var(--qd-state-error)}
+.drow .step-label{font-size:12px}
+.drow .step-json{opacity:.6}
+.drow .say{font-size:12.5px;line-height:1.62;margin:2px 12px 4px}
+.drow .think{border-radius:9px;margin:3px 10px}
+.drow .card{border-radius:10px;margin:6px 10px;box-shadow:0 6px 18px -8px rgba(0,0,0,.45)}
+
+/* 审批 / 提问卡片按钮 */
+.card-btn{border-radius:7px;transition:background .13s,transform .12s}
+.card-btn:active{transform:translateY(1px)}
+
+/* ---------- 运行态面板 ---------- */
+.run-head{height:38px}
+.run-title{font-size:12.5px;font-weight:600;letter-spacing:.01em}
+.run-elapsed{font-size:11px;letter-spacing:.04em;opacity:.8}
+.run-now{font-size:12.5px;line-height:1.6}
+.stop-btn{border-radius:8px;transition:background .13s,transform .12s}
+.stop-btn:active{transform:translateY(1px)}
+
+/* ---------- 滚动条 ---------- */
+.blocks::-webkit-scrollbar,.steps::-webkit-scrollbar,.menu::-webkit-scrollbar{width:8px}
+.blocks::-webkit-scrollbar-thumb,.steps::-webkit-scrollbar-thumb,.menu::-webkit-scrollbar-thumb{border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+
+/* ---------- 提示条 ---------- */
+.toast{border-radius:9px;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 14px 34px -10px rgba(0,0,0,.6)}
+
+
+
+
+/* ---------- 流式输出（逐字） ---------- */
+.drow .live{
+  margin:5px 10px 7px;
+  padding:8px 11px;
+  border:1px solid var(--qd-border-l1);
+  border-radius:10px;
+  background:var(--qd-fill-subtle);
+  box-shadow:0 6px 18px -12px rgba(0,0,0,.6);
+}
+.drow .live-think{
+  font-size:11.5px;line-height:1.62;
+  color:#b79ae8;
+  white-space:pre-wrap;overflow-wrap:anywhere;
+  margin-bottom:5px;
+}
+html[data-theme="light"] .drow .live-think{color:#7b52c9}
+.drow .live-tools{
+  font-family:var(--qd-font-code);font-size:11px;line-height:1.5;
+  color:var(--text-3);white-space:pre-wrap;overflow-wrap:anywhere;
+  margin-bottom:5px;
+}
+.drow .live-say{
+  font-size:12.5px;line-height:1.62;
+  color:var(--text-1);
+  white-space:pre-wrap;overflow-wrap:anywhere;
+}
+.drow .live.idle::before{
+  content:'正在思考…';
+  font-size:11.5px;color:var(--text-3);
+}
+/* 光标：只画在最后一行内容上 */
+.drow .live[data-tail="say"] .live-say::after,
+.drow .live[data-tail="think"] .live-think::after,
+.drow .live[data-tail="tools"] .live-tools::after{
+  content:'';
+  display:inline-block;
+  width:6px;height:12px;
+  margin-left:3px;
+  vertical-align:-2px;
+  background:var(--brand);
+  border-radius:1px;
+  animation:qdBlink 1.05s step-end infinite;
+}
+@keyframes qdBlink{0%,49%{opacity:1}50%,100%{opacity:0}}
+
+/* 运行态面板里的流式摘录 */
+.run-now.streaming{
+  color:var(--text-1);
+}
+.run-now.streaming::after{
+  content:'';
+  display:inline-block;
+  width:5px;height:11px;
+  margin-left:3px;
+  vertical-align:-1px;
+  background:var(--brand);
+  border-radius:1px;
+  animation:qdBlink 1.05s step-end infinite;
+}
+@media(prefers-reduced-motion:reduce){
+  .drow .live[data-tail] *::after,.run-now.streaming::after{animation:none}
+}
+
+
+/* 运行态面板：思考阶段的文字用紫色区分 */
+.run-now.thinking{color:#b79ae8}
+html[data-theme="light"] .run-now.thinking{color:#7b52c9}
+
+
+/* ---------- 标题行里的工作区标签（只读上下文，不再独占一行） ---------- */
+.ws-chip{
+  display:inline-flex;align-items:center;gap:4px;
+  min-width:0;max-width:38%;
+  padding:2px 6px;margin-left:2px;
+  border-radius:6px;
+  background:var(--qd-fill-subtle);
+  color:var(--text-3);
+  cursor:default;user-select:none;
+}
+.ws-chip .pk-icon{font-size:9.5px;opacity:.5;flex:none}
+.ws-chip .pk-name{
+  font-size:11px;line-height:1.4;
+  color:var(--text-3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
+
+/* 新建对话现在是标题行里的图标按钮 */
+#newBtn{font-size:15px;font-weight:400;line-height:1;padding-bottom:1px}
+#newBtn:hover{color:var(--qd-brand-primary)}
+
+
+/* ---------- 运行态面板：详情区（动作 + 流式正文） ---------- */
+.run-body{
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;   /* 内容从底部往上贴：最新的一行永远最靠近统计栏 */
+  gap:4px;
+  padding:6px 12px 8px;
+  overflow:hidden;
+}
+.run-action{
+  flex:none;
+  font-family:var(--qd-font-code);
+  font-size:11px;
+  line-height:1.45;
+  color:var(--text-3);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  opacity:.95;
+}
+.run-body .run-now{
+  display:block;
+  -webkit-line-clamp:unset;
+  max-height:3.4em;
+  font-size:12.5px;
+  line-height:1.6;
+  color:var(--text-2);
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  overflow:hidden;
+  scrollbar-width:none;
+}
+.run-body .run-now::-webkit-scrollbar{display:none}
+
+
+/* ---------- 工具行：可展开（运行中展开，完成后折叠） ---------- */
+.drow .step.expandable{cursor:pointer}
+.drow .step-chev{
+  flex:none;width:12px;text-align:center;
+  font-size:9px;line-height:1;
+  color:var(--text-3);opacity:.65;
+  transition:color .12s,opacity .12s;
+}
+.drow .step.expandable:hover .step-chev{opacity:1;color:var(--text-2)}
+.drow .step.open .step-chev{color:var(--brand);opacity:1}
+
+.drow .step-detail{
+  margin:1px 8px 5px 26px;
+  padding:7px 9px;
+  border:1px solid var(--qd-border-l1);
+  border-radius:8px;
+  background:var(--qd-fill-subtle);
+  max-height:220px;
+  overflow:auto;
+  scrollbar-width:thin;
+}
+.drow .step-detail[hidden]{display:none}
+.drow .step-detail.empty{color:var(--text-3);font-size:11px;background:transparent;border-style:dashed}
+
+.drow .sd-args{
+  margin:0;
+  font-family:var(--qd-font-code);font-size:10.5px;line-height:1.5;
+  color:var(--text-2);
+  white-space:pre-wrap;word-break:break-word;
+}
+.drow .sd-result{
+  margin-top:6px;padding-top:6px;
+  border-top:1px dashed var(--qd-border-l1);
+}
+.drow .sd-label{
+  display:block;
+  font-size:9.5px;letter-spacing:.08em;
+  color:var(--text-3);
+  margin-bottom:3px;
+}
+.drow .sd-out{
+  margin:0;
+  font-family:var(--qd-font-code);font-size:10.5px;line-height:1.5;
+  color:var(--text-3);
+  white-space:pre-wrap;word-break:break-word;
+}
+
+
+/* 执行过程窗口的显示/隐藏按钮：藏起来时变暗 */
+.icon-btn.off{opacity:.4}
+.icon-btn.off:hover{opacity:.75}
+
+
+/* ---------- 正文 Markdown ---------- */
+.drow .say.md{overflow-wrap:anywhere}
+.drow .md-p{margin:0 0 .5em}
+.drow .md-p:last-child{margin-bottom:0}
+.drow .md-h{margin:.7em 0 .35em;line-height:1.35;font-weight:600;color:var(--text-1)}
+.drow .md-h:first-child{margin-top:0}
+h1.md-h{font-size:15px}
+h2.md-h{font-size:14px}
+h3.md-h{font-size:13px}
+h4.md-h,h5.md-h,h6.md-h{font-size:12.5px}
+.drow .md-code{
+  font-family:var(--qd-font-code);font-size:.92em;
+  padding:1px 4px;border-radius:4px;
+  background:var(--qd-fill-mid);
+  color:var(--text-1);
+}
+.drow .md-pre{
+  position:relative;
+  margin:.45em 0;
+  padding:8px 10px;
+  border-radius:8px;
+  border:1px solid var(--qd-border-l1);
+  background:var(--qd-fill-subtle);
+  overflow-x:auto;overflow-y:hidden;
+  max-height:260px;
+}
+.drow .md-pre code{
+  display:block;
+  font-family:var(--qd-font-code);font-size:10.8px;line-height:1.55;
+  color:var(--text-2);
+  white-space:pre;
+}
+.drow .md-lang{
+  display:block;
+  font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--text-3);margin-bottom:4px;
+}
+.drow .md-list{margin:.3em 0 .5em;padding-left:1.35em}
+.drow .md-li{margin:.15em 0;color:inherit}
+.drow .md-li-1{margin-left:1.1em}
+.drow .md-li-2{margin-left:2.2em}
+.drow .md-quote{
+  margin:.4em 0;padding:2px 0 2px 10px;
+  border-left:2px solid var(--qd-border-l2);
+  color:var(--text-2);
+}
+.drow .md-hr{
+  border:0;height:1px;margin:.7em 0;
+  background:var(--qd-border-l1);
+}
+.drow .md-table{
+  border-collapse:collapse;margin:.45em 0;
+  font-size:11px;
+  display:block;max-width:100%;overflow-x:auto;
+}
+.drow .md-table th,.drow .md-table td{
+  border:1px solid var(--qd-border-l1);
+  padding:3px 7px;
+  text-align:left;
+  vertical-align:top;
+  white-space:nowrap;
+}
+.drow .md-table th{background:var(--qd-fill-weak);color:var(--text-2);font-weight:600}
+.drow .md a{color:var(--qd-brand-primary);text-decoration:none;border-bottom:1px solid rgba(77,142,255,.35);cursor:pointer}
+.drow .md a:hover{background:rgba(77,142,255,.12)}
+.drow .md strong{font-weight:600;color:var(--text-1)}
+.drow .md del{opacity:.6}
+
+
+/* ---------- 展示窗口的工具条 ---------- */
+.display-head{
+  position:sticky;
+  top:0;
+  z-index:2;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  flex:none;
+  height:30px;
+  padding:0 6px 0 11px;
+  margin:-1px -1px 0;
+  background:var(--bg-1);
+  border-bottom:1px solid var(--border-1);
+  border-radius:9px 9px 0 0;
+  -webkit-app-region:drag;
+  cursor:grab;
+}
+.display-head:active{cursor:grabbing}
+.dh-title{
+  font-size:11.5px;
+  font-weight:500;
+  color:var(--text-2);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  -webkit-app-region:no-drag;
+}
+.display-head .icon-btn{width:22px;height:22px;font-size:11.5px}
+.drows{display:flex;flex-direction:column;flex:0 0 auto;width:100%}
+.drows:empty{display:none}
+
+
+/* 标题行塞了 5 个按钮：收紧一点，给标题和“更省地方” (480 宽下更明显) */
+.bar{gap:3px}
+.bar .icon-btn{width:24px;height:24px}
+.ws-chip{max-width:34%}

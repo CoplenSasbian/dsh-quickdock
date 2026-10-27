@@ -59,9 +59,9 @@ function parseConfig(argv, env) {
     url: parsed.href,
     hostPid,
     statePath: first(args, environment, ['quickdock-state', 'state'], ['DSH_QUICKDOCK_STATE']) || inline.statePath,
-    width: positiveInteger(inline.width, 600),
+    width: positiveInteger(inline.width, 480),
     // 输入窗口的固定高度（独立窗口，只有输入相关的 UI）
-    inputHeight: positiveInteger(inline.inputHeight, 170),
+    inputHeight: positiveInteger(inline.inputHeight, 172),
     // 展示窗口的固定高度（独立窗口，贴在输入窗口的上/下边）
     displayHeight: positiveInteger(inline.displayHeight, 520),
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,

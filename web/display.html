@@ -17,7 +17,23 @@
       · 内容长 → 高度封顶在窗口高度，内部滚动
     这样圆角永远在可视边缘上，不会因为内容被滚到视口外而变成直角。
   -->
-  <div id="blocks" class="blocks" role="log" aria-label="执行过程"></div>
+  <div id="blocks" class="blocks" role="log" aria-label="执行过程">
+    <!--
+      一行小小的工具条：状态 + 三个动作。
+      sticky 吸在滚动容器顶部，内容再长也不会把按钮滚走。
+    -->
+    <div class="display-head" id="displayHead">
+      <span class="status-dot" id="dhDot" title="状态" aria-label="状态"></span>
+      <span class="dh-title" id="dhTitle">执行过程</span>
+      <span class="bar-spacer"></span>
+      <button class="icon-btn" id="dhOpen" title="在 DSH 中打开当前会话" aria-label="在 DSH 中打开当前会话">↗</button>
+      <button class="icon-btn" id="dhPin" title="顶置" aria-label="顶置" aria-pressed="false">⤒</button>
+      <button class="icon-btn" id="dhHide" title="隐藏执行过程窗口" aria-label="隐藏执行过程窗口">▤</button>
+    </div>
+    <!-- 步骤行都放这里：renderDisplay 只清空它，不动上面的工具条 -->
+    <div id="drows" class="drows"></div>
+  </div>
+  <div class="toast" id="toast" role="status" hidden></div>
   <script>window.__QD_VIEW__ = 'display';</script>
   <!--QD_SCRIPT-->
 </body>

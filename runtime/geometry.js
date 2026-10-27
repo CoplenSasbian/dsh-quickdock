@@ -9,9 +9,9 @@
  */
 
 const DEFAULTS = Object.freeze({
-  width: 600,
+  width: 480,
   /** 输入窗口的固定高度 */
-  inputHeight: 170,
+  inputHeight: 172,
   /** 展示窗口的固定高度（内容超出时在窗口内滚动） */
   displayHeight: 520,
   margin: 16,

@@ -22,6 +22,29 @@ test('tool/result 把对应行从 run 改成 done', () => {
   assert.strictEqual(folder.rows()[0].status, 'done');
 });
 
+test('工具行保留展开用的完整细节（参数 + 输出），且不混进行里', () => {
+  const folder = new StepFolder(200);
+  folder.apply(toolCall(1, 'c9', 'bash', '{"command":"npm test","description":"跑测试"}'));
+
+  const detail = folder.detailOf('tool-c9');
+  assert.ok(detail, '应有 detail');
+  assert.match(detail.args, /npm test/);
+  assert.strictEqual(detail.result, '');
+
+  // 细节不进 row：state 每次推送都带 rows，塞进去会把包撑大
+  assert.strictEqual(folder.rows()[0].detail, undefined);
+
+  folder.apply(ev('tool/result', 2, {
+    message: { toolCallId: 'c9', content: [
+      { type: 'text', text: '第一段' },
+      { type: 'text', text: '第二段' },
+    ] },
+  }));
+  const after = folder.detailOf('tool-c9');
+  assert.strictEqual(after.result, '第一段\n第二段', '多个 text block 要拼起来');
+  assert.strictEqual(folder.detailOf('tool-missing'), null);
+});
+
 test('tool/result 带 isError 时判为 fail', () => {
   const folder = new StepFolder(200);
   folder.apply(toolCall(1, 'c2', 'run_command', '{"command":"false"}'));

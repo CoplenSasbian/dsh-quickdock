@@ -44,6 +44,14 @@ class StepFolder {
     this.byId = new Map()
     /** 行 id → 触发它的事件序号，用于按轮次过滤 */
     this.seqOf = new Map()
+    /**
+     * 行 id → 展开用的完整细节 { args, result }。
+     *
+     * 不放进行里、也不随 state 推送：一次 turn 可能有几十个工具调用，
+     * 每个都带几 KB 参数的话，逐字流推送时会把整包撑到几百 KB。
+     * 页面展开某一行时再按 id 取（GET /quickdock/api/step-detail）。
+     */
+    this.details = new Map()
     /** 最新一轮从哪个事件序号开始 */
     this.turnStartSeq = null
   }
@@ -72,6 +80,7 @@ class StepFolder {
         const dropped = this.list.shift()
         this.byId.delete(dropped.id)
         this.seqOf.delete(dropped.id)
+        this.details.delete(dropped.id)
       }
       this.list.push(row)
       this.byId.set(row.id, row)
@@ -100,14 +109,25 @@ class StepFolder {
           status: 'run',
           time: time ?? '',
         })
+        // 展开用的全文（参数只在这里存一份，不进 state）
+        this.details.set('tool-' + data.callId, { args: raw.slice(0, 8000), result: '' })
         break
       }
       case 'tool/result': {
-        const row = this.byId.get('tool-' + data.message.toolCallId)
+        const id = 'tool-' + data.message.toolCallId
+        const row = this.byId.get(id)
         if (row) {
           row.status = data.error || data.message.content?.[0]?.isError ? 'fail' : 'done'
-          const text = data.message.content?.find?.((b) => b.type === 'text')?.text
-          if (typeof text === 'string') row.text = text.slice(0, 300)
+          // 结果可能是多个 text block，拼起来才是完整输出
+          const blocks = Array.isArray(data.message.content) ? data.message.content : []
+          const text = blocks
+            .filter((block) => block && block.type === 'text' && typeof block.text === 'string')
+            .map((block) => block.text)
+            .join('\n')
+          if (text) row.text = text.slice(0, 300)
+          const detail = this.details.get(id) || { args: '', result: '' }
+          detail.result = text.slice(0, 8000)
+          this.details.set(id, detail)
         }
         break
       }
@@ -136,6 +156,11 @@ class StepFolder {
         break
     }
     return this.rows()
+  }
+
+  /** 某一行的展开细节（页面按需取）；没有则返回 null。 */
+  detailOf(id) {
+    return this.details.get(String(id)) || null
   }
 }
 
