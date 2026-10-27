@@ -1,0 +1,1657 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuickDock 形态原型 v3</title>
+<style>
+  /*
+   * ===== 主题变量 =====
+   * 变量名与 DESIGN.md 第 7 节一致：--qd-*
+   * 真实实现里这些值由 Host 从 ctx.theme.getTheme() 注入。
+   * 这里手写的是「内置默认值」（浅/深两套），也就是 token 缺失时的兜底。
+   */
+  :root {
+    /* ---- 深色（默认） ---- */
+    --qd-bg-base: #1b1b1c;
+    --qd-bg-layer-1: #232324;
+    --qd-bg-layer-2: #2a2a2b;
+    --qd-bg-overlay: #232324;
+    --qd-border-l1: #333335;
+    --qd-border-l2: #3d3d40;
+    --qd-label-primary: #e9e9ea;
+    --qd-label-secondary: #9a9a9d;
+    --qd-label-tertiary: #6b6b6e;
+    --qd-brand-primary: #4d8eff;
+    --qd-state-success: #3ecf8e;
+    --qd-state-error: #f05252;
+    --qd-state-warn: #f5a623;
+    --qd-state-idle: #6b6b6e;
+    --qd-fill-subtle: rgba(255,255,255,.028);
+    --qd-fill-weak: rgba(255,255,255,.04);
+    --qd-fill-soft: rgba(255,255,255,.05);
+    --qd-fill-mid: rgba(255,255,255,.08);
+    --qd-fill-strong: rgba(255,255,255,.10);
+    --qd-interactive-hover: rgba(255,255,255,.07);
+    --qd-interactive-active: rgba(255,255,255,.11);
+    --qd-scrollbar: #3a3a3d;
+    --qd-separator: #2e2e30;
+    --qd-tooltip-bg: #2a2a2b;
+    --qd-tooltip-key-bg: rgba(255,255,255,.1);
+    --qd-font-text: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei",
+                   "PingFang SC", "Hiragino Sans GB", sans-serif;
+    --qd-font-code: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --qd-font-size-text: 12px;
+    --qd-font-size-code: 11px;
+
+    /* 运行中动效（非主题色，dock 自有的强调层） */
+    --qd-run-row-bg: rgba(77,142,255,.05);
+    --qd-run-row-bg-hi: rgba(77,142,255,.11);
+    --qd-run-ring-track: rgba(77,142,255,.22);
+    --qd-run-shine-strong: #b9d4ff;
+
+    /* ---- 非主题变量（dock 自有） ---- */
+    --radius: 12px;
+    --dock-w: 360px;
+    --gap: 8px;
+    --purple: #a97bf0;
+  }
+
+  /* ---- 浅色 ---- */
+  html[data-theme="light"] {
+    --qd-bg-base: #ffffff;
+    --qd-bg-layer-1: #f6f7f8;
+    --qd-bg-layer-2: #f0f1f3;
+    --qd-bg-overlay: #ffffff;
+    --qd-border-l1: #e3e4e6;
+    --qd-border-l2: #d0d1d4;
+    --qd-label-primary: #1c1c1e;
+    --qd-label-secondary: #5f6066;
+    --qd-label-tertiary: #96989e;
+    --qd-brand-primary: #2b6cf6;
+    --qd-state-success: #17a673;
+    --qd-state-error: #d93636;
+    --qd-state-warn: #d98300;
+    --qd-state-idle: #96989e;
+    --qd-fill-subtle: rgba(0,0,0,.016);
+    --qd-fill-weak: rgba(0,0,0,.028);
+    --qd-fill-soft: rgba(0,0,0,.035);
+    --qd-fill-mid: rgba(0,0,0,.055);
+    --qd-fill-strong: rgba(0,0,0,.07);
+    --qd-interactive-hover: rgba(0,0,0,.05);
+    --qd-interactive-active: rgba(0,0,0,.09);
+    --qd-scrollbar: #c9cacd;
+    --qd-separator: #ebebed;
+    --qd-tooltip-bg: #ffffff;
+    --qd-tooltip-key-bg: rgba(0,0,0,.07);
+
+    /* 运行中动效（浅色下调淡） */
+    --qd-run-row-bg: rgba(43,108,246,.045);
+    --qd-run-row-bg-hi: rgba(43,108,246,.10);
+    --qd-run-ring-track: rgba(43,108,246,.20);
+    --qd-run-shine-strong: #7aa7ff;
+  }
+
+  /* 兼容旧变量名，避免逐条替换遗漏 */
+  :root {
+    --bg-1: var(--qd-bg-base);
+    --bg-2: var(--qd-bg-layer-1);
+    --bg-3: var(--qd-bg-layer-2);
+    --bg-4: var(--qd-bg-layer-2);
+    --border-1: var(--qd-border-l1);
+    --border-2: var(--qd-border-l2);
+    --text-1: var(--qd-label-primary);
+    --text-2: var(--qd-label-secondary);
+    --text-3: var(--qd-label-tertiary);
+    --brand: var(--qd-brand-primary);
+    --green: var(--qd-state-success);
+    --red: var(--qd-state-error);
+    --yellow: var(--qd-state-warn);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--qd-font-text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background:
+      radial-gradient(1200px 600px at 15% 10%, #2d3a4f 0%, transparent 55%),
+      radial-gradient(900px 500px at 85% 90%, #3a2d3f 0%, transparent 55%),
+      linear-gradient(160deg, #12141a 0%, #1a1d24 45%, #0f1116 100%);
+    min-height: 100vh;
+    transition: background .25s ease;
+  }
+
+  /* 浅色模式的"模拟 IDE"背景 */
+  html[data-theme="light"] body {
+    background:
+      radial-gradient(1200px 600px at 15% 10%, #e8eef7 0%, transparent 55%),
+      radial-gradient(900px 500px at 85% 90%, #f0e9f2 0%, transparent 55%),
+      linear-gradient(160deg, #f7f8fa 0%, #eef0f4 45%, #f4f5f7 100%);
+  }
+
+  /* 模拟 IDE：左侧栏，给"浮在上面"一个参照 */
+  body::before {
+    content: ""; position: fixed; left: 0; top: 0; bottom: 0; width: 260px;
+    background: var(--qd-fill-subtle);
+    border-right: 1px solid rgba(255,255,255,.05);
+    pointer-events: none;
+    z-index: 0;
+  }
+  html[data-theme="light"] body::before {
+    background: rgba(0,0,0,.018);
+    border-right-color: rgba(0,0,0,.05);
+  }
+  body::after {
+    content: "模拟 IDE 窗口";
+    position: fixed; left: 22px; top: 20px;
+    font-size: 11px; color: rgba(255,255,255,.16);
+    letter-spacing: .1em; pointer-events: none;
+    z-index: 0;
+  }
+  html[data-theme="light"] body::after { color: rgba(0,0,0,.18); }
+
+  /* 洋红透视模式（可选，用来看透明边界） */
+  body.show-magenta {
+    background: #ff00ff;
+  }
+  body.show-magenta::before,
+  body.show-magenta::after { display: none; }
+
+  /* ================= 工具条 ================= */
+  .toolbar {
+    position: sticky; top: 0; z-index: 200;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 11px 20px;
+    background: rgba(16,16,18,.94);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    font-size: 12px; color: #cfcfd4;
+  }
+  .toolbar .brand { font-weight: 600; font-size: 13px; color: #fff; }
+  .toolbar .brand small { font-weight: 400; color: #8b8b92; margin-left: 6px; font-size: 11px; }
+  .tb-group { display: flex; align-items: center; gap: 5px; }
+  .tb-label { color: #7d7d85; font-size: 11px; margin-right: 2px; }
+  .tb-btn {
+    appearance: none; border: 1px solid rgba(255,255,255,.12);
+    background: var(--qd-fill-weak); color: #d5d5da;
+    font-size: 11.5px; padding: 5px 11px; border-radius: 7px;
+    cursor: pointer; transition: all .14s; font-family: inherit;
+  }
+  .tb-btn:hover { background: var(--qd-fill-strong); border-color: rgba(255,255,255,.2); }
+  .tb-btn.active {
+    background: rgba(77,142,255,.18); border-color: rgba(77,142,255,.55); color: #9dc0ff;
+  }
+  .tb-hint { margin-left: auto; color: #6a6a72; font-size: 11px; display: flex; align-items: center; gap: 6px; }
+  .swatch {
+    display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+    background: #ff00ff; border: 1px solid rgba(255,255,255,.3); vertical-align: -2px;
+  }
+
+  /* ================= 舞台 ================= */
+  .stage {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 44px 20px 70px; gap: 14px;
+  }
+  .stack { display: flex; flex-direction: column; align-items: center; width: var(--dock-w); }
+
+  /* 透明间隔 —— 这里会透出桌面 */
+  .gap { height: var(--gap); width: 100%; flex: none; position: relative; }
+  .gap::after {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%,-50%);
+    font-size: 8px; color: rgba(255,255,255,.0);
+    white-space: nowrap; letter-spacing: .1em;
+  }
+
+  .stage-cap {
+    font-size: 11px; color: #fff; opacity: .85; letter-spacing: .04em;
+    background: rgba(0,0,0,.3); padding: 4px 11px; border-radius: 20px;
+  }
+  body.desktop .stage-cap { color: rgba(255,255,255,.62); background: var(--qd-interactive-hover); }
+  body.show-magenta .stage-cap { color: #fff; background: rgba(0,0,0,.32); }
+  .measure { font-size: 10px; color: #fff; opacity: .5; font-variant-numeric: tabular-nums; }
+  body.desktop .measure { color: rgba(255,255,255,.4); }
+
+  /* ================= 面板通用 ================= */
+  .panel {
+    width: 100%;
+    background: var(--bg-1);
+    border-radius: var(--radius);
+    border: 1px solid var(--border-1);
+    box-shadow: 0 14px 40px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.35);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    transition: opacity .16s ease, transform .16s ease;
+  }
+  .panel.hidden { display: none; }
+
+  /* ================= 面板 A：输入区 ================= */
+  /* 顶栏：工作区 + 会话 */
+  .bar {
+    display: flex; align-items: center; gap: 4px;
+    height: 36px; padding: 0 7px 0 6px;
+    border-bottom: 1px solid var(--border-1);
+    flex: none;
+  }
+
+  .picker {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 7px; border-radius: 6px;
+    cursor: pointer; transition: background .12s;
+    min-width: 0; position: relative;
+  }
+  .picker:hover { background: var(--qd-interactive-hover); }
+  .picker.open { background: var(--qd-fill-strong); }
+  .picker .pk-icon { font-size: 10px; flex: none; opacity: .7; }
+  .picker .pk-name {
+    font-size: 11.5px; color: var(--text-1);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .picker .pk-caret { font-size: 7px; color: var(--text-3); flex: none; }
+  .picker.ws { max-width: 165px; }
+  .picker.sess { max-width: 140px; flex: 1; }
+
+  .bar-spacer { flex: 1; }
+
+  /* 下拉菜单 */
+  /* 下拉菜单：宽度由 JS 锁定为「面板宽度 - 16px」，绝不超出窗口 */
+  .menu {
+    position: fixed;
+    left: 0; top: 0;
+    width: 260px;              /* JS 会覆盖 */
+    background: var(--bg-2);
+    border: 1px solid var(--border-2);
+    border-radius: 9px;
+    box-shadow: 0 16px 40px rgba(0,0,0,.65);
+    padding: 5px; z-index: 300;
+    display: none;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a3d transparent;
+  }
+  .menu::-webkit-scrollbar { width: 6px; }
+  .menu::-webkit-scrollbar-thumb { background: #3a3a3d; border-radius: 3px; }
+  .menu.open { display: block; }
+  .menu-title {
+    font-size: 9.5px; color: var(--text-3); letter-spacing: .08em;
+    text-transform: uppercase; padding: 5px 8px 4px;
+  }
+  .menu-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 6px; cursor: pointer;
+    font-size: 11.5px; color: var(--text-1);
+    transition: background .1s; border: none; background: transparent;
+    width: 100%; text-align: left; font-family: inherit;
+  }
+  .menu-item:hover { background: var(--qd-interactive-hover); }
+  .menu-item.sel { background: rgba(77,142,255,.14); color: #9dc0ff; }
+  .menu-item .mi-main { flex: 1; min-width: 0; }
+  .menu-item .mi-name {
+    display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .menu-item .mi-sub {
+    display: block; font-size: 9.5px; color: var(--text-3);
+    margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .menu-item .mi-check { flex: none; font-size: 10px; color: var(--brand); width: 10px; }
+  .menu-sep { height: 1px; background: var(--border-1); margin: 4px 2px; }
+
+  /* 会话标题行 */
+  .sess-head {
+    display: flex; align-items: center; gap: 7px;
+    padding: 7px 10px 3px 12px; flex: none;
+  }
+  .sess-title {
+    flex: 1; min-width: 0;
+    font-size: 12.5px; font-weight: 500; color: var(--text-1);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sess-title.blank { color: var(--text-3); font-weight: 400; font-style: italic; }
+  .sess-meta { font-size: 9.5px; color: var(--text-3); flex: none; }
+
+  .new-btn {
+    display: flex; align-items: center; gap: 3px;
+    border: 1px solid var(--border-2);
+    background: var(--qd-fill-weak);
+    color: var(--text-2);
+    font-size: 10.5px; padding: 3px 7px; border-radius: 5px;
+    cursor: pointer; font-family: inherit; transition: all .12s; flex: none;
+  }
+  .new-btn:hover { background: rgba(77,142,255,.14); border-color: rgba(77,142,255,.5); color: #9dc0ff; }
+
+  /* 输入框 */
+  .composer-wrap { padding: 4px 8px 6px; flex: none; }
+  .composer {
+    background: var(--bg-3);
+    border: 1px solid var(--border-2);
+    border-radius: 9px;
+    padding: 8px 10px;
+    min-height: 54px;
+    transition: border-color .15s, background .15s;
+    display: flex;
+  }
+  .composer:focus-within { border-color: rgba(77,142,255,.6); background: var(--qd-bg-layer-1); }
+  .composer textarea {
+    flex: 1; background: transparent; border: none; outline: none; resize: none;
+    color: var(--text-1); font-size: 12.5px; font-family: inherit;
+    line-height: 1.5; min-height: 38px; max-height: 100px;
+  }
+  .composer textarea::placeholder { color: var(--text-3); }
+
+  /* 功能键行 */
+  .funcbar {
+    display: flex; align-items: center; gap: 3px;
+    padding: 0 8px 8px; flex: none; flex-wrap: wrap;
+  }
+
+  .fkey {
+    display: flex; align-items: center; gap: 3px;
+    padding: 3px 6px; border-radius: 5px;
+    border: 1px solid transparent;
+    background: transparent; color: var(--text-2);
+    font-size: 10.5px; cursor: pointer; font-family: inherit;
+    transition: all .12s; white-space: nowrap; position: relative;
+  }
+  .fkey:hover { background: var(--qd-interactive-hover); color: var(--text-1); }
+  .fkey .fk-icon { font-size: 9px; opacity: .85; }
+  .fkey .fk-caret { font-size: 6px; opacity: .55; margin-left: 1px; }
+  .fkey.accent { color: var(--purple); background: rgba(169,123,240,.12); }
+  .fkey.accent:hover { background: rgba(169,123,240,.2); }
+  .fkey.warn { color: var(--yellow); }
+  .fkey.on { color: #9dc0ff; background: rgba(77,142,255,.14); }
+
+  .func-spacer { flex: 1; }
+
+  .send-btn {
+    width: 27px; height: 27px; border-radius: 6px; border: none;
+    background: var(--brand); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex: none; font-size: 12px; transition: all .12s;
+    font-family: inherit;
+  }
+  .send-btn:hover { background: #5f9aff; }
+  .send-btn:disabled { background: var(--bg-4); color: var(--text-3); cursor: default; }
+
+  /* ================= 面板 B：执行区 ================= */
+  .exec-head {
+    display: flex; align-items: center; gap: 7px;
+    height: 34px; padding: 0 8px 0 12px;
+    border-bottom: 1px solid var(--border-1);
+    flex: none;
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-3);
+  }
+  .status-dot.running {
+    background: var(--brand);
+    animation: pulse 1.6s infinite;
+  }
+  .status-dot.done { background: var(--green); }
+  .status-dot.error { background: var(--red); }
+  .status-dot.ask { background: var(--yellow); }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(77,142,255,.55); }
+    70%  { box-shadow: 0 0 0 6px rgba(77,142,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(77,142,255,0); }
+  }
+  .exec-title {
+    flex: 1; min-width: 0; font-size: 12px; font-weight: 500; color: var(--text-1);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .exec-actions { display: flex; align-items: center; gap: 1px; flex: none; }
+
+  .icon-btn {
+    width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+    border-radius: 5px; border: none; background: transparent; color: var(--text-2);
+    cursor: pointer; font-size: 12px; line-height: 1; transition: all .12s;
+    flex: none; font-family: inherit;
+  }
+  .icon-btn:hover { background: var(--qd-fill-mid); color: var(--text-1); }
+  .icon-btn.on { color: var(--brand); background: rgba(77,142,255,.14); }
+
+  .steps {
+    overflow-y: auto; padding: 6px 0 6px; min-height: 0;
+    scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;
+  }
+  .steps::-webkit-scrollbar { width: 6px; }
+  .steps::-webkit-scrollbar-thumb { background: #3a3a3d; border-radius: 3px; }
+
+  .step {
+    display: flex; align-items: center; gap: 8px;
+    height: 26px; padding: 0 12px;
+    font-size: 11.5px; color: var(--text-2);
+  }
+  .step:hover { background: var(--qd-fill-soft); }
+  .step-icon { width: 12px; flex: none; text-align: center; font-size: 10px; line-height: 1; }
+  .step.done .step-icon { color: var(--green); }
+  .step.run  .step-icon { color: var(--brand); }
+  .step.fail .step-icon { color: var(--red); }
+  .step.todo .step-icon { color: var(--text-3); }
+
+  /* ===== 运行中步骤：动效标识 ===== */
+
+  /* 整行呼吸底色 */
+  .step.run {
+    position: relative;
+    background: var(--qd-run-row-bg);
+    animation: runRow 2s ease-in-out infinite;
+  }
+  @keyframes runRow {
+    0%, 100% { background: var(--qd-run-row-bg); }
+    50%      { background: var(--qd-run-row-bg-hi); }
+  }
+
+  /* 左侧品牌色进度条 */
+  .step.run::before {
+    content: "";
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--brand);
+    animation: runBar 1.4s ease-in-out infinite;
+  }
+  @keyframes runBar {
+    0%, 100% { opacity: .35; }
+    50%      { opacity: 1; }
+  }
+
+  /* 图标：旋转环替代静态 ◐ */
+  .step.run .step-icon {
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step.run .step-icon::before {
+    content: "";
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    border: 1.5px solid var(--qd-run-ring-track);
+    border-top-color: var(--brand);
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /*
+   * 文字流动高光 —— background-clip:text 让渐变穿过字形本身。
+   *
+   * ⚠️ 关键：background-size 与 background-position 的范围必须保证
+   *    「可见窗口永远落在渐变图像内部」，否则图像外是透明，
+   *    配合 text-fill-color:transparent 会让文字整段消失。
+   *
+   * 推导（元素宽 = W，背景宽 = 2W）：
+   *   position p% → 偏移 = (W − 2W) × p/100 = −W × p/100
+   *   可见窗口 = 背景图坐标 [−offset, −offset + W] = [W·p/100, W·p/100 + W]
+   *   背景图总宽 2W，所以要求 0 ≤ W·p/100 且 W·p/100 + W ≤ 2W
+   *   ⇒ 0 ≤ p ≤ 100
+   * 因此 p 只能在 0~100 之间移动，不能写 150% / −50%。
+   */
+  .step.run .step-label {
+    position: relative;
+    background-image: linear-gradient(
+      90deg,
+      var(--text-1) 0%,
+      var(--text-1) 40%,
+      var(--qd-run-shine-strong) 50%,
+      var(--text-1) 60%,
+      var(--text-1) 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    background-position: 100% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: var(--text-1);          /* 不支持 clip 时的兜底 */
+    animation: shine 2.2s linear infinite;
+  }
+
+  /* 内部等宽片段继承裁剪，否则它用自己的填充色盖住高光 */
+  .step.run .step-label .mono {
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* 100% → 0%：高光从右向左扫过，全程窗口都在渐变内 */
+  @keyframes shine {
+    0%   { background-position: 100% 0; }
+    100% { background-position: 0% 0; }
+  }
+
+  /* 减少动效偏好 */
+  @media (prefers-reduced-motion: reduce) {
+    .step.run,
+    .step.run::before,
+    .step.run .step-icon::before { animation: none; }
+
+    /* 关键：关掉动画后必须还原文字色，否则 background-clip:text 会让字消失 */
+    .step.run .step-label {
+      animation: none;
+      background-image: none;
+      -webkit-text-fill-color: var(--text-1);
+      color: var(--text-1);
+    }
+    .step.run .step-label .mono {
+      -webkit-text-fill-color: var(--text-1);
+    }
+    .step.run .step-icon::before {
+      border-top-color: var(--brand);
+      opacity: 1;
+    }
+  }
+
+  .step-label {
+    flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .step-label .mono {
+    font-family: var(--qd-font-code);
+    font-size: 11px; color: var(--text-1);
+  }
+  .step.done .step-label, .step.run .step-label { color: var(--text-1); }
+  .step.fail .step-label { color: #ff9a9a; }
+  .step-time {
+    font-size: 10.5px; color: var(--text-3); flex: none; font-variant-numeric: tabular-nums;
+  }
+
+  .verdict {
+    margin: 7px 12px 5px; padding: 8px 10px;
+    background: rgba(62,207,142,.07); border-left: 2px solid var(--green);
+    border-radius: 0 5px 5px 0; font-size: 11px; line-height: 1.55; color: #a8e6c8;
+  }
+  .verdict.error { background: rgba(240,82,82,.07); border-left-color: var(--red); color: #ffb0b0; }
+
+  /* 执行区底部：状态 + 停止 */
+  .exec-foot {
+    display: flex; align-items: center; gap: 8px;
+    height: 34px; padding: 0 8px 0 12px;
+    border-top: 1px solid var(--border-1); flex: none;
+    font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums;
+  }
+  .exec-foot .ef-spacer { flex: 1; }
+  .progress {
+    flex: 1; height: 2px; background: var(--qd-interactive-hover);
+    border-radius: 1px; overflow: hidden; max-width: 80px;
+  }
+  .progress i {
+    display: block; height: 100%; background: var(--brand);
+    border-radius: 1px; transition: width .3s ease;
+  }
+  .progress.done i { background: var(--green); }
+  .progress.error i { background: var(--red); }
+
+  .stop-btn {
+    display: flex; align-items: center; gap: 4px;
+    border: 1px solid rgba(240,82,82,.5);
+    background: rgba(240,82,82,.14);
+    color: #ff9a9a; font-size: 11px; padding: 4px 10px;
+    border-radius: 6px; cursor: pointer; font-family: inherit;
+    transition: all .12s; flex: none;
+  }
+  .stop-btn:hover { background: rgba(240,82,82,.26); }
+  .stop-btn .sq {
+    width: 7px; height: 7px; background: currentColor; border-radius: 1px;
+  }
+
+  /* ================= 思考 / 输出 ================= */
+  /* 1) 思考块：默认折叠成一行，展开才看全文 */
+  .think {
+    margin: 4px 12px 2px;
+    border-radius: 6px;
+    background: rgba(169,123,240,.055);
+    border: 1px solid rgba(169,123,240,.16);
+    overflow: hidden;
+  }
+  .think-head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 8px; cursor: pointer;
+    font-size: 10.5px; color: #b79ae8;
+    user-select: none;
+  }
+  .think-head:hover { background: rgba(169,123,240,.08); }
+  .think-head .th-icon {
+    font-size: 9px; flex: none; opacity: .8;
+  }
+  .think-head .th-label { flex: none; }
+  .think-head .th-preview {
+    flex: 1; min-width: 0; color: var(--text-3);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 10px;
+  }
+  .think-head .th-chev {
+    font-size: 7px; flex: none; opacity: .6;
+    transition: transform .15s;
+  }
+  .think.open .th-chev { transform: rotate(90deg); }
+  .think-body {
+    display: none;
+    padding: 0 9px 8px 23px;
+    font-size: 10.5px; line-height: 1.65;
+    color: #9d92b0;
+    max-height: 150px; overflow-y: auto;
+    white-space: pre-wrap;
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a3d transparent;
+  }
+  .think.open .think-body { display: block; }
+  .think-body::-webkit-scrollbar { width: 5px; }
+  .think-body::-webkit-scrollbar-thumb { background: #3a3a3d; border-radius: 3px; }
+
+  /* 流式中的思考：末尾有个闪烁光标 */
+  .think.streaming .th-label::after {
+    content: "…"; animation: blink 1.2s steps(2) infinite;
+  }
+  @keyframes blink { 0%,50% { opacity: 1 } 50.1%,100% { opacity: .25 } }
+
+  /* 2) 输出块：agent 的回答正文 */
+  .say {
+    margin: 5px 12px 4px;
+    padding: 7px 10px;
+    background: var(--qd-fill-subtle);
+    border-radius: 6px;
+    border-left: 2px solid rgba(255,255,255,.14);
+    font-size: 11.5px; line-height: 1.62;
+    color: var(--text-1);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .say.tight {
+    padding: 0;
+    background: transparent;
+    border-left: none;
+    font-size: 11px;
+    color: var(--text-2);
+    max-height: 66px;
+    overflow: hidden;
+    position: relative;
+  }
+  .say.tight::after {
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: 0; height: 18px;
+    background: linear-gradient(transparent, var(--bg-1));
+  }
+  .say .cursor {
+    display: inline-block; width: 5px; height: 11px;
+    background: var(--brand); vertical-align: -1px;
+    margin-left: 1px;
+    animation: caret 1s steps(2) infinite;
+  }
+  @keyframes caret { 0%,50% { opacity: 1 } 50.1%,100% { opacity: 0 } }
+  /* ================= 交互卡片 ================= */
+  .card {
+    margin: 8px 12px 6px; border: 1px solid var(--border-2);
+    border-radius: 8px; background: var(--bg-2); overflow: hidden; flex: none;
+  }
+  .card.approval { border-color: rgba(245,166,35,.42); }
+  .card.question { border-color: rgba(77,142,255,.42); }
+  .card-head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 10px 6px; font-size: 11px; font-weight: 500;
+  }
+  .card.approval .card-head { color: var(--yellow); }
+  .card.question .card-head { color: #8ab4ff; }
+  .card-head .ch-tag {
+    font-size: 9px; padding: 1px 5px; border-radius: 3px;
+    background: var(--qd-fill-mid); color: var(--text-2); font-weight: 400;
+  }
+  .card-body { padding: 0 10px 9px; }
+  .cmd {
+    font-family: var(--qd-font-code);
+    font-size: 10.5px; line-height: 1.5; color: #ffd9a0;
+    background: rgba(0,0,0,.34); border-radius: 5px; padding: 6px 8px;
+    word-break: break-all; margin-bottom: 7px;
+    border-left: 2px solid rgba(245,166,35,.5);
+  }
+  .card-reason { font-size: 10.5px; color: var(--text-2); line-height: 1.5; margin-bottom: 8px; }
+  .card-q { font-size: 11.5px; color: var(--text-1); line-height: 1.55; margin-bottom: 8px; }
+  .card-q-detail { font-size: 10.5px; color: var(--text-3); line-height: 1.5; margin: -5px 0 8px; }
+  .opts { display: flex; flex-direction: column; gap: 5px; }
+  .opt {
+    display: flex; align-items: flex-start; gap: 7px;
+    padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--border-2); background: var(--qd-fill-subtle);
+    cursor: pointer; transition: all .12s; font-size: 11px; color: var(--text-1);
+    text-align: left; font-family: inherit; width: 100%;
+  }
+  .opt:hover { background: rgba(77,142,255,.1); border-color: rgba(77,142,255,.5); }
+  .opt-key {
+    flex: none; width: 14px; height: 14px; border-radius: 3px;
+    background: var(--qd-fill-mid); font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-2); margin-top: .5px;
+  }
+  .opt-text { flex: 1; min-width: 0; line-height: 1.45; }
+  .opt-text small { display: block; color: var(--text-3); font-size: 10px; margin-top: 1px; }
+  .card-actions { display: flex; gap: 6px; margin-top: 2px; }
+  .card-btn {
+    flex: 1; height: 27px; border-radius: 6px; border: 1px solid var(--border-2);
+    background: var(--qd-fill-soft); color: var(--text-1);
+    font-size: 11px; cursor: pointer; font-family: inherit; transition: all .12s;
+  }
+  .card-btn:hover { background: var(--qd-fill-strong); }
+  .card-btn.primary {
+    background: rgba(62,207,142,.16); border-color: rgba(62,207,142,.55); color: #7ce8b6;
+  }
+  .card-btn.primary:hover { background: rgba(62,207,142,.26); }
+  .card-btn.danger {
+    background: rgba(240,82,82,.12); border-color: rgba(240,82,82,.45); color: #ff9a9a;
+  }
+  .card-foot {
+    padding: 0 10px 8px; font-size: 9.5px; color: var(--text-3);
+    display: flex; align-items: center; gap: 5px;
+  }
+
+  /* 说明标注 */
+  .note {
+    max-width: 700px; margin: 0 auto; padding: 0 20px 60px;
+    font-size: 11.5px; line-height: 1.85; color: #9a9aa2;
+  }
+  .note h3 {
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: #fff; opacity: .45; font-weight: 500; margin: 0 0 12px;
+  }
+  .note ul { margin: 0 0 20px; padding-left: 18px; }
+  .note li { margin-bottom: 7px; }
+  .note code {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    background: var(--qd-interactive-hover); padding: 1px 5px; border-radius: 3px;
+    font-size: 10.5px; color: #c9c9d0;
+  }
+  .note b { color: #d8d8de; font-weight: 500; }
+</style>
+</head>
+<body class="desktop">
+
+<div class="toolbar">
+  <div class="brand">QuickDock 原型 <small>v3 · 输入/执行分离</small></div>
+
+  <div class="tb-group">
+    <span class="tb-label">状态</span>
+    <button class="tb-btn active" data-state="idle">空闲</button>
+    <button class="tb-btn" data-state="running">执行中</button>
+    <button class="tb-btn" data-state="done">完成</button>
+    <button class="tb-btn" data-state="ask">审批</button>
+    <button class="tb-btn" data-state="question">选择</button>
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-label">主题</span>
+    <button class="tb-btn active" data-theme="dark">深色</button>
+    <button class="tb-btn" data-theme="light">浅色</button>
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-label">背景</span>
+    <button class="tb-btn" data-bg="desktop">模拟桌面</button>
+    <button class="tb-btn" data-bg="magenta">看透明边界</button>
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-label">思考/输出</span>
+    <button class="tb-btn" data-disp="full">全展示</button>
+    <button class="tb-btn active" data-disp="fold">折叠(推荐)</button>
+    <button class="tb-btn" data-disp="min">极简</button>
+  </div>
+
+  <div class="tb-hint">
+    <span class="swatch"></span>
+    <span>切到「执行中」看三种处理方式</span>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="stack" id="stack">
+
+    <!-- ============ 面板 A：输入区 ============ -->
+    <div class="panel" id="panelA">
+
+      <!-- 顶栏：工作区 / 会话 -->
+      <div class="bar">
+        <div class="picker ws" id="wsPicker">
+          <span class="pk-icon">📁</span>
+          <span class="pk-name" id="wsName">dsh-quickdock</span>
+          <span class="pk-caret">▼</span>
+        </div>
+
+        <div class="picker sess" id="sessPicker">
+          <span class="pk-icon">💬</span>
+          <span class="pk-name" id="sessName">QuickDock 设计文档</span>
+          <span class="pk-caret">▼</span>
+        </div>
+
+        <div class="bar-spacer"></div>
+
+        <button class="icon-btn" title="在主窗口打开">⤢</button>
+        <button class="icon-btn on" title="顶置">⤒</button>
+        <button class="icon-btn" title="收起 (Esc)">✕</button>
+      </div>
+
+      <!-- 会话标题 -->
+      <div class="sess-head">
+        <span class="sess-title" id="sessTitle">QuickDock 设计文档</span>
+        <span class="sess-meta" id="sessMeta">2 分钟前</span>
+        <button class="new-btn" id="newBtn" title="新建对话">＋ 新对话</button>
+      </div>
+
+      <!-- 输入框 -->
+      <div class="composer-wrap">
+        <div class="composer">
+          <textarea id="composer" rows="2" placeholder="发送消息或任务…" spellcheck="false"></textarea>
+        </div>
+      </div>
+
+      <!-- 功能键 -->
+      <div class="funcbar">
+        <!-- 权限 -->
+        <button class="fkey" id="permBtn" title="权限策略">
+          <span class="fk-icon">🔒</span>
+          <span id="permText">工作区内修改</span>
+          <span class="fk-caret">▼</span>
+        </button>
+
+        <!-- 模型 -->
+        <button class="fkey" id="modelBtn" title="模型">
+          <span class="fk-icon">◈</span>
+          <span id="modelText">GLM-5.3</span>
+          <span class="fk-caret">▼</span>
+        </button>
+
+        <!-- 思考强度 -->
+        <button class="fkey" id="thinkBtn" title="思考强度">
+          <span class="fk-icon">✦</span>
+          <span id="thinkText">高</span>
+          <span class="fk-caret">▼</span>
+        </button>
+
+        <!-- Agent（仅新对话） -->
+        <button class="fkey accent hidden" id="agentBtn" title="Agent 预设">
+          <span class="fk-icon">◎</span>
+          <span id="agentText">标准</span>
+          <span class="fk-caret">▼</span>
+        </button>
+
+        <div class="func-spacer"></div>
+
+        <button class="send-btn" id="sendBtn" title="发送 (Enter)">↑</button>
+      </div>
+
+    </div>
+
+    <!-- ============ 透明间隔 ============ -->
+    <div class="gap" id="gap"></div>
+
+    <!-- ============ 面板 B：执行区 ============ -->
+    <div class="panel hidden" id="panelB">
+      <div class="exec-head">
+        <span class="status-dot" id="statusDot"></span>
+        <span class="exec-title" id="execTitle">QuickDock 设计文档</span>
+        <div class="exec-actions">
+          <button class="icon-btn" title="在主窗口打开此会话">⧉</button>
+          <button class="icon-btn" title="顶置">⤒</button>
+          <button class="icon-btn" id="closeExecBtn" title="收起执行面板">✕</button>
+        </div>
+      </div>
+
+      <div class="steps" id="steps"></div>
+
+      <div class="exec-foot">
+        <span id="footText">正在执行</span>
+        <div class="progress" id="progress"><i style="width:0%"></i></div>
+        <span class="ef-spacer"></span>
+        <span id="footTime">0.0s</span>
+        <button class="stop-btn" id="stopBtn"><span class="sq"></span>停止</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="stage-cap" id="stageCap">空闲 · 只有输入面板</div>
+  <div class="measure">360 × 自适应 · 圆角 12 · 面板间距 8px（透明）</div>
+</div>
+
+<!-- ================= 说明 ================= -->
+<div class="note">
+  <h3>这版包含</h3>
+  <ul>
+    <li><b>两个独立面板</b>：输入区和执行区是分开的两个浮窗，中间 8px 是<b>真透明</b>。拖动时整体移动，视觉上仍是一个 dock。</li>
+    <li><b>执行时收起输入</b>：点发送后输入面板消失，只剩执行面板 + <b>停止</b>按钮。完成后面板 A 自动回来。</li>
+    <li><b>执行区可关闭</b>：执行面板标题栏的 <code>✕</code> 只收起面板，<b>不新建会话</b> —— 当前会话保持不变。</li>
+    <li><b>功能键</b>：权限（🔒 三级，文案对齐 DSH）、模型（◈）、思考强度（✦）；<b>Agent 预设（◎）只在新建对话时出现</b>。</li>
+    <li><b>两级选择</b>：先选工作区（📁），再从该工作区列会话（💬）。会话标题渲染在标题行，右侧是「＋ 新对话」。</li>
+    <li><b>运行中动效</b>：转圈环 + 整行呼吸底 + 左侧竖条 + 文字流动高光（渐变穿过字形本身）。</li>
+    <li><b>主题</b>：变量名 <code>--qd-*</code> 与设计文档一致，切「浅色」可验证主题同步效果。</li>
+  </ul>
+
+  <h3>说明</h3>
+  <ul>
+    <li>本原型是<b>视觉真相源</b>，设计文档 DESIGN.md 第 6 章与它保持一致。</li>
+    <li>「主题」按钮模拟 Host 注入的 <code>colorScheme</code>；真实实现里颜色值来自 <code>ctx.theme.getTheme()</code>。</li>
+    <li>「背景」切到「看透明边界」可确认哪些区域是真透明。</li>
+  </ul>
+</div>
+
+<!-- ================= 浮层菜单容器（挂在 body，避免被面板 overflow 裁掉） ================= -->
+<div class="menu" id="wsMenu"></div>
+<div class="menu" id="sessMenu"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ================= 数据 ================= */
+  const WORKSPACES = [
+    {
+      id: 'w1', name: 'dsh-quickdock', path: 'C:\\Users\\futur\\Desktop\\dsh-quickdock',
+      sessions: [
+        { id: 's1', title: 'QuickDock 设计文档', meta: '2 分钟前' },
+        { id: 's2', title: '修复登录超时问题', meta: '1 小时前' },
+        { id: 's3', title: '重构 auth 模块', meta: '昨天' }
+      ]
+    },
+    {
+      id: 'w2', name: 'vk_engine', path: 'D:\\vk_engine',
+      sessions: [
+        { id: 's4', title: '渲染管线优化', meta: '10 分钟前' },
+        { id: 's5', title: 'Shader 编译缓存', meta: '3 小时前' }
+      ]
+    },
+    {
+      id: 'w3', name: 'blog', path: 'C:\\Users\\futur\\projects\\blog',
+      sessions: [
+        { id: 's6', title: '迁移到 Astro', meta: '2 天前' }
+      ]
+    }
+  ];
+
+  const MODELS = [
+    { id: 'glm-5.3', name: 'GLM-5.3', sub: '1M 上下文' },
+    { id: 'deepseek', name: 'DeepSeek-V4.1', sub: '1M 上下文' },
+    { id: 'claude', name: 'Claude Sonnet', sub: '200K 上下文' }
+  ];
+
+  const THINKS = [
+    { id: 'low', name: '低', sub: '快速响应' },
+    { id: 'high', name: '高', sub: '默认' },
+    { id: 'max', name: '最高', sub: '最慢最准' }
+  ];
+
+  /* 权限：实际应从 permissionPresets.catalog() 动态取，
+     这里用默认组合的 DSH 中文文案作演示 */
+  const PERMS = [
+    { id: 'read-only', name: '仅可查看', sub: '只读，不能改文件' },
+    { id: 'workspace-write', name: '工作区内修改', sub: '可改当前工作区文件' },
+    { id: 'danger-full-access', name: '完全权限', sub: '不受限制，慎用' }
+  ];
+
+  const AGENTS = [
+    { id: 'std', name: '标准', sub: '完整工具集' },
+    { id: 'min', name: '精简', sub: '少量工具' },
+    { id: 'ptc', name: 'PTC', sub: '程序化工具调用' }
+  ];
+
+  const STEPS_RUNNING = [
+    { s: 'done', icon: '✓', label: '读取 <span class="mono">package.json</span>', time: '1.2s' },
+    { s: 'done', icon: '✓', label: '<span class="mono">bash</span>  git status', time: '0.3s' },
+    { s: 'done', icon: '✓', label: '<span class="mono">bash</span>  git diff', time: '0.9s' },
+    { s: 'run',  icon: '', label: '编辑 <span class="mono">CHANGELOG.md</span>', time: '' },
+    { s: 'todo', icon: '○', label: '<span class="mono">bash</span>  git commit -m "…"', time: '' }
+  ];
+
+  const STEPS_DONE = [
+    { s: 'done', icon: '✓', label: '读取 <span class="mono">package.json</span>', time: '1.2s' },
+    { s: 'done', icon: '✓', label: '<span class="mono">bash</span>  git status', time: '0.3s' },
+    { s: 'done', icon: '✓', label: '<span class="mono">bash</span>  git diff', time: '0.9s' },
+    { s: 'done', icon: '✓', label: '编辑 <span class="mono">CHANGELOG.md</span>', time: '2.6s' },
+    { s: 'done', icon: '✓', label: '<span class="mono">bash</span>  git commit -m "…"', time: '2.1s' }
+  ];
+
+  /* ---- 思考 / 输出 的演示文本 ---- */
+  const THINK_SAMPLE =
+    '先看 package.json 确认这是个 monorepo，然后检查 git 状态。\n' +
+    '改动涉及 CHANGELOG.md，需要按 keep-a-changelog 格式补一节。\n' +
+    '提交信息用 conventional commits，类型选 chore 比较合适。';
+
+  const SAY_RUNNING =
+    '正在按顺序处理：先补 CHANGELOG，再提交。';
+
+  const SAY_DONE =
+    '已提交 5 个步骤，改动 2 个文件。\n' +
+    'commit: <code>chore(dock): 更新 CHANGELOG</code>';
+
+  /* ---- 执行中：步骤 + 实时思考 + 实时输出（三种处理方式的开关）---- */
+  // displayMode: 'full' 全展示 | 'fold' 思考折叠(默认) | 'min' 只留一行
+  let displayMode = 'fold';
+
+  /* ================= 状态 ================= */
+  let wsId = 'w1';
+  let sessId = 's1';
+  let isNew = false;
+  let modelId = 'glm-5.3';
+  let thinkId = 'high';
+  let permId = 'workspace-write';
+  let agentId = 'std';
+
+  /* ================= 元素 ================= */
+  const $ = (id) => document.getElementById(id);
+  const panelA = $('panelA'), panelB = $('panelB'), gap = $('gap');
+  const wsMenu = $('wsMenu'), sessMenu = $('sessMenu');
+  const wsName = $('wsName'), sessName = $('sessName');
+  const sessTitle = $('sessTitle'), sessMeta = $('sessMeta');
+  const composer = $('composer');
+  const agentBtn = $('agentBtn');
+  const stepsEl = $('steps');
+  const statusDot = $('statusDot'), execTitle = $('execTitle');
+  const footText = $('footText'), footTime = $('footTime');
+  const progress = $('progress');
+  const stageCap = $('stageCap');
+
+  const ws = () => WORKSPACES.find(w => w.id === wsId);
+  const sess = () => isNew ? null : (ws().sessions.find(s => s.id === sessId) || null);
+
+  /* ================= 下拉菜单 ================= */
+  function closeAllMenus() {
+    document.querySelectorAll('.menu').forEach(m => m.classList.remove('open'));
+    document.querySelectorAll('.picker').forEach(p => p.classList.remove('open'));
+  }
+
+  /**
+   * 把菜单定位到锚点下方，并强制：
+   *  - 宽度 = 面板宽度 - 16px（绝不超出窗口）
+   *  - 水平位置夹在面板内
+   *  - 下方空间不够时翻到上方
+   */
+  function placeMenu(menu, anchorEl) {
+    const panel = anchorEl.closest('.panel');
+    const pr = panel.getBoundingClientRect();
+    const ar = anchorEl.getBoundingClientRect();
+
+    // 宽度锁死，留 8px 内边距
+    const w = Math.round(pr.width - 16);
+    menu.style.width = w + 'px';
+
+    // 水平：优先与锚点左对齐，但夹在面板内
+    let left = Math.min(ar.left, pr.left + pr.width - w - 8);
+    left = Math.max(pr.left + 8, left);
+    menu.style.left = Math.round(left) + 'px';
+
+    // 先显示以测量高度
+    menu.style.visibility = 'hidden';
+    menu.classList.add('open');
+    const mh = menu.offsetHeight;
+
+    // 垂直：优先在下方，放不下就翻到上方，再不行就夹在面板内
+    const spaceBelow = window.innerHeight - ar.bottom - 8;
+    const spaceAbove = ar.top - 8;
+    let top;
+    if (mh <= spaceBelow || spaceBelow >= spaceAbove) {
+      top = ar.bottom + 5;
+    } else {
+      top = ar.top - mh - 5;
+    }
+    top = Math.max(8, Math.min(top, window.innerHeight - mh - 8));
+    menu.style.top = Math.round(top) + 'px';
+    menu.style.visibility = '';
+  }
+
+  function openMenu(menu, picker, html) {
+    closeAllMenus();
+    menu.innerHTML = html;
+    menu.classList.add('open');
+    if (picker) picker.classList.add('open');
+    placeMenu(menu, picker || menu._anchor);
+  }
+
+  // 工作区菜单
+  $('wsPicker').addEventListener('click', function (e) {
+    e.stopPropagation();
+    const isOpen = wsMenu.classList.contains('open');
+    if (isOpen) { closeAllMenus(); return; }
+    const html = '<div class="menu-title">工作区</div>' +
+      WORKSPACES.map(w =>
+        '<button class="menu-item' + (w.id === wsId ? ' sel' : '') + '" data-ws="' + w.id + '">' +
+          '<span class="mi-main">' +
+            '<span class="mi-name">' + w.name + '</span>' +
+            '<span class="mi-sub">' + w.path + '</span>' +
+          '</span>' +
+          '<span class="mi-check">' + (w.id === wsId ? '✓' : '') + '</span>' +
+        '</button>'
+      ).join('');
+    openMenu(wsMenu, $('wsPicker'), html);
+    wsMenu.querySelectorAll('[data-ws]').forEach(b => {
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        wsId = b.dataset.ws;
+        isNew = false;
+        sessId = ws().sessions[0] ? ws().sessions[0].id : null;
+        closeAllMenus();
+        renderIdle();
+      });
+    });
+  });
+
+  // 会话菜单
+  $('sessPicker').addEventListener('click', function (e) {
+    e.stopPropagation();
+    const isOpen = sessMenu.classList.contains('open');
+    if (isOpen) { closeAllMenus(); return; }
+    const list = ws().sessions;
+    const html = '<div class="menu-title">' + ws().name + ' 的会话</div>' +
+      (isNew ? '<button class="menu-item sel" data-sess="__new">' +
+                 '<span class="mi-main"><span class="mi-name">新对话</span>' +
+                 '<span class="mi-sub">尚未发送</span></span>' +
+                 '<span class="mi-check">✓</span></button>' +
+               '<div class="menu-sep"></div>' : '') +
+      list.map(s =>
+        '<button class="menu-item' + (!isNew && s.id === sessId ? ' sel' : '') + '" data-sess="' + s.id + '">' +
+          '<span class="mi-main">' +
+            '<span class="mi-name">' + s.title + '</span>' +
+            '<span class="mi-sub">' + s.meta + '</span>' +
+          '</span>' +
+          '<span class="mi-check">' + (!isNew && s.id === sessId ? '✓' : '') + '</span>' +
+        '</button>'
+      ).join('');
+    openMenu(sessMenu, $('sessPicker'), html);
+    sessMenu.querySelectorAll('[data-sess]').forEach(b => {
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (b.dataset.sess === '__new') {
+          startNew();
+        } else {
+          sessId = b.dataset.sess;
+          isNew = false;
+          closeAllMenus();
+          renderIdle();
+        }
+      });
+    });
+  });
+
+  document.addEventListener('click', closeAllMenus);
+
+  // 新对话
+  $('newBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    startNew();
+  });
+
+  function startNew() {
+    isNew = true;
+    closeAllMenus();
+    renderIdle();
+    composer.focus();
+  }
+
+  /* ================= 思考 / 输出 渲染 ================= */
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  /** 思考块：默认折叠成一行摘要，点开看全文 */
+  function thinkBlock(text, opts) {
+    opts = opts || {};
+    const oneLine = text.replace(/\s+/g, ' ').trim();
+    const preview = oneLine.length > 42 ? oneLine.slice(0, 42) + '…' : oneLine;
+    const el = document.createElement('div');
+    el.className = 'think' + (opts.open ? ' open' : '') + (opts.streaming ? ' streaming' : '');
+    el.innerHTML =
+      '<div class="think-head">' +
+        '<span class="th-icon">✦</span>' +
+        '<span class="th-label">思考</span>' +
+        '<span class="th-preview">' + esc(preview) + '</span>' +
+        '<span class="th-chev">▶</span>' +
+      '</div>' +
+      '<div class="think-body">' + esc(text) + '</div>';
+    el.querySelector('.think-head').addEventListener('click', function (e) {
+      e.stopPropagation();
+      el.classList.toggle('open');
+    });
+    return el;
+  }
+
+  /** 输出块：agent 的回答 */
+  function sayBlock(text, opts) {
+    opts = opts || {};
+    const el = document.createElement('div');
+    el.className = 'say' + (opts.tight ? ' tight' : '');
+    el.innerHTML = text + (opts.streaming ? '<span class="cursor"></span>' : '');
+    return el;
+  }
+
+  /** 统一铺步骤流：普通步骤 + think + say 混排 */
+  function renderFlow(items) {
+    stepsEl.innerHTML = '';
+    items.forEach(function (it) {
+      if (it.kind === 'think') {
+        stepsEl.appendChild(thinkBlock(it.text, { streaming: it.streaming, open: it.open }));
+      } else if (it.kind === 'say') {
+        stepsEl.appendChild(sayBlock(it.text, { streaming: it.streaming, tight: it.tight }));
+      } else {
+        const row = document.createElement('div');
+        row.className = 'step ' + it.s;
+        row.innerHTML =
+          '<span class="step-icon">' + it.icon + '</span>' +
+          '<span class="step-label">' + it.label + '</span>' +
+          '<span class="step-time">' + (it.time || '') + '</span>';
+        stepsEl.appendChild(row);
+      }
+    });
+  }
+
+  /* ================= 功能键菜单 ================= */
+  function bindFKey(btnId, items, currentId, onPick) {
+    const btn = $(btnId);
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      const wasOpen = document.body.querySelector('.fkey-menu');
+      closeAllMenus();
+      document.querySelectorAll('.fkey-menu').forEach(m => m.remove());
+      if (wasOpen && wasOpen._owner === btnId) return;
+
+      const m = document.createElement('div');
+      m.className = 'menu fkey-menu';
+      m._owner = btnId;
+      m.innerHTML = items.map(it =>
+        '<button class="menu-item' + (it.id === currentId() ? ' sel' : '') + '" data-id="' + it.id + '">' +
+          '<span class="mi-main"><span class="mi-name">' + it.name + '</span>' +
+          (it.sub ? '<span class="mi-sub">' + it.sub + '</span>' : '') + '</span>' +
+          '<span class="mi-check">' + (it.id === currentId() ? '✓' : '') + '</span>' +
+        '</button>'
+      ).join('');
+      document.body.appendChild(m);
+      m.classList.add('open');
+      placeMenu(m, btn);
+
+      m.querySelectorAll('[data-id]').forEach(b => {
+        b.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          onPick(b.dataset.id);
+          m.remove();
+          renderIdle();
+        });
+      });
+      setTimeout(() => {
+        const close = function () {
+          m.remove();
+          document.removeEventListener('click', close);
+        };
+        document.addEventListener('click', close);
+      }, 0);
+    });
+  }
+
+  bindFKey('permBtn', PERMS, () => permId, id => { permId = id; });
+  bindFKey('modelBtn', MODELS, () => modelId, id => { modelId = id; });
+  bindFKey('thinkBtn', THINKS, () => thinkId, id => { thinkId = id; });
+  bindFKey('agentBtn', AGENTS, () => agentId, id => { agentId = id; });
+
+  /* ================= 渲染：空闲态 ================= */
+  function renderIdle() {
+    panelA.classList.remove('hidden');
+    panelB.classList.add('hidden');
+    gap.style.display = 'none';
+
+    wsName.textContent = ws().name;
+
+    if (isNew) {
+      sessName.textContent = '新对话';
+      sessTitle.textContent = '新对话';
+      sessTitle.classList.add('blank');
+      sessMeta.textContent = '';
+    } else {
+      const s = sess();
+      sessName.textContent = s ? s.title : '—';
+      sessTitle.textContent = s ? s.title : '未选择会话';
+      sessTitle.classList.toggle('blank', !s);
+      sessMeta.textContent = s ? s.meta : '';
+    }
+    composer.placeholder = '发送消息或任务…';
+
+    // 功能键文本
+    $('permText').textContent = PERMS.find(p => p.id === permId).name;
+    $('modelText').textContent = MODELS.find(m => m.id === modelId).name;
+    $('thinkText').textContent = THINKS.find(t => t.id === thinkId).name;
+
+    // Agent 只在新建时出现
+    agentBtn.classList.toggle('hidden', !isNew);
+    if (isNew) $('agentText').textContent = AGENTS.find(a => a.id === agentId).name;
+
+    stageCap.textContent = isNew ? '新对话 · 输入面板' : '空闲 · 只有输入面板';
+    $('sendBtn').disabled = !composer.value.trim() && !isNew;
+  }
+
+  /* ================= 渲染：执行态 ================= */
+  function renderRunning() {
+    panelA.classList.add('hidden');
+    panelB.classList.remove('hidden');
+    gap.style.display = 'none';   // 执行时只有一个面板，不需要间隔
+
+    const s = sess();
+    execTitle.textContent = isNew ? '新对话' : (s ? s.title : '提交代码');
+    statusDot.className = 'status-dot running';
+
+    // 步骤流里穿插 思考 / 输出，按 displayMode 决定呈现方式
+    const items = [];
+
+    if (displayMode === 'full') {
+      // 全展示：思考全文常驻 + 输出常驻
+      items.push({ kind: 'think', text: THINK_SAMPLE, open: true });
+      items.push(STEPS_RUNNING[0]);
+      items.push(STEPS_RUNNING[1]);
+      items.push({ kind: 'say', text: SAY_RUNNING, streaming: true });
+      items.push(STEPS_RUNNING[2]);
+      items.push(STEPS_RUNNING[3]);
+      items.push(STEPS_RUNNING[4]);
+    } else if (displayMode === 'min') {
+      // 极简：思考只要一行提示，输出只留紧凑预览
+      items.push({ kind: 'think', text: THINK_SAMPLE, open: false });
+      items.push(STEPS_RUNNING[0]);
+      items.push(STEPS_RUNNING[1]);
+      items.push(STEPS_RUNNING[2]);
+      items.push(STEPS_RUNNING[3]);
+      items.push(STEPS_RUNNING[4]);
+      items.push({ kind: 'say', text: SAY_RUNNING, streaming: true, tight: true });
+    } else {
+      // 默认 fold：思考折叠成一行（可展开），输出正常显示但不出框
+      items.push(STEPS_RUNNING[0]);
+      items.push(STEPS_RUNNING[1]);
+      items.push({ kind: 'think', text: THINK_SAMPLE, open: false });
+      items.push({ kind: 'say', text: SAY_RUNNING, streaming: true });
+      items.push(STEPS_RUNNING[2]);
+      items.push(STEPS_RUNNING[3]);
+      items.push(STEPS_RUNNING[4]);
+    }
+
+    renderFlow(items);
+
+    footText.textContent = '正在执行 4/5';
+    footTime.textContent = '12.4s';
+    progress.className = 'progress';
+    progress.querySelector('i').style.width = '60%';
+
+    stageCap.textContent = '执行中 · 输入面板收起，只剩停止';
+  }
+
+  function renderDone() {
+    panelA.classList.remove('hidden');
+    panelB.classList.remove('hidden');
+    gap.style.display = '';       // 两个面板 → 显示透明间隔
+
+    const s = sess();
+    execTitle.textContent = isNew ? '新对话' : (s ? s.title : '提交代码');
+    statusDot.className = 'status-dot done';
+
+    const items = [];
+    if (displayMode === 'full') {
+      items.push({ kind: 'think', text: THINK_SAMPLE, open: true });
+    } else if (displayMode === 'fold') {
+      items.push({ kind: 'think', text: THINK_SAMPLE, open: false });
+    }
+    STEPS_DONE.forEach(st => items.push(st));
+    // 完成后的输出（结论性回答）
+    items.push({ kind: 'say', text: SAY_DONE, tight: displayMode === 'min' });
+
+    renderFlow(items);
+
+    // 结论摘要
+    const v = document.createElement('div');
+    v.className = 'verdict';
+    v.innerHTML = '已提交 <b>5</b> 个步骤，改动 <b>2</b> 个文件。';
+    stepsEl.appendChild(v);
+
+    footText.textContent = '完成';
+    footTime.textContent = '7.1s';
+    progress.className = 'progress done';
+    progress.querySelector('i').style.width = '100%';
+    $('stopBtn').style.display = 'none';
+
+    stageCap.textContent = '完成 · 两个面板并存（中间 8px 透明）';
+    renderIdleTexts();
+  }
+
+  function renderAsk() {
+    panelA.classList.add('hidden');
+    panelB.classList.remove('hidden');
+    gap.style.display = 'none';
+
+    const s = sess();
+    execTitle.textContent = s ? s.title : '提交代码';
+    statusDot.className = 'status-dot ask';
+
+    stepsEl.innerHTML =
+      '<div class="step done"><span class="step-icon">✓</span>' +
+        '<span class="step-label">读取 <span class="mono">package.json</span></span>' +
+        '<span class="step-time">1.2s</span></div>' +
+      '<div class="step done"><span class="step-icon">✓</span>' +
+        '<span class="step-label"><span class="mono">bash</span>  git status</span>' +
+        '<span class="step-time">0.3s</span></div>' +
+      '<div class="step run"><span class="step-icon"></span>' +
+        '<span class="step-label">等待你确认</span><span class="step-time"></span></div>' +
+      '<div class="card approval">' +
+        '<div class="card-head">⚠ 需要确认 <span class="ch-tag">bash</span></div>' +
+        '<div class="card-body">' +
+          '<div class="cmd">git push origin main</div>' +
+          '<div class="card-reason">该命令会推送到远程仓库，需要你确认。</div>' +
+          '<div class="card-actions">' +
+            '<button class="card-btn primary" data-act="allow">允许</button>' +
+            '<button class="card-btn danger" data-act="deny">拒绝</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card-foot">此决定会记入会话日志 · 仅本次有效</div>' +
+      '</div>';
+
+    footText.textContent = '等待确认';
+    footTime.textContent = '';
+    progress.className = 'progress';
+    progress.querySelector('i').style.width = '60%';
+
+    bindCardActions();
+    stageCap.textContent = '审批 · 在 dock 内直接完成';
+  }
+
+  function renderQuestion() {
+    panelA.classList.add('hidden');
+    panelB.classList.remove('hidden');
+    gap.style.display = 'none';
+
+    const s = sess();
+    execTitle.textContent = s ? s.title : '提交代码';
+    statusDot.className = 'status-dot ask';
+
+    const opts = [
+      { label: 'feature/dock', desc: '保持当前分支（推荐）' },
+      { label: 'main', desc: '直接提交到主干' },
+      { label: '新建分支', desc: '从当前改动创建 fix/xxx' }
+    ];
+
+    stepsEl.innerHTML =
+      '<div class="step done"><span class="step-icon">✓</span>' +
+        '<span class="step-label">读取 <span class="mono">package.json</span></span>' +
+        '<span class="step-time">1.2s</span></div>' +
+      '<div class="step run"><span class="step-icon"></span>' +
+        '<span class="step-label">等待你选择</span><span class="step-time"></span></div>' +
+      '<div class="card question">' +
+        '<div class="card-head">? 提交方式</div>' +
+        '<div class="card-body">' +
+          '<div class="card-q">这次改动要提交到哪个分支？</div>' +
+          '<div class="card-q-detail">当前在 feature/dock 分支，落后 main 3 个提交。</div>' +
+          '<div class="opts">' +
+            opts.map((o, i) =>
+              '<button class="opt" data-act="pick">' +
+                '<span class="opt-key">' + (i + 1) + '</span>' +
+                '<span class="opt-text">' + o.label + '<small>' + o.desc + '</small></span>' +
+              '</button>'
+            ).join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="card-foot">数字键快速选择</div>' +
+      '</div>';
+
+    footText.textContent = '等待选择';
+    footTime.textContent = '';
+    progress.className = 'progress';
+    progress.querySelector('i').style.width = '50%';
+
+    bindCardActions();
+    stageCap.textContent = '选择题 · 选项直接映射成按钮';
+  }
+
+  function bindCardActions() {
+    stepsEl.querySelectorAll('[data-act]').forEach(btn => {
+      btn.addEventListener('click', function () {
+        if (btn.dataset.act === 'deny') renderError();
+        else renderDone();
+      });
+    });
+  }
+
+  function renderError() {
+    panelA.classList.remove('hidden');
+    panelB.classList.remove('hidden');
+    gap.style.display = '';
+
+    const s = sess();
+    execTitle.textContent = s ? s.title : '提交代码';
+    statusDot.className = 'status-dot error';
+
+    stepsEl.innerHTML =
+      '<div class="step done"><span class="step-icon">✓</span>' +
+        '<span class="step-label">读取 <span class="mono">package.json</span></span>' +
+        '<span class="step-time">1.2s</span></div>' +
+      '<div class="step fail"><span class="step-icon">✕</span>' +
+        '<span class="step-label"><span class="mono">bash</span>  git commit</span>' +
+        '<span class="step-time">0.2s</span></div>' +
+      '<div class="verdict error">fatal: not a git repository</div>';
+
+    footText.textContent = '失败';
+    footTime.textContent = '1.7s';
+    progress.className = 'progress error';
+    progress.querySelector('i').style.width = '100%';
+    $('stopBtn').style.display = 'none';
+
+    stageCap.textContent = '失败 · 输入面板回来，可继续发指令';
+    renderIdleTexts();
+  }
+
+  function renderIdleTexts() {
+    wsName.textContent = ws().name;
+    const s = sess();
+    sessName.textContent = s ? s.title : '新对话';
+    sessTitle.textContent = s ? s.title : '新对话';
+    sessTitle.classList.toggle('blank', !s);
+    sessMeta.textContent = s ? s.meta : '';
+    $('permText').textContent = PERMS.find(p => p.id === permId).name;
+    $('modelText').textContent = MODELS.find(m => m.id === modelId).name;
+    $('thinkText').textContent = THINKS.find(t => t.id === thinkId).name;
+    // Agent 预设只在「新对话」出现；已有会话不可换 agent
+    agentBtn.classList.toggle('hidden', !isNew && !!s);
+  }
+
+  /* 关闭执行面板：回到空闲态，但保留当前会话（不是新建对话） */
+  function closeExecPanel() {
+    panelB.classList.add('hidden');
+    panelA.classList.remove('hidden');
+    gap.style.display = 'none';
+    isNew = false;                 // 保留会话，不回退到「新对话」
+    renderIdle();                  // renderIdle 里会按 isNew 决定 agentBtn
+    stageCap.textContent = '空闲 · 执行面板已收起';
+  }
+
+  /* ================= 交互 ================= */
+  // 输入
+  composer.addEventListener('input', function () {
+    $('sendBtn').disabled = !composer.value.trim() && !isNew;
+  });
+
+  composer.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+
+  $('sendBtn').addEventListener('click', send);
+
+  function send() {
+    if (!$('sendBtn').disabled) {
+      composer.value = '';
+      setActiveState('running');
+      renderRunning();
+    }
+  }
+
+  // 关闭执行面板 → 回到空闲态（保留当前会话，不新建）
+  $('closeExecBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    closeExecPanel();
+    setActiveState('idle');
+  });
+
+  // 停止
+  $('stopBtn').addEventListener('click', function () {
+    $('stopBtn').style.display = '';
+    renderDone();
+  });
+
+  // 工具条状态
+  function setActiveState(name) {
+    document.querySelectorAll('[data-state]').forEach(b => {
+      b.classList.toggle('active', b.dataset.state === name);
+    });
+  }
+
+  document.querySelectorAll('[data-state]').forEach(btn => {
+    btn.addEventListener('click', function () {
+      setActiveState(btn.dataset.state);
+      $('stopBtn').style.display = '';
+      const st = btn.dataset.state;
+      if (st === 'idle') { isNew = false; renderIdle(); }
+      else if (st === 'running') renderRunning();
+      else if (st === 'done') renderDone();
+      else if (st === 'ask') renderAsk();
+      else if (st === 'question') renderQuestion();
+    });
+  });
+
+  // 主题切换（模拟 Host 注入 colorScheme）
+  document.querySelectorAll('[data-theme]').forEach(btn => {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('[data-theme]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.documentElement.setAttribute('data-theme', btn.dataset.theme);
+    });
+  });
+
+  // 背景切换（默认模拟桌面；"看透明边界"是调试辅助）
+  document.querySelectorAll('[data-bg]').forEach(btn => {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('[data-bg]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const isMagenta = btn.dataset.bg === 'magenta';
+      document.body.classList.toggle('show-magenta', isMagenta);
+      document.body.classList.toggle('desktop', !isMagenta);
+    });
+  });
+
+  // 思考/输出 显示模式
+  document.querySelectorAll('[data-disp]').forEach(btn => {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('[data-disp]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      displayMode = btn.dataset.disp;
+      // 立即按当前状态重绘
+      if (!panelB.classList.contains('hidden')) {
+        if (statusDot.classList.contains('done')) renderDone();
+        else if (statusDot.classList.contains('running')) renderRunning();
+      }
+    });
+  });
+
+  // 初始
+  renderIdle();
+})();
+</script>
+</body>
+</html>

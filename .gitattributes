@@ -1,0 +1,7 @@
+# 统一换行处理，避免跨机器克隆时整文件 diff
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.asar binary

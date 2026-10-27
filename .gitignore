@@ -1,0 +1,26 @@
+# 依赖
+node_modules/
+
+# Electron 由 scripts/ensure-electron.mjs 下载到
+# %LOCALAPPDATA%\dsh-quickdock\electron\，不进仓库
+electron/
+
+# 运行时产物
+*.log
+dock.log
+host.log
+diag.json
+window.json
+
+# Electron 遗留文件
+default_app*.asar
+locale/
+
+# Windows 保留名，无法删除也无法提交
+nul
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

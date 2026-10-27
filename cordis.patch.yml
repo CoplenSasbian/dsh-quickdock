@@ -1,0 +1,24 @@
+- insert:
+    - id: dsh-quickdock
+      name: dsh-quickdock
+      config:
+        enabled: true
+        anchor: bottomRight
+        width: 360
+        maxHeight: 560
+        margin: 16
+        rememberGeometry: true
+        alwaysOnTop: false
+        focusOnSummon: false
+        hideOnEscape: true
+        followBoundOnly: true
+        defaultWorkspaceId: null
+        agentPreset: null
+        submitMode: queue
+        thinkMode: fold
+        showTiming: true
+        maxSteps: 200
+        theme: auto
+        headerButton: true
+        headerButtonOrder: 1010
+        approvalTimeoutMs: 300000

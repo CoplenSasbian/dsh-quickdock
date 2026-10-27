@@ -1,0 +1,44 @@
+{
+  "name": "dsh-quickdock",
+  "version": "0.1.0",
+  "description": "常驻屏幕角落的 QuickDock：输入面板 + 执行流程面板，从 DSH 侧栏唤出",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "web",
+    "runtime",
+    "icon.svg"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "slots"
+      ]
+    }
+  },
+  "dependencies": {
+    "@electron/get": "^5.1.0",
+    "@electron-internal/extract-zip": "^1.0.5"
+  },
+  "optionalDependencies": {
+    "electron": "44.7.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "~3.18.5"
+  }
+}

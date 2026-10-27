@@ -1,0 +1,11 @@
+{
+  "name": "dsh-quickdock-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "QuickDock Electron 主进程（独立 CommonJS 包，无 electron 依赖，运行时解析）",
+  "main": "main.cjs",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test test/"
+  }
+}

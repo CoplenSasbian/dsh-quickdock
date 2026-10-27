@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src data:;">
+  <title>QuickDock Display</title>
+  <!--QD_STYLES-->
+  <!--QD_THEME-->
+</head>
+<body class="display-body">
+  <!--
+    展示窗口：贴在输入窗口的上边或下边。
+
+    #blocks 同时是**面板**和**滚动容器**：
+      · 内容短 → 高度跟着内容走（面板贴在被吸附的那一侧）
+      · 内容长 → 高度封顶在窗口高度，内部滚动
+    这样圆角永远在可视边缘上，不会因为内容被滚到视口外而变成直角。
+  -->
+  <div id="blocks" class="blocks" role="log" aria-label="执行过程"></div>
+  <script>window.__QD_VIEW__ = 'display';</script>
+  <!--QD_SCRIPT-->
+</body>
+</html>

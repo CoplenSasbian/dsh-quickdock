@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src data:;">
+  <title>QuickDock</title>
+  <!--QD_STYLES-->
+  <!--QD_THEME-->
+</head>
+<body>
+  <!--
+    输入窗口：固定尺寸，可拖动。
+    执行过程在**独立的展示窗口**里（web/display.html），贴在本窗口的上边或下边。
+    这样两个窗口的尺寸各自恒定，不会因为执行内容增减而变化。
+  -->
+  <main id="dock" class="stack" aria-label="QuickDock">
+    <section id="panelA" class="panel" aria-label="输入面板">
+      <!-- 第一行：会话标题 + 窗口按钮（顶置/关闭） -->
+      <div class="bar">
+        <span class="sess-title blank" id="sessTitle">正在连接…</span>
+        <span class="sess-meta" id="sessMeta"></span>
+        <span class="bar-spacer"></span>
+        <span class="status-dot" id="statusDot" title="状态" aria-label="状态"></span>
+        <button class="icon-btn" id="pinBtnA" title="顶置" aria-label="顶置" aria-pressed="false">⤒</button>
+        <button class="icon-btn" id="hideBtnA" title="关闭 QuickDock (Esc)" aria-label="关闭 QuickDock">✕</button>
+      </div>
+      <!-- 第二行：工作区 / 会话 选择 + 新建对话 -->
+      <div class="sess-head">
+        <button class="picker ws" id="wsPicker" aria-haspopup="menu" aria-expanded="false"><span class="pk-icon">▣</span><span class="pk-name" id="wsName">工作区</span><span class="pk-caret">▼</span></button>
+        <button class="picker sess" id="sessPicker" aria-haspopup="menu" aria-expanded="false"><span class="pk-icon">◌</span><span class="pk-name" id="sessName">会话</span><span class="pk-caret">▼</span></button>
+        <span class="bar-spacer"></span>
+        <button class="new-btn" id="newBtn" title="新建对话">＋ 新对话</button>
+      </div>
+      <!--
+        输入框：一个圆角容器内同时放文本域和底部控件行
+        （权限 / 模型 / 思考 / 发送都收进框里，整体更宽更矮）
+      -->
+      <div class="composer-wrap">
+        <div class="composer">
+          <textarea id="composer" rows="1" maxlength="100000" placeholder="发送消息或任务…" aria-label="消息或任务"></textarea>
+          <div class="funcbar">
+            <button class="fkey" id="permBtn" aria-haspopup="menu"><span class="fk-icon">▣</span><span id="permText">权限</span><span class="fk-caret">▾</span></button>
+            <button class="fkey" id="modelBtn" aria-haspopup="menu"><span class="fk-icon">◈</span><span id="modelText">模型</span><span class="fk-caret">▾</span></button>
+            <button class="fkey" id="thinkBtn" aria-haspopup="menu"><span class="fk-icon">✦</span><span id="thinkText">思考</span><span class="fk-caret">▾</span></button>
+            <button class="fkey accent hidden" id="agentBtn" aria-haspopup="menu"><span class="fk-icon">◎</span><span id="agentText">Agent</span><span class="fk-caret">▾</span></button>
+            <span class="func-spacer"></span>
+            <button class="send-btn" id="sendBtn" title="发送 (Enter)" aria-label="发送" disabled>↑</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!--
+      运行态面板：Agent 在跑的时候替换掉输入面板。
+      运行时用不到工作区/会话/模型/权限这些开关，全部收起来，
+      只留状态、当前动作、已运行时长和停止按钮。
+    -->
+    <section id="runPanel" class="panel hidden" aria-label="运行状态">
+      <div class="run-head">
+        <span class="status-dot" id="runDot" title="状态" aria-label="状态"></span>
+        <span class="run-title" id="runTitle">正在执行</span>
+        <span class="run-elapsed" id="runElapsed">0:00</span>
+        <button class="icon-btn" id="hideBtnR" title="关闭 QuickDock (Esc)" aria-label="关闭 QuickDock">✕</button>
+      </div>
+      <div class="run-now-wrap">
+        <div class="run-now" id="runNow">正在启动…</div>
+      </div>
+      <div class="run-foot">
+        <span class="run-sub" id="runSub"></span>
+        <button class="stop-btn" id="stopBtnRun"><span class="sq"></span>停止</button>
+      </div>
+    </section>
+  </main>
+  <div class="menu" id="menu" role="menu"></div>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <div class="modal-backdrop" id="confirm" hidden>
+    <section class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmText">
+      <div class="confirm-title" id="confirmTitle">启用完全权限？</div>
+      <p id="confirmText">Agent 将可以不受工作区限制地读取、修改文件并执行命令。请仅在完全信任当前任务时继续。</p>
+      <div class="confirm-actions"><button class="card-btn" id="confirmCancel">取消</button><button class="card-btn danger" id="confirmOk">启用完全权限</button></div>
+    </section>
+  </div>
+  <script>window.__QD_VIEW__ = 'input';</script>
+  <!--QD_SCRIPT-->
+</body>
+</html>
