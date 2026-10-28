@@ -1,190 +1,192 @@
 # dsh-quickdock
 
-DeepSeek Harness（DSH）插件：常驻桌面角落的 QuickDock。
+A DeepSeek Harness (DSH) plugin: QuickDock, a dock that stays in a corner of the screen.
 
-点 DSH 会话标题栏的 **Dock** 按钮，唤起两个无边框透明窗口：
+Click **Dock** in a DSH session header and two frameless, transparent windows appear:
 
-- **输入窗口** — 工作区/会话选择 + 输入框 + 权限/模型/思考/Agent 等功能键
-- **展示窗口** — 贴在输入窗口上边或下边，按行展示当前这一轮的执行过程（思考、工具调用、回复）
+- **Input window** — the bound workspace/session, a composer and four function keys
+  (permission, model, thinking effort, agent preset)
+- **Run window** — attached above or below the input window, showing the current turn
+  as rows (thinking, tool calls, replies)
 
-两个窗口都可以拖动，展示窗口实时跟随输入窗口移动，并在空间不足时自动翻到另一侧。
-审批与结构化提问会以卡片形式出现在展示窗口里，不用回主窗口。
+Both windows can be dragged; the run window follows. Approvals and structured
+questions are answered in the dock, without going back to the main window.
 
-## 环境要求
+The UI is bilingual (English / Simplified Chinese) and follows the DSH language.
+
+## Requirements
 
 - Windows 10/11
 - Node.js 20+
-- DSH ≥ 0.2.0
+- DSH >= 0.2.0
 
-## 安装
+## Install
 
 ```bash
 npm install
 ```
 
-这一步**不能跳过**：宿主半用 `@electron/get` + `@electron-internal/extract-zip`
-在需要时下载 Electron，用 `@deepseek-ai/schemastery` 定义配置 schema。
+Do not skip this step: the Host half needs `@deepseek-ai/schemastery` for the
+config schema, and downloads Electron with `@electron/get` when desktop mode is
+requested.
 
-第一次点 Dock 时会下载 Electron（约 100MB，走 npmmirror 镜像，只需一次），
-落到 `%LOCALAPPDATA%\dsh-quickdock\electron\<版本>\`（不放桌面或项目目录，避开杀软误报）。
-想跳过下载可以提前跑：
+The first **Dock** click downloads Electron (~100 MB, npmmirror, once) into
+`%LOCALAPPDATA%\dsh-quickdock\electron\<version>\`. To prepare it ahead of time:
 
 ```bash
 node scripts/ensure-electron.mjs
-# 或者直接指定现成的 Electron
+# or point at an existing binary
 set DSH_QUICKDOCK_ELECTRON_PATH=D:\path\to\electron.exe
 ```
 
-在 DSH 侧把它加进 profile 的 bundle 列表即可，条目见 `cordis.patch.yml`：
+Register the plugin in the DSH profile (see `cordis.patch.yml`):
 
 ```json
 { "dsh-quickdock": "link:D:/node/dsh-quickdock" }
 ```
 
-## 用法要点
+## Usage
 
-- **dock 显示哪个会话，只由 DSH 决定**：在 DSH 里点某个会话标题栏的 **Dock** 才绑定过去。
-  dock 里不提供会话/工作区切换 —— 那件事 DSH 侧栏本来就做得更好。
-- 标题行里的**工作区标签是只读的**，只用来交代"这条消息会发到哪个工作区"（不占额外一行）。
-  想换会话：回 DSH，点另一个会话的 Dock。
-- 标题行右侧的 **↗**：**在 DSH 主窗口里打开当前会话**（两个窗口都有）。
-  链路是 dock → 宿主 API → 宿主 SSE 总线 → client 半（浏览器插件）
-  → `ctx.uiWorkspace.openSession(sessionId)`，所以是立即可见、不用切窗口。
-- 标题行右侧的 **▤**：显示 / 隐藏执行过程窗口（两个窗口共享这个状态，
-  2 小时后自动恢复显示，免得忘记点回来）。执行过程窗口自己也带这条工具条
-  （状态 + ↗ + ⤒ + ▤），内容再长也不会被滚走。
-- 两个窗口**层级联动**：点任意一个，另一个会被提到同一层，
-  不会出现"输入窗口升到最前、执行过程还压在别的应用后面"的错位。
-- 标题行右侧的 **＋**：解除绑定、留在当前工作区，下一条消息会在该工作区新建会话。
-- Shift/Alt + 点 **＋** = 从当前会话分叉（DESIGN D2）。
+- **Which session the dock shows is decided in DSH**: click **Dock** on a session
+  header. The dock does not switch sessions on its own.
+- The **workspace chip** in the title bar is read-only context: it says where the
+  next message goes.
+- **↗** opens the bound session in the DSH main window (dock -> Host API -> command
+  bus -> Client half -> `ctx.uiWorkspace.openSession`).
+- **▤** shows/hides the run window. Hiding is temporary (restored after two hours).
+- **⤒** pins both windows together; the run window is never left behind.
+- **＋** unbinds and starts a blank conversation; **Shift/Alt + ＋** forks the current
+  session (DESIGN D2).
+- The function keys are dropdown menus. Long lists (models) get a search field, arrow
+  navigation and a window that temporarily grows upwards instead of clipping the list.
+- While the agent runs, the input window switches to a run panel: elapsed time,
+  current action, live text and a **Stop** button. Approvals appear there too, with
+  **Allow / Deny**.
 
-## 实时流式
+## Internationalization
 
-执行期间输入窗口会切到「运行态」：状态点、已运行时长、当前动作、已完成/失败计数，
-以及**正在逐字输出的内容**（思考阶段紫色、正文白色、带闪动光标）。
+All UI strings live in `locale/en.json` and `locale/zh.json` (flat dotted keys,
+`{placeholder}` slots).
 
-展示窗口在步骤列表末尾追加一个流式块：上面是思考链（紫），下面是正文，逐字增长。
-消息一旦落库，这个临时块立刻消失，换成正式的步骤行 —— 不会出现两份。
+- **Language resolution**: `config.locale` (`auto` | `en` | `zh`) wins; otherwise the
+  language reported by the DSH Client half (it follows the DSH locale service); until
+  then the operating system locale is used.
+- **Dock pages** receive `window.__QD_I18N__ = { locale, messages }` (active catalog
+  merged over English) and a localized `<html lang>`. Static markup uses
+  `data-i18n`, `data-i18n-title`, `data-i18n-aria-label`, `data-i18n-placeholder`;
+  dynamic text calls `t('key')`.
+- **Language switching is live**: the Host broadcasts a `locale` SSE event; both windows
+  re-label themselves without a reload.
+- **Client half**: a small embedded catalog (marked `i18n-catalog`) is used because a
+  static client bundle cannot read files; `npm run check` verifies it matches the JSON
+  catalogs.
+- **Host errors** are localized too, so the dock never mixes languages.
 
-数据来自 `agent/assistant-stream`（进程内事件，含 `reasoning-delta` / `text-delta` /
-`tool-call-delta`），不是 `session/event`：后者只在消息**提交后**才有内容，
-光靠它只能一条条"蹦"出来。推送按 100ms 合并，页面按"结构签名"决定是否重建 DOM，
-所以逐字刷新时不会闪、也不会打断滚动。
+Adding a language: add `locale/<id>.json`, extend `SUPPORTED_LOCALES` in
+`runtime/i18n.js` (and the client catalog), then run `npm run check`.
 
-**工具行同理**：执行中自动展开（显示格式化后的完整参数），拿到结果后自动折叠成一行，
-点一下可再展开看「参数 + 输出」。详情不随 state 推送（逐字流会把包撑大），
-展开时才按行 id 向宿主取：`GET /quickdock/api/step-detail?id=tool-…`。
-
-### 正文的 Markdown
-
-最终回复按 Markdown 渲染（`web/markdown.js`，零依赖，约 180 行）：
-标题、列表、代码块、引用、表格、行内代码、粗斜体、删除线、链接都能出。
-**流式阶段仍然是纯文本** —— 半截的代码围栏或不闭合的 `**` 渲染出来只会更乱，
-落库后再整段转成 Markdown。
-
-安全做法是先整体转义再拼 HTML，所以模型输出里的 `<script>`、`<img onerror>`
-只会显示成文字；链接只接受 `http(s)`，点击由主进程交给系统浏览器打开。
-
-## 第一次验证「按钮到底能不能用」
-
-1. 重启 DSH（或让 profile 重新加载插件）。
-2. 打开任意会话，点标题栏的 **Dock**。
-3. 1–2 秒后屏幕右下角出现输入窗口；展示窗口在它上方，没有内容时隐藏。
-
-出问题时按顺序看这两份日志（都会自建目录）：
-
-| 日志 | 说明 |
-| --- | --- |
-| `%LOCALAPPDATA%\dsh-quickdock\host.log` | 宿主半：Electron 候选路径、探测结果、spawn 参数、ready、退出码 |
-| `%LOCALAPPDATA%\dsh-quickdock\dock.log` | Electron 侧：窗口创建、几何、控制通道端口、收到的命令 |
-
-宿主半**不静默失败**：起点在 `host.log`，界面右下角也会弹出带原因的提示。
-
-## 宿主半接了什么
-
-| DSH 能力 | 用法 |
-| --- | --- |
-| 页面托管 | `ctx.webServer.register({ kind:'prefix', path:'/quickdock' })` |
-| 浏览器入口 | `ctx.connection.fetch.register({ path:'/api/quickdock' })`（bind / summon / status / theme / web-url） |
-| 任务提交 | `sessionController.create | fork` → `selectModel` → `prompt` |
-| 权限预设 | `permissionPresets.catalog()` 取目录，`permissionPresets.set(session, name)` 真写进会话 |
-| 模型 / 思考强度 | `sessionController.modelCatalog()` 取目录，`selectModel({ reasoningEffort })` 落库 |
-| Agent 预设 | `agentPresets.list()`，新建会话时作为 `agentPreset` 传给 `create` |
-| 工作区 / 会话 | `workspaceRegistry.list()`、`sessions.get()`、`agents.get()` |
-| 步骤流 | 只读订阅 `session/event`，折成展示行；`GET /quickdock/api/stream` SSE 推送 |
-| 审批 / 提问 | waterfall 拦截 `approval/request` / `user-questions/request`，仅限 dock 绑定会话 |
-| 主题 | 主题只存在于浏览器端，由 **client 半** 把 21 个 alias token POST 给宿主，宿主映射成 `--qd-*` 并广播 |
-| 打开会话 | `GET /quickdock/api/bus`（宿主 → 浏览器的 SSE 命令总线），client 半订阅后调 `ctx.uiWorkspace.openSession()` |
-
-**硬约束**：只读 `session/event`，绝不写新事件类型（DSH 规定未知类型会让会话无法重开）。
-
-## 结构
+## Project layout
 
 ```
-index.js             宿主半：路由 / API / 事件折叠 / spawn dock 进程
-client.js            客户端半：标题栏 Dock 按钮 + 主题同步
-runtime/
-  main.cjs           Electron 主进程：窗口创建、点击穿透、拖拽跟随
-  preload.js         IPC 桥
-  config.js          启动参数解析
-  geometry.js        窗口几何（位置恢复、夹回屏幕）
-  step-folder.js     把 session/event 折成展示行（纯逻辑，有单测）
-  window-store.js    窗口位置落盘
-  protocol.js        宿主 ↔ dock 的行协议
-web/
-  index.html         输入窗口
-  display.html       展示窗口
-  app.js             两个窗口共用的页面逻辑
-  styles.css         样式（末尾是视觉打磨覆盖层）
-scripts/
-  ensure-electron.mjs  Electron 下载与校验
-  dev-harness.mjs      本地调试宿主：假 ctx + 假 DSH 服务，把宿主半真跑起来
+index.js               plugin entry: name, inject, Config schema, apply()
+host/                  Host half (one responsibility per module)
+  quickdock-host.js    composition root: wires services, routes, events, timers
+  api.js               route table for /quickdock/api/*
+  bridge.js            /api/quickdock actions for the Client half
+  catalogs.js          permission / model / agent catalogs
+  dsh.js               adapter over DSH services (optional services stay safe)
+  dock-process.js      Electron supervisor: spawn, control channel, backoff restart
+  electron-resolver.js Electron discovery, probing and download
+  event-hub.js         SSE hub (page state stream + browser command bus)
+  interactions.js      approval / question broker
+  locale.js            locale controller and page catalog
+  page.js              inlines assets, theme, catalog into one HTML document
+  session-index.js     session title repository (cold sessions included)
+  snapshot.js          the single state snapshot definition
+  stream-buffer.js     live assistant stream folding
+  theme.js             DSH alias tokens -> dock CSS variables
+  trace.js             host.log writer
+client.js              Client half: header Dock button, theme/locale sync, command bus
+runtime/               Electron main process (CommonJS, no build step)
+  main.cjs             windows, transparency, click-through, menu growth
+  preload.js           validated contextBridge API
+  config.js            flags / env / inline JSON config
+  geometry.js          position restore and clamping
+  step-folder.js       session/event -> rows (strategy table, unit tested)
+  protocol.js          host <-> dock line protocol
+  window-store.js      debounced atomic window.json
+  i18n.js              shared catalog loader / translator
+  test/                unit tests (node:test) and fixtures
+web/                   page assets, inlined by the Host (manifest.json order)
+  locale.js            page i18n runtime (data-i18n + t)
+  markdown.js          escaping-first Markdown renderer
+  util.js              DOM/text helpers
+  display.js           run window view (rows, live block, cards)
+  menu.js              dropdown menu (search, keyboard, window growth)
+  app.js               page bootstrap: SSE, render, pickers, hit regions
+  styles.css           dock styles (theme variables only)
+locale/                en.json, zh.json message catalogs
+scripts/               tooling: tests, checks, smoke test, dev harness, Electron
 ```
 
-## 测试
+## Quality gates
 
 ```bash
-cd runtime && node --test "test/**/*.test.js"
+npm test        # unit tests (node:test, one process)
+npm run check   # i18n parity, key usage, CJK/whitespace rules, web manifest
+npm run smoke   # start the mock Host and probe page, API and locale switching
+npm run verify  # all three
+npm run lint    # ESLint (dev dependency)
 ```
 
-`test/host.test.js` 覆盖宿主半的装配、页面/接口鉴权、token 与主题采纳规则；
-`test/step-folder.test.js` 等覆盖折叠与几何等纯逻辑。
+`scripts/check.mjs` is dependency-free on purpose: it enforces that every referenced
+locale key exists, that both catalogs share keys and placeholders, that the Client
+catalog matches the JSON files, that no CJK text leaks outside the locale files and
+that sources stay UTF-8/LF without tabs or trailing whitespace.
 
-## 本地调试（不启动完整 DSH）
+## Local development
 
 ```bash
 node --import ./scripts/register-hook.mjs scripts/dev-harness.mjs
 ```
 
-它会用假的 `ctx` 与假 DSH 服务把 `index.js` 跑起来，打印带 token 的页面地址，
-并提供 `/test/*` 辅助接口（查看 mock 调用、注入会话事件、触发审批请求、推主题）。
+The harness provides a mock `ctx` and mock DSH services, prints the tokenized page
+URL and exposes `/test/*` helpers (inspect calls, inject session events, trigger
+approvals, push theme/locale).
 
-- `QD_PORT=45999` 固定端口
-- `QD_NO_ELECTRON=1` 只验证 API 层，不 spawn Electron
-- 页面直接开浏览器也能看：`<地址>&view=display` 是展示窗口
+- `QD_PORT=45999` fixed port
+- `QD_NO_ELECTRON=1` API layer only, no Electron
+- `&view=display` renders the run window in a normal browser
+- `POST /test/locale {"locale":"zh"}` switches the dock language
 
-## 调试
+## Diagnostics
 
-宿主日志：`%LOCALAPPDATA%\dsh-quickdock\host.log`
-窗口日志：`%LOCALAPPDATA%\dsh-quickdock\dock.log`
-
-环境变量：
-
-| 变量 | 作用 |
+| Log | Contents |
 | --- | --- |
-| `DSH_QUICKDOCK_ELECTRON_PATH` | 指定 Electron 可执行文件（跳过下载与探测） |
-| `DSH_QUICKDOCK_ELECTRON_VERSION` | 指定要下载的 Electron 版本（默认 44.7.0） |
-| `DSH_QUICKDOCK_DISABLE_GPU=1` | 关闭硬件加速（透明窗口异常时用） |
-| `DSH_QUICKDOCK_NO_CLICK_THROUGH=1` | 关闭点击穿透 |
-| `DSH_QUICKDOCK_GPU_SANDBOX=1` | 保留 GPU 沙箱 |
+| `%LOCALAPPDATA%\dsh-quickdock\host.log` | Electron candidates and probes, spawn arguments, ready/exit codes, API failures |
+| `%LOCALAPPDATA%\dsh-quickdock\dock.log` | window creation, geometry, control channel, received commands |
 
-### 常见故障
+The Host half never fails silently: the page shows the reason as a toast.
 
-| 现象 | 原因 / 处理 |
+| Variable | Effect |
 | --- | --- |
-| 点 Dock 后提示「Electron 不可用」 | 没跑 `npm install`，或安全软件拦了 Electron 启动；按提示装依赖或设 `DSH_QUICKDOCK_ELECTRON_PATH` |
-| 窗口出现但内容不更新 | SSE 401：`/quickdock/api/stream` 只认 Bearer 头，而 EventSource 不能带头，所以必须同时接受 `?t=` |
-| 权限/模型点了没反应 | 会话未绑定时会先记在 state，发送时才随 `create` 落下；绑定已有会话会回读真实值 |
-| 首次点击要等一两分钟 | 正在下载 Electron，界面会提示；之后是秒开 |
+| `DSH_QUICKDOCK_ELECTRON_PATH` | use this Electron binary (skips download and probing) |
+| `DSH_QUICKDOCK_ELECTRON_VERSION` | version to download (default 44.7.0) |
+| `DSH_QUICKDOCK_DISABLE_GPU=1` | software rendering (transparent-window issues) |
+| `DSH_QUICKDOCK_NO_CLICK_THROUGH=1` | disable click-through |
+| `DSH_QUICKDOCK_GPU_SANDBOX=1` | keep the GPU sandbox |
 
-详细设计见 [DESIGN.md](./DESIGN.md)。
+### Common problems
+
+| Symptom | Cause / fix |
+| --- | --- |
+| "Electron unavailable" after clicking Dock | `npm install` was skipped or security software blocks Electron; follow the hint or set `DSH_QUICKDOCK_ELECTRON_PATH` |
+| Window opens but never updates | SSE 401: EventSource cannot send headers, so `/api/stream` must accept `?t=` as well |
+| Permission/model clicks do nothing | unbound sessions keep the setting in state and apply it on create; bound sessions are updated immediately |
+| Approval appears in DSH, not the dock | check `host.log` for `approval -> dock:`; a hidden dock intentionally delegates |
+| Menu shows only two rows | the window grows upward for menus; at the screen edge it can only grow to the edge (`dock.log`: `menu space:`) |
+| Dock exits right after starting, page times out | The probed Electron may still be blocked from writing its profile (security software, binaries under the project folder). The supervisor prefers `%LOCALAPPDATA%\dsh-quickdock\electron\<version>` and falls back to the next candidate; if none runs, the toast shows the last stderr line. Point `DSH_QUICKDOCK_ELECTRON_PATH` at a known-good binary if needed |
+| First click takes a minute | Electron is downloading; the page shows a hint |
+
+Design details: [DESIGN.md](./DESIGN.md) (Chinese design document and the interaction
+prototype `dock-prototype.html`).

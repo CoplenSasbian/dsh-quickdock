@@ -1,4 +1,4 @@
-# 统一换行处理，避免跨机器克隆时整文件 diff
+# Normalize line endings so clones do not produce whole-file diffs.
 * text=auto eol=lf
 
 *.png binary

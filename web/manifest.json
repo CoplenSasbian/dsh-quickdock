@@ -1,0 +1,14 @@
+{
+  "note": "Ordered page assets. The Host inlines these into one document; keep the order: i18n first, app.js last.",
+  "styles": [
+    "styles.css"
+  ],
+  "scripts": [
+    "locale.js",
+    "markdown.js",
+    "util.js",
+    "display.js",
+    "menu.js",
+    "app.js"
+  ]
+}

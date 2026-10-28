@@ -1,5 +1,13 @@
 'use strict';
 
+/**
+ * Preload bridge for both dock windows.
+ *
+ * The renderer has contextIsolation and no Node access; this file is the only
+ * channel. Every outbound call validates its arguments so a compromised page
+ * cannot hand the main process arbitrary shapes.
+ */
+
 const { contextBridge, ipcRenderer } = require('electron');
 
 const outbound = Object.freeze({
@@ -8,6 +16,7 @@ const outbound = Object.freeze({
   setDragZones: 'dock:set-drag-zones',
   setAlwaysOnTop: 'dock:set-always-on-top',
   setDisplayEmpty: 'dock:set-display-empty',
+  setMenuSpace: 'dock:set-menu-space',
   hide: 'dock:hide',
   getState: 'dock:get-state',
 });
@@ -25,10 +34,12 @@ function subscribe(channel, callback) {
 }
 
 const api = Object.freeze({
+  /** Toggle host-side click-through for the window under the cursor. */
   setInteractive(interactive) {
     if (typeof interactive !== 'boolean') throw new TypeError('interactive must be boolean');
     ipcRenderer.send(outbound.setInteractive, interactive);
   },
+  /** Report rectangles that should receive mouse events. */
   setHitRegions(rectangles) {
     if (!Array.isArray(rectangles) || rectangles.length > 1000 || !rectangles.every(validRect)) {
       throw new TypeError('hit regions must be an array of valid rectangles');
@@ -38,8 +49,8 @@ const api = Object.freeze({
     })));
   },
   /**
-   * 报告拖动区（窗口标题条）的屏幕内矩形。
-   * 主进程用光标位置判断何时取消点击穿透，从而让 app-region: drag 生效。
+   * Report drag-zone rectangles (title bars). The main process clears
+   * click-through over them so `-webkit-app-region: drag` works.
    */
   setDragZones(rectangles) {
     if (!Array.isArray(rectangles) || rectangles.length > 100 || !rectangles.every(validRect)) {
@@ -49,17 +60,25 @@ const api = Object.freeze({
       x: rect.x, y: rect.y, width: rect.width, height: rect.height,
     })));
   },
+  /** Pin both windows (input + run) to the top. */
   setAlwaysOnTop(flag) {
     if (typeof flag !== 'boolean') return Promise.reject(new TypeError('flag must be boolean'));
     return ipcRenderer.invoke(outbound.setAlwaysOnTop, flag);
   },
+  /**
+   * Grow the input window upwards by `extra` pixels (bottom edge fixed) so a
+   * long menu fits. Returns the height actually granted; 0 releases.
+   */
+  setMenuSpace(extra) {
+    if (typeof extra !== 'number' || !Number.isFinite(extra) || extra < 0) {
+      return Promise.reject(new TypeError('extra must be a non-negative number'));
+    }
+    return ipcRenderer.invoke(outbound.setMenuSpace, extra);
+  },
   hide() {
     ipcRenderer.send(outbound.hide);
   },
-  /**
-   * 展示窗口：内容为空时通知宿主隐藏展示窗口。
-   * 有内容时显示（并自动贴到输入窗口的上/下边）。
-   */
+  /** Show or hide the run window (no content = hidden). */
   setDisplayEmpty(empty) {
     if (typeof empty !== 'boolean') return;
     ipcRenderer.send(outbound.setDisplayEmpty, empty);
@@ -67,6 +86,7 @@ const api = Object.freeze({
   getState() {
     return ipcRenderer.invoke(outbound.getState);
   },
+  /** Subscribe to window state changes (always-on-top, side of the run window). */
   onStateChanged(callback) { return subscribe('dock:state', callback); },
 });
 

@@ -3,49 +3,49 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { StepFolder } = require('../step-folder.js');
+const { StepFolder, lineDiffStats, parseReadRange } = require('../step-folder.js');
 
 const ev = (type, seq, data, time) => ({ type, seq, data: data || {}, time: time || '' });
 const toolCall = (seq, callId, name, args) => ev('tool/call', seq, { callId, name, arguments: args });
 
-test('tool/result 把对应行从 run 改成 done', () => {
+test('tool/result flips the row from run to done', () => {
   const folder = new StepFolder(200);
   folder.apply(ev('turn/start', 1));
-  folder.apply(toolCall(2, 'c1', 'read_file', '{"path":"a.json","description":"读配置"}'));
+  folder.apply(toolCall(2, 'c1', 'read_file', '{"path":"a.json","description":"read config"}'));
 
   const [row] = folder.rows();
   assert.strictEqual(row.id, 'tool-c1');
   assert.strictEqual(row.status, 'run');
-  assert.strictEqual(row.description, '读配置');
+  assert.strictEqual(row.description, 'read config');
 
   folder.apply(ev('tool/result', 3, { message: { toolCallId: 'c1', content: [{ type: 'text', text: 'ok' }] } }));
   assert.strictEqual(folder.rows()[0].status, 'done');
 });
 
-test('工具行保留展开用的完整细节（参数 + 输出），且不混进行里', () => {
+test('tool rows keep their expand detail, row payload stays lean', () => {
   const folder = new StepFolder(200);
-  folder.apply(toolCall(1, 'c9', 'bash', '{"command":"npm test","description":"跑测试"}'));
+  folder.apply(toolCall(1, 'c9', 'bash', '{"command":"npm test","description":"run tests"}'));
 
   const detail = folder.detailOf('tool-c9');
-  assert.ok(detail, '应有 detail');
+  assert.ok(detail, 'detail should exist');
   assert.match(detail.args, /npm test/);
   assert.strictEqual(detail.result, '');
 
-  // 细节不进 row：state 每次推送都带 rows，塞进去会把包撑大
+  // Detail never enters the row: every state push carries rows.
   assert.strictEqual(folder.rows()[0].detail, undefined);
 
   folder.apply(ev('tool/result', 2, {
     message: { toolCallId: 'c9', content: [
-      { type: 'text', text: '第一段' },
-      { type: 'text', text: '第二段' },
+      { type: 'text', text: 'first part' },
+      { type: 'text', text: 'second part' },
     ] },
   }));
   const after = folder.detailOf('tool-c9');
-  assert.strictEqual(after.result, '第一段\n第二段', '多个 text block 要拼起来');
+  assert.strictEqual(after.result, 'first part\nsecond part', 'multiple text blocks are joined');
   assert.strictEqual(folder.detailOf('tool-missing'), null);
 });
 
-test('tool/result 带 isError 时判为 fail', () => {
+test('tool/result with isError marks the row failed', () => {
   const folder = new StepFolder(200);
   folder.apply(toolCall(1, 'c2', 'run_command', '{"command":"false"}'));
   folder.apply(ev('tool/result', 2, {
@@ -54,16 +54,16 @@ test('tool/result 带 isError 时判为 fail', () => {
   assert.strictEqual(folder.rows()[0].status, 'fail');
 });
 
-test('approval/decided 回填审批行状态', () => {
+test('approval/decided updates the approval row', () => {
   const folder = new StepFolder(200);
-  folder.apply(ev('approval/asked', 1, { id: 'a1', toolName: 'write_file', reason: '写文件' }));
+  folder.apply(ev('approval/asked', 1, { id: 'a1', toolName: 'write_file', reason: 'write file' }));
   assert.strictEqual(folder.rows()[0].status, 'ask');
 
   folder.apply(ev('approval/decided', 2, { id: 'a1', outcome: 'allowed-once' }));
   assert.strictEqual(folder.rows()[0].status, 'done');
 });
 
-test('rows() 只返回最新一轮', () => {
+test('rows() returns the latest turn only', () => {
   const folder = new StepFolder(200);
   folder.apply(ev('turn/start', 1));
   folder.apply(toolCall(2, 'x', 'read_file', '{}'));
@@ -74,22 +74,22 @@ test('rows() 只返回最新一轮', () => {
   assert.deepStrictEqual(folder.rows().map((r) => r.id), ['tool-y']);
 });
 
-test('超过 maxSteps 时淘汰最旧的行', () => {
+test('oldest rows are evicted beyond maxSteps', () => {
   const folder = new StepFolder(3);
   for (let i = 1; i <= 6; i++) folder.apply(toolCall(i, 'c' + i, 'read_file', '{}'));
   assert.deepStrictEqual(folder.rows().map((r) => r.id), ['tool-c4', 'tool-c5', 'tool-c6']);
 });
 
-test('assistant/message 折成 think 与 say 两种行', () => {
+test('assistant/message folds into think and say rows', () => {
   const folder = new StepFolder(200);
   folder.apply(ev('turn/start', 1));
   folder.apply(ev('assistant/message', 2, {
-    message: { content: [{ type: 'reasoning', text: '想一想' }, { type: 'text', text: '答复' }] },
+    message: { content: [{ type: 'reasoning', text: 'thinking' }, { type: 'text', text: 'answer' }] },
   }));
   assert.deepStrictEqual(folder.rows().map((r) => r.kind), ['think', 'say']);
 });
 
-test('空白内容不产生行', () => {
+test('blank content produces no row', () => {
   const folder = new StepFolder(200);
   folder.apply(ev('turn/start', 1));
   folder.apply(ev('assistant/message', 2, {
@@ -98,7 +98,7 @@ test('空白内容不产生行', () => {
   assert.strictEqual(folder.rows().length, 0);
 });
 
-test('参数不是合法 JSON 时保留原文', () => {
+test('invalid JSON arguments are kept verbatim', () => {
   const folder = new StepFolder(200);
   folder.apply(toolCall(1, 'c1', 'run_command', 'not-json'));
   const [row] = folder.rows();
@@ -106,48 +106,116 @@ test('参数不是合法 JSON 时保留原文', () => {
   assert.strictEqual(row.description, '');
 });
 
+test('row summary keeps one useful value, never raw JSON', () => {
+  const folder = new StepFolder(200);
+  folder.apply(toolCall(1, 'a', 'bash', '{"description":"run tests","command":"npm test -- --watch=false"}'));
+  folder.apply(toolCall(2, 'b', 'read', '{"file_path":"C:/work/proj/web/app.js","offset":10}'));
+  folder.apply(toolCall(3, 'c', 'grep', '{"pattern":"step-json","path":"web"}'));
+  folder.apply(toolCall(4, 'd', 'mystery', '{"foo":"bar","n":1}'));
+  folder.apply(toolCall(5, 'e', 'bash', '{"description":"description only"}'));
+  const [bash, read, grep, mystery, descOnly] = folder.rows();
+  assert.strictEqual(bash.command, 'npm test -- --watch=false');
+  assert.strictEqual(read.command, '…/proj/web/app.js', 'long paths keep three segments');
+  assert.strictEqual(grep.command, 'step-json in web');
+  assert.strictEqual(mystery.command, 'foo=bar n=1', 'unknown fields fall back to key=value');
+  assert.strictEqual(descOnly.command, '', 'a lone description produces no subtitle');
+  for (const row of folder.rows()) assert.ok(!row.command.includes('{"'), 'no JSON blobs may be rendered');
+});
+
+test('row summary collapses newlines and truncates', () => {
+  const folder = new StepFolder(200);
+  folder.apply(toolCall(1, 'a', 'bash', JSON.stringify({ command: 'echo 1\necho 2' })));
+  folder.apply(toolCall(2, 'b', 'bash', JSON.stringify({ command: 'x'.repeat(400) })));
+  const [one, long] = folder.rows();
+  assert.strictEqual(one.command, 'echo 1 echo 2');
+  assert.ok(long.command.length <= 140, 'summary is length-capped');
+  assert.ok(long.command.endsWith('…'));
+});
+
 const say = (seq, text, id) => ev('assistant/message', seq, {
   message: { id, content: [{ type: 'text', text }] },
 });
 
-test('同一事件重复投递不产生第二行', () => {
+test('a replayed event does not add a second row', () => {
   const folder = new StepFolder(200);
   folder.apply(ev('turn/start', 1));
-  folder.apply(say(2, '提取两个窗口的重复配置：'));
-  folder.apply(say(2, '提取两个窗口的重复配置：'));
+  folder.apply(say(2, 'Extract the duplicated window config:'));
+  folder.apply(say(2, 'Extract the duplicated window config:'));
   assert.strictEqual(folder.rows().length, 1);
 });
 
-test('相同内容换一个 seq 再来也不产生第二行', () => {
+test('the same content under another seq still merges', () => {
   const folder = new StepFolder(200);
   folder.apply(ev('turn/start', 1));
-  folder.apply(say(2, '提取两个窗口的重复配置：'));
-  folder.apply(say(9, '提取两个窗口的重复配置：'));
+  folder.apply(say(2, 'Extract the duplicated window config:'));
+  folder.apply(say(9, 'Extract the duplicated window config:'));
   assert.strictEqual(folder.rows().length, 1);
 });
 
-test('带消息 id 的流式增量合并成一行并保留最新文本', () => {
+test('streaming deltas with a message id merge into one row', () => {
   const folder = new StepFolder(200);
   folder.apply(ev('turn/start', 1));
-  folder.apply(say(2, '提取', 'm1'));
-  folder.apply(say(3, '提取两个窗口', 'm1'));
-  folder.apply(say(4, '提取两个窗口的重复配置：', 'm1'));
+  folder.apply(say(2, 'Extract', 'm1'));
+  folder.apply(say(3, 'Extract the duplicated', 'm1'));
+  folder.apply(say(4, 'Extract the duplicated window config:', 'm1'));
   const rows = folder.rows();
   assert.strictEqual(rows.length, 1);
-  assert.strictEqual(rows[0].text, '提取两个窗口的重复配置：');
+  assert.strictEqual(rows[0].text, 'Extract the duplicated window config:');
 });
 
-test('不同内容仍然是分开的两行', () => {
+test('different content stays on separate rows', () => {
   const folder = new StepFolder(200);
   folder.apply(ev('turn/start', 1));
-  folder.apply(say(2, '第一句'));
-  folder.apply(say(3, '第二句'));
+  folder.apply(say(2, 'first sentence'));
+  folder.apply(say(3, 'second sentence'));
   assert.strictEqual(folder.rows().length, 2);
 });
 
-test('同一个工具调用重复投递只保留一行', () => {
+test('a replayed tool call keeps a single row', () => {
   const folder = new StepFolder(200);
   folder.apply(toolCall(1, 'c1', 'read_file', '{"path":"a"}'));
   folder.apply(toolCall(1, 'c1', 'read_file', '{"path":"a"}'));
   assert.strictEqual(folder.rows().length, 1);
+});
+
+test('line diff counts added and removed lines', () => {
+  assert.deepStrictEqual(lineDiffStats('a\nb\nc', 'a\nB\nc\nd'), [2, 1], 'one changed, one added');
+  assert.deepStrictEqual(lineDiffStats('', 'a\nb'), [2, 0], 'pure addition');
+  assert.deepStrictEqual(lineDiffStats('a\nb', ''), [0, 2], 'pure removal');
+  assert.deepStrictEqual(lineDiffStats('a\nb', 'a\nb'), [0, 0], 'unchanged');
+});
+
+test('read range is parsed from the result footer', () => {
+  assert.deepStrictEqual(parseReadRange('(Showing lines 10-29 of 100. Use offset=30 to continue.)', 10), [10, 29]);
+  assert.deepStrictEqual(parseReadRange('(Output capped. Showing lines 1-500. Use offset=501 to continue.)', 1), [1, 500]);
+  assert.deepStrictEqual(parseReadRange('(End of file - total 14 lines)', 10), [10, 14], 'EOF starts at the requested offset');
+  assert.strictEqual(parseReadRange('output without a footer', 1), null);
+});
+
+test('tool rows carry line metadata: edit delta, read range', () => {
+  const folder = new StepFolder(200);
+  folder.apply(toolCall(1, 'e1', 'edit', JSON.stringify({
+    file_path: 'a.js', old_string: 'a\nb\nc', new_string: 'a\nB\nc\nd',
+  })));
+  folder.apply(toolCall(2, 'r1', 'read', JSON.stringify({ file_path: 'a.js', offset: 10, limit: 20 })));
+  folder.apply(ev('tool/result', 3, {
+    message: { toolCallId: 'r1', content: [{ type: 'text', text: '10: x\n\n(Showing lines 10-13 of 100. Use offset=14 to continue.)' }] },
+  }));
+  const [editRow, readRow] = folder.rows();
+  assert.deepStrictEqual(editRow.delta, [2, 1]);
+  assert.deepStrictEqual(readRow.lines, [10, 13]);
+  assert.deepStrictEqual(readRow.delta, undefined, 'read rows have no delta');
+});
+
+test('edit meta.diffs overrides the argument estimate', () => {
+  const folder = new StepFolder(200);
+  folder.apply(toolCall(1, 'e1', 'edit', JSON.stringify({
+    file_path: 'a.js', old_string: 'a', new_string: 'a\nb',
+  })));
+  assert.deepStrictEqual(folder.rows()[0].delta, [1, 0], 'arguments provide the first estimate');
+  folder.apply(ev('tool/result', 2, {
+    meta: { diffs: [{ path: 'a.js', oldText: 'a\nc', newText: 'a\nB\nD' }] },
+    message: { toolCallId: 'e1', content: [{ type: 'text', text: 'ok' }] },
+  }));
+  assert.deepStrictEqual(folder.rows()[0].delta, [2, 1], 'real hunks from the whole file');
 });

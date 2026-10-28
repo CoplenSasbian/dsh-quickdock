@@ -1,13 +1,14 @@
 'use strict';
 
 /**
- * 把 session/event 折成 dock 展示用的行。
+ * Folds session/event records into the rows shown by the dock.
  *
- * 只读折叠：绝不 append 或改写任何事件。
- * 对外只暴露 rows()（最新一轮的行）和 apply()（吃一个事件）。
+ * Read-only: no event is appended or rewritten. Each event type is handled by
+ * one strategy in EVENT_HANDLERS, so adding a row type means adding a handler
+ * instead of growing a switch.
  */
 
-/** 内容指纹：同样的文本得到同一个短串。 */
+/** Content fingerprint: the same text always yields the same short id. */
 function fingerprint(text) {
   let hash = 5381
   for (let i = 0; i < text.length; i++) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0
@@ -15,10 +16,11 @@ function fingerprint(text) {
 }
 
 /**
- * 折叠行的稳定标识。
+ * Stable row identity.
  *
- * 同一条 assistant 消息可能被投递多次（流式增量、重连重放），
- * 用它来归并成一行；取不到消息 id 时退回内容指纹。
+ * One assistant message can be delivered several times (streaming deltas,
+ * reconnect replays); the message id merges them into one row. Without an id it
+ * falls back to the content fingerprint.
  */
 function rowKey(message, text) {
   const id = message && (message.id ?? message.messageId ?? message.uuid)
@@ -26,10 +28,275 @@ function rowKey(message, text) {
   return fingerprint(text)
 }
 
+/** Maximum characters kept in a row summary. */
+const SUMMARY_MAX = 140
+/** Argument keys that best explain what a step is doing, in priority order. */
+const SUMMARY_KEYS = [
+  'command', 'cmd', 'url', 'file_path', 'path', 'file',
+  'prompt', 'text', 'name',
+]
+
+/** Collapse whitespace into one line and truncate the tail. */
+function oneLine(value, max) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  const limit = max || SUMMARY_MAX
+  return text.length > limit ? text.slice(0, limit - 1) + '…' : text
+}
+
+/**
+ * Keep only the last three path segments.
+ *
+ * Rows are narrow and CSS truncates from the tail, which would hide the file
+ * name; condensing the path in advance keeps the useful part visible.
+ */
+function shortPath(value) {
+  const text = oneLine(value)
+  if (!/[\\/]/.test(text)) return text
+  const parts = text.split(/[\\/]+/).filter(Boolean)
+  if (parts.length <= 3) return text
+  return '…/' + parts.slice(-3).join('/')
+}
+
+/**
+ * Condense tool arguments into one human-readable subtitle.
+ *
+ * The description is already the row title, so only the most telling value is
+ * used: bash -> the command, read/edit -> the path, grep/glob -> the needle and
+ * scope. Non-JSON arguments (still streaming) are kept verbatim.
+ */
+function summarizeArgs(parsed, raw) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return oneLine(raw)
+
+  // Search tools: the pattern is the point, the path is the scope.
+  const needle = typeof parsed.pattern === 'string' ? parsed.pattern
+    : typeof parsed.query === 'string' ? parsed.query : ''
+  if (needle.trim()) {
+    const scope = typeof parsed.path === 'string' && parsed.path.trim() ? shortPath(parsed.path) : ''
+    return oneLine(scope ? needle.trim() + '  in  ' + scope : needle.trim())
+  }
+
+  for (const key of SUMMARY_KEYS) {
+    const value = parsed[key]
+    if (typeof value !== 'string' || !value.trim()) continue
+    return /path|file/i.test(key) ? shortPath(value) : oneLine(value)
+  }
+
+  const parts = []
+  for (const key of Object.keys(parsed)) {
+    if (key === 'description') continue // already the row title
+    const value = parsed[key]
+    if (value === null || value === undefined || value === '' || typeof value === 'object') continue
+    parts.push(key + '=' + oneLine(value, 48))
+    if (parts.length >= 2) break
+  }
+  return oneLine(parts.join(' '))
+}
+
+/**
+ * Added/removed line counts for an edit.
+ *
+ * A plain LCS over two rolling rows is enough for a "+3 −1" badge. Huge edits
+ * (>400 lines) fall back to the length difference rather than stalling a stream.
+ */
+function lineDiffStats(before, after) {
+  const toLines = (value) => {
+    const text = String(value ?? '').replace(/\r\n?/g, '\n')
+    return text === '' ? [] : text.split('\n')
+  }
+  const a = toLines(before)
+  const b = toLines(after)
+  if (!a.length && !b.length) return [0, 0]
+  if (a.length > 400 || b.length > 400) {
+    return [Math.max(0, b.length - a.length), Math.max(0, a.length - b.length)]
+  }
+  let prev = new Uint32Array(b.length + 1)
+  let cur = new Uint32Array(b.length + 1)
+  for (let i = 1; i <= a.length; i++) {
+    cur[0] = 0
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1] + 1
+        : Math.max(prev[j], cur[j - 1])
+    }
+    const swap = prev
+    prev = cur
+    cur = swap
+  }
+  const lcs = prev[b.length]
+  return [b.length - lcs, a.length - lcs]
+}
+
+/**
+ * Line range from a read result footer:
+ *   "(Showing lines 10-29 of 100. Use offset=30 to continue.)"
+ *   "(Output capped. Showing lines 1-500. ...)"
+ *   "(End of file - total 14 lines)"   <- start comes from the request offset
+ */
+function parseReadRange(text, offset) {
+  const source = String(text || '')
+  const showing = /Showing lines (\d+)-(\d+)/.exec(source)
+  if (showing) return [Number(showing[1]), Number(showing[2])]
+  const eof = /End of file - total (\d+) lines/.exec(source)
+  if (eof) {
+    const total = Number(eof[1])
+    const from = Number.isFinite(offset) && offset > 0 ? offset : 1
+    return from <= total ? [from, total] : null
+  }
+  return null
+}
+
+const EDIT_TOOL = /^(edit|edit_file)$/i
+const READ_TOOL = /^(read|read_file)$/i
+const MAX_DETAIL = 8000
+const MAX_ROW_TEXT = 300
+const MAX_DESCRIPTION = 200
+
+/** Parse tool arguments without throwing on partial JSON. */
+function parseArgs(raw) {
+  try {
+    return JSON.parse(raw)
+  } catch (_) {
+    return null
+  }
+}
+
+/** Text content of a tool result message (multiple blocks are joined). */
+function resultText(message) {
+  const blocks = Array.isArray(message?.content) ? message.content : []
+  return blocks
+    .filter((block) => block && block.type === 'text' && typeof block.text === 'string')
+    .map((block) => block.text)
+    .join('\n')
+}
+
+/**
+ * Event strategies.
+ *
+ * Every handler receives the folder instance and the event, and mutates rows
+ * through the folder's row helpers. Unknown event types stay ignored, which is
+ * also how a future DSH event degrades safely.
+ */
+const EVENT_HANDLERS = {
+  'turn/start'(folder, event) {
+    // A new prompt: only rows from this sequence onwards stay visible.
+    folder.turnStartSeq = event.seq
+  },
+
+  'tool/call'(folder, event) {
+    const { data, time, seq } = event
+    const raw = String(data.arguments ?? '')
+    const parsed = parseArgs(raw)
+    // The description is the title; the command is the one-line subtitle.
+    const description = parsed && typeof parsed.description === 'string'
+      ? oneLine(parsed.description, MAX_DESCRIPTION)
+      : ''
+    const toolName = String(data.name || '')
+    // Edit rows can count their lines right away; read rows wait for the result.
+    const delta = EDIT_TOOL.test(toolName)
+      && parsed && typeof parsed.old_string === 'string' && typeof parsed.new_string === 'string'
+      ? lineDiffStats(parsed.old_string, parsed.new_string)
+      : null
+    folder.pushRow(seq, {
+      id: 'tool-' + data.callId,
+      kind: 'tool',
+      tool: data.name,
+      description: description.slice(0, MAX_DESCRIPTION),
+      command: summarizeArgs(parsed, raw),
+      status: 'run',
+      time: time ?? '',
+      ...delta ? { delta } : {},
+    })
+    // Full arguments live in details only (keeps the state snapshot small).
+    folder.details.set('tool-' + data.callId, { args: raw.slice(0, MAX_DETAIL), result: '' })
+  },
+
+  'tool/result'(folder, event) {
+    const { data } = event
+    const id = 'tool-' + data.message.toolCallId
+    const row = folder.byId.get(id)
+    if (!row) return
+    row.status = data.error || data.message.content?.[0]?.isError ? 'fail' : 'done'
+    const text = resultText(data.message)
+    if (text) row.text = text.slice(0, MAX_ROW_TEXT)
+
+    // edit: the result's meta.diffs covers the whole file (replace_all included),
+    // so it is more accurate than the argument-side estimate.
+    if (row.kind === 'tool' && EDIT_TOOL.test(String(row.tool || ''))) {
+      const diffs = Array.isArray(data.meta?.diffs) ? data.meta.diffs : null
+      if (diffs && diffs.length) {
+        let added = 0
+        let removed = 0
+        for (const hunk of diffs) {
+          if (!hunk || typeof hunk.newText !== 'string') continue
+          const stats = lineDiffStats(typeof hunk.oldText === 'string' ? hunk.oldText : '', hunk.newText)
+          added += stats[0]
+          removed += stats[1]
+        }
+        row.delta = [added, removed]
+      }
+    }
+    // read: the real range comes from the footer, with the request offset as start.
+    if (row.kind === 'tool' && READ_TOOL.test(String(row.tool || ''))) {
+      let offset = 1
+      try {
+        offset = Number(parseArgs(folder.details.get(id)?.args || '{}').offset) || 1
+      } catch (_) {
+        offset = 1
+      }
+      const range = parseReadRange(text, offset)
+      if (range) row.lines = range
+    }
+    const detail = folder.details.get(id) || { args: '', result: '' }
+    detail.result = text.slice(0, MAX_DETAIL)
+    folder.details.set(id, detail)
+  },
+
+  'assistant/message'(folder, event) {
+    const { data, time, seq } = event
+    const message = data.message ?? {}
+    for (const block of (message.content ?? [])) {
+      if (block.type === 'reasoning' && typeof block.text === 'string' && block.text.trim()) {
+        folder.pushRow(seq, {
+          id: 'think-' + rowKey(message, block.text),
+          kind: 'think',
+          text: block.text,
+          status: 'done',
+          time: time ?? ''
+        })
+      } else if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
+        folder.pushRow(seq, {
+          id: 'say-' + rowKey(message, block.text),
+          kind: 'say',
+          text: block.text,
+          status: 'done',
+          time: time ?? ''
+        })
+      }
+    }
+  },
+
+  'approval/asked'(folder, event) {
+    const { data, time, seq } = event
+    folder.pushRow(seq, {
+      id: 'ask-' + data.id,
+      kind: 'tool',
+      tool: data.toolName,
+      command: data.reason ?? '',
+      status: 'ask',
+      time: time ?? ''
+    })
+  },
+
+  'approval/decided'(folder, event) {
+    const row = folder.byId.get('ask-' + event.data.id)
+    if (row) row.status = event.data.outcome === 'allowed-once' ? 'done' : 'fail'
+  }
+}
+
 class StepFolder {
   /**
-   * @param maxSteps 最多保留多少行
-   * @param onMerge  同一 id 被重复折进来时的回调（用于排查重复投放）
+   * @param {number} maxSteps maximum retained rows.
+   * @param {(id: string) => void} [onMerge] called when a duplicate id merges.
    */
   constructor(maxSteps, onMerge) {
     this.maxSteps = maxSteps
@@ -38,130 +305,73 @@ class StepFolder {
   }
 
   reset() {
-    /** 按时间顺序的行 */
+    /** Rows in arrival order. */
     this.list = []
-    /** 行 id → 行，用于 tool/result、approval/decided 回填状态 */
+    /** Row id -> row (tool/result and approval/decided update rows in place). */
     this.byId = new Map()
-    /** 行 id → 触发它的事件序号，用于按轮次过滤 */
+    /** Row id -> event sequence, used to filter by turn. */
     this.seqOf = new Map()
     /**
-     * 行 id → 展开用的完整细节 { args, result }。
+     * Row id -> full {args, result} detail for expanding a row.
      *
-     * 不放进行里、也不随 state 推送：一次 turn 可能有几十个工具调用，
-     * 每个都带几 KB 参数的话，逐字流推送时会把整包撑到几百 KB。
-     * 页面展开某一行时再按 id 取（GET /quickdock/api/step-detail）。
+     * Not part of the row and never pushed: one turn can hold dozens of tool
+     * calls whose arguments would bloat every state frame. Pages fetch a row on
+     * demand (GET /quickdock/api/step-detail).
      */
     this.details = new Map()
-    /** 最新一轮从哪个事件序号开始 */
+    /** Sequence the latest turn starts at. */
     this.turnStartSeq = null
   }
 
-  /** 最新一轮的行（给 state 用）。 */
+  /** Rows of the latest turn (what the page renders). */
   rows() {
     const from = this.turnStartSeq
     if (from === null) return this.list.slice()
     return this.list.filter((row) => (this.seqOf.get(row.id) ?? 0) >= from)
   }
 
-  apply(event) {
-    const { type, seq, data, time } = event
-    const push = (row) => {
-      const existing = this.byId.get(row.id)
-      if (existing) {
-        // 同一个 id 再次到达（重连重放、流式增量更新）：就地合并，不新增行。
-        // 时间保持首次出现的值，避免已经显示的时间戳来回跳。
-        const { time: _ignored, ...fields } = row
-        Object.assign(existing, fields)
-        this.seqOf.set(row.id, seq)
-        if (this.onMerge) this.onMerge(row.id)
-        return
-      }
-      if (this.list.length >= this.maxSteps) {
-        const dropped = this.list.shift()
-        this.byId.delete(dropped.id)
-        this.seqOf.delete(dropped.id)
-        this.details.delete(dropped.id)
-      }
-      this.list.push(row)
-      this.byId.set(row.id, row)
+  /**
+   * Insert or merge one row.
+   * @param {number} seq event sequence.
+   * @param {object} row row fields (id required).
+   */
+  pushRow(seq, row) {
+    const existing = this.byId.get(row.id)
+    if (existing) {
+      // Same id again (replay or streaming increment): merge in place and keep
+      // the original timestamp so the visible time does not jump around.
+      const { time: _ignored, ...fields } = row
+      Object.assign(existing, fields)
       this.seqOf.set(row.id, seq)
+      if (this.onMerge) this.onMerge(row.id)
+      return
     }
-    switch (type) {
-      case 'turn/start': {
-        // 新一轮提问开始：只展示这之后的记录
-        this.turnStartSeq = seq
-        break
-      }
-      case 'tool/call': {
-        const raw = String(data.arguments ?? '')
-        let parsed = null
-        try { parsed = JSON.parse(raw) } catch { parsed = null }
-        // description 是给人看的摘要，放前面；原始 JSON 压缩后跟在后面
-        const description = parsed && typeof parsed.description === 'string' ? parsed.description.trim() : ''
-        let cmd = ''
-        try { cmd = parsed ? JSON.stringify(parsed) : raw } catch { cmd = raw }
-        push({
-          id: 'tool-' + data.callId,
-          kind: 'tool',
-          tool: data.name,
-          description: description.slice(0, 200),
-          command: cmd.slice(0, 600),
-          status: 'run',
-          time: time ?? '',
-        })
-        // 展开用的全文（参数只在这里存一份，不进 state）
-        this.details.set('tool-' + data.callId, { args: raw.slice(0, 8000), result: '' })
-        break
-      }
-      case 'tool/result': {
-        const id = 'tool-' + data.message.toolCallId
-        const row = this.byId.get(id)
-        if (row) {
-          row.status = data.error || data.message.content?.[0]?.isError ? 'fail' : 'done'
-          // 结果可能是多个 text block，拼起来才是完整输出
-          const blocks = Array.isArray(data.message.content) ? data.message.content : []
-          const text = blocks
-            .filter((block) => block && block.type === 'text' && typeof block.text === 'string')
-            .map((block) => block.text)
-            .join('\n')
-          if (text) row.text = text.slice(0, 300)
-          const detail = this.details.get(id) || { args: '', result: '' }
-          detail.result = text.slice(0, 8000)
-          this.details.set(id, detail)
-        }
-        break
-      }
-      case 'assistant/message': {
-        const message = data.message ?? {}
-        const content = message.content ?? []
-        for (const block of content) {
-          if (block.type === 'reasoning' && typeof block.text === 'string' && block.text.trim()) {
-            push({ id: 'think-' + rowKey(message, block.text), kind: 'think', text: block.text, status: 'done', time: time ?? '' })
-          } else if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
-            push({ id: 'say-' + rowKey(message, block.text), kind: 'say', text: block.text, status: 'done', time: time ?? '' })
-          }
-        }
-        break
-      }
-      case 'approval/asked': {
-        push({ id: 'ask-' + data.id, kind: 'tool', tool: data.toolName, command: data.reason ?? '', status: 'ask', time: time ?? '' })
-        break
-      }
-      case 'approval/decided': {
-        const row = this.byId.get('ask-' + data.id)
-        if (row) row.status = data.outcome === 'allowed-once' ? 'done' : 'fail'
-        break
-      }
-      default:
-        break
+    if (this.list.length >= this.maxSteps) {
+      const dropped = this.list.shift()
+      this.byId.delete(dropped.id)
+      this.seqOf.delete(dropped.id)
+      this.details.delete(dropped.id)
     }
+    this.list.push(row)
+    this.byId.set(row.id, row)
+    this.seqOf.set(row.id, seq)
+  }
+
+  /**
+   * Fold one session event.
+   * @param {{type: string, seq: number, data: object, time?: string}} event
+   * @returns {object[]} rows of the latest turn.
+   */
+  apply(event) {
+    const handler = EVENT_HANDLERS[event?.type]
+    if (handler) handler(this, event)
     return this.rows()
   }
 
-  /** 某一行的展开细节（页面按需取）；没有则返回 null。 */
+  /** Full detail of one row (fetched on demand); null when unknown. */
   detailOf(id) {
     return this.details.get(String(id)) || null
   }
 }
 
-module.exports = { StepFolder };
+module.exports = { StepFolder, lineDiffStats, parseReadRange };

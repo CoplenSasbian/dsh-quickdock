@@ -3,6 +3,12 @@
 > 状态：**设计定稿 —— 14 项决策全部已定，可进入实现**
 > **交互原型**：[`dock-prototype.html`](dock-prototype.html) —— 原型是视觉真相源，正文与它保持一致
 
+> **2026-10 实现重构（v13）**：设计结论未变，落地结构做了规范化 ——
+> 宿主半拆进 `host/`（适配器 / 观察者 / 命令表 / 策略表），页面脚本按
+> `web/manifest.json` 顺序拆分（i18n、工具、执行过程、菜单、引导）；
+> 全部界面文案迁入 `locale/*.json`（en / zh，可实时切换）；
+> 源码注释统一为简洁英文。用法、目录与质量闸门见 [README.md](./README.md)。
+
 ---
 
 ## 1. 一句话目标
@@ -266,16 +272,33 @@ ctx.on('approval/request', async (req, next) => {
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 3.1 Electron 从哪来（三级回退，照 dsh-pet）
-
-dsh-pet 的 `resolveElectronPath()` 顺序，我们照搬：
+### 3.1 Electron 从哪来（候选链 + 运行时兜底）
 
 ```
 ① 显式配置 / 环境变量（DSH_QUICKDOCK_ELECTRON_PATH）
-② 本机 electron npm 包（require('electron') 返回的路径）
-③ $DSH_HOME/electron/electron.exe（自己下载落地）
-   └ 都没有 → 进程内异步下载（@electron/get + npmmirror 镜像）
+② %LOCALAPPDATA%\dsh-quickdock\electron\<版本>\electron.exe（自己下载落地）
+③ 本机 electron npm 包（node_modules/electron/dist）
+④ ~/.dsh/electron（旧布局）
+   └ 全都不可用 → 进程内异步下载（@electron/get + npmmirror 镜像）
 ```
+
+**为什么自管目录排在 npm 包前面（2026-10-28 实测）**：
+npm 包一般落在项目目录（本机在桌面）。同一份 Electron 44.7.0（文件大小/版本一致）从桌面启动时，
+Chromium 在写用户数据目录的阶段就被拦下：
+
+```
+ERROR:process_singleton_win.cc(318) Lock file can not be created: 拒绝访问 (0x5)
+ERROR:persistent_cache_sandboxed_file_factory.cc(153) ... 拒绝访问 (0x5)
+→ exit code 0（还没执行到 main.cjs，dock.log 一行都没有）
+```
+
+而 `%LOCALAPPDATA%\dsh-quickdock\electron\44.7.0\electron.exe` 同一版本可正常运行。
+这与 3.3「安全软件按路径拦截」是同一类问题，只是从 `STATUS_BREAKPOINT` 变成了写权限拒绝。
+所以：**自管目录优先**，npm 包只作为后备。
+
+**运行时还有第二次兜底**：probe 通过 ≠ 能启动。dock 如果在 `ready` 之前退出，
+`host/dock-process.js` 会换候选列表里的下一个重试；全部失败时把最后一行 stderr
+显示给用户（`host.dockStartFailed`），而不是让页面干等到超时。
 
 **关键设计（dsh-pet 验证过的）**：
 - 下载**不 spawn 子进程**，在宿主进程内做 —— 因为 `process.execPath` 在 Electron 宿主里指向宿主 exe，spawn 会崩
@@ -392,7 +415,7 @@ dock 读 stdout，其余行当日志
 | 职责 | API |
 |---|---|
 | 窗口 | `BrowserWindow({ transparent:true, frame:false, skipTaskbar:true, hasShadow:false, alwaysOnTop: false })` |
-| 顶置开关 | `setAlwaysOnTop(flag, 'screen-saver')` —— **默认 `false`**，由用户点「⤒」切换，状态存 `window.json` |
+| 顶置开关 | `setAlwaysOnTop(flag, 'screen-saver')` —— **默认 `false`**，由用户点「⤒」切换，状态存 `window.json`。**两个窗口一起钉**（只钉输入窗口的话列表会被别的应用盖住） |
 | 跨虚拟桌面 | `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })` |
 | 6 锚点 | `screen.getDisplayNearestPoint` + `workArea` |
 | 唤出 | 无全局热键（v1）；由 Host 通过管道通知 `show()` |
@@ -572,6 +595,30 @@ catalog(): PermissionCatalog
 - `current(session)` 返回 `'custom'`（`CUSTOM_PRESET`）表示当前旋钮组合不匹配任何预设，dock 要能显示这种状态。
 - 切到「完全权限」时 DSH 会弹确认框（`确认启用完全权限？` + 「我已了解风险，并愿意继续」）。**dock 必须复刻这个确认**，不能静默切换。
 
+#### 下拉菜单：矮窗口也要放得下长列表
+
+输入窗口只有 `inputHeight` 那么高（默认 172px），而模型目录可能有几十项。
+只靠「窗口内滚动」的话菜单会被裁成两三行 —— 这正是"模型下拉点开像坏了"的典型观感。
+所以菜单有三层保障：
+
+1. **搜索**：可选项 ≥ 8 时自动出现搜索框（权限 3 项这种短菜单不加，免得拥挤）。
+   输入即过滤，匹配名称 / 副标题 / 分组名；标题与搜索框固定，只有列表滚动。
+2. **键盘**：↑/↓、Home/End、Enter、Esc；打开时高亮落在当前选中项并滚进视野，
+   这样长列表打开就能看到"我现在是哪个模型"。
+3. **窗口按需长高**：放不下时页面调 `window.quickDock.setMenuSpace(extra)`，
+   主进程把输入窗口**向上**撑开（**底边固定**，用户拖出来的位置不变；
+   屏幕上方空间不够就按实际可用量截断），菜单关掉后 `setMenuSpace(0)` 收回。
+   撑高期间页面给 `#dock` 钉住原高度并贴底（`body.menu-expanded`），
+   上方多出来的区域保持透明 + 点击穿透，面板本身一像素都不动。
+
+几何细节（见 `runtime/main.cjs` 的 `setMenuSpace`）：
+
+- 只长高、不挪底边：新 y = 原底边 − 新高度；收回时按**当前**底边反推，
+  所以菜单开着时拖动窗口也不会错位。
+- 临时高度**不落盘**：`remember()` 在展开状态下记原始尺寸与位置，
+  否则下次启动会是个 400px 高的空面板。
+- 展示窗口贴在输入窗口上方，输入窗口长高时要跟着上移（`placeDisplayWindow`）。
+
 ### 6.5 审批卡片用词（与 DSH 一致）
 
 | 位置 | 用词 |
@@ -583,9 +630,25 @@ catalog(): PermissionCatalog
 > DSH 里 `ApprovalOutcome` 只有 `'allowed-once'`（仅本次），没有"总是允许"。dock 也不提供"总是允许"，与框架语义一致。
 > 「询问 / 自动」是**审批策略**（`ApprovalPolicy: 'ask' | 'never'`），属权限预设的一部分，不单独暴露给用户。
 
+#### 审批在哪儿答：两个窗口都能答，而且必须看得见
+
+- **输入窗口**：运行态标题行下面直接长一块 `run-approval`（⚠ 需要确认 + 工具名 + 文案 +
+  允许 / 拒绝）。用户平时盯的就是这个窗口，不能让他为了点一个按钮去别的窗口找。
+- **展示窗口**：确认卡片照旧追加在步骤列表末尾；审批期间 `applyDisplayVisibility(force)`
+  会**无视 `listHidden`** 强制露出来 —— 否则用户之前用 ▤ 藏了列表，就彻底没有落点。
+- **接管条件**：同会话 + dock 进程在 + 窗口可见。任一条不满足就 `next()`，交回 DSH 自己的确认框；
+  否则用户把窗口藏起来时，DSH 会干等 `approvalTimeoutMs`（默认 5 分钟）才超时。
+- **waterfall 顺序**：`approval/request` / `user-questions/request` 的监听器必须
+  `ctx.on(..., { prepend: true })`。DSH 自带审批 UI 比 profile 插件注册得早，
+  不插队首的话事件先被它答掉，dock 永远收不到（表现为「权限授权没有展示」）。
+- **文案**：优先 `request.displayReason.zh`（sandbox 升级时是
+  「允许本次操作使用 danger-full-access 权限：…」），没有才退回 `reason`。
+
 ### 6.6 思考与输出
 
 按 D3 采用**折叠**：思考压成一行紫色摘要，点击展开全文（限高 150px 内部滚动）；输出正常显示不加强边框。
+
+**展开/收起是动画的，列表不重建**：工具行详情与思考全文用 `0fr → 1fr` 的网格行做高度过渡，配合 0.26s 淡入淡出；收起结束后才 `visibility:hidden`，内容不闪。行按 id 复用 DOM，状态变化只更新节点，所以「运行中自动展开、结束自动收起」不会让整张列表重播入场动画。用户手动展开的行保持展开；只有运行中自动展开时才跟随列表贴底，手动展开不抢滚动位置。
 
 ### 6.7 状态
 

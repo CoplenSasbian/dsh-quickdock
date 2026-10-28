@@ -19,17 +19,17 @@ test('default position sits at the bottom-right of the work area', () => {
 });
 
 test('window size is fixed: input window uses inputHeight', () => {
-  // 输入窗口固定为 config.inputHeight（展示窗口是独立窗口，高度用 displayHeight）
+  // The input window always uses config.inputHeight (the run window is separate).
   const fresh = restoreBounds({}, screen, { width: 360, inputHeight: 280, displayHeight: 520 });
   assert.deepEqual(fresh.bounds, { x: 1544, y: 744, width: 360, height: 280 });
 
-  // 即便存了旧的高度（560），恢复时也强制用 inputHeight
+  // A remembered height (560) is ignored: inputHeight wins.
   const withOld = restoreBounds({ displayId: 1, x: 100, y: 200, width: 360, height: 560 }, screen, { width: 360, inputHeight: 280, displayHeight: 520 });
   assert.deepEqual(withOld.bounds, { x: 100, y: 200, width: 360, height: 280 });
 });
 
 test('a dragged position is preserved exactly', () => {
-  // 用户把窗口拖到任意位置 —— 原样恢复
+  // A dragged position is restored exactly.
   const result = restoreBounds({ displayId: 1, x: 300, y: 220, width: 360, height: 400 }, screen, { width: 360, inputHeight: 280, displayHeight: 520 });
   assert.deepEqual(result.bounds, { x: 300, y: 220, width: 360, height: 280 });
 });
@@ -40,7 +40,7 @@ test('negative-origin and secondary displays are respected', () => {
 });
 
 test('renderer height is clamped and width remains fixed', () => {
-  // 高度由 normalizeSize 负责（渲染进程测量 + maxHeight 限制），clampBounds 不碰尺寸
+  // clampBounds only moves the window; it never changes the size.
   const tall = clampBounds(primary.workArea, { x: 100, y: 100, width: 360, height: 560 });
   assert.deepEqual(tall, { x: 100, y: 100, width: 360, height: 560 });
   const short = clampBounds(primary.workArea, { x: 100, y: 100, width: 360, height: 280 });
@@ -48,7 +48,7 @@ test('renderer height is clamped and width remains fixed', () => {
 });
 
 test('a window dragged off-screen is pulled back into view', () => {
-  // 拖到屏幕外 → 夹回可见范围（否则就再也拖不回来了）
+  // Off-screen windows are pulled back into view.
   assert.deepEqual(clampBounds(primary.workArea, { x: -5000, y: -5000, width: 360, height: 400 }), {
     x: 0, y: 0, width: 360, height: 400,
   });
@@ -63,11 +63,11 @@ test('remembered display and valid position are restored', () => {
 });
 
 test('missing display or off-screen coordinates fall back safely', () => {
-  // 显示器没了 → 用主显示器的默认位置（右下角，留 margin 16），高度固定为 inputHeight
+  // Missing display: default position on the primary display.
   assert.deepEqual(restoreBounds({ displayId: 99, x: 2200, y: 100 }, screen, { width: 360, inputHeight: 280 }).bounds, {
     x: 1544, y: 744, width: 360, height: 280,
   });
-  // 位置完全在屏幕外 → 同样退回默认位置
+  // Fully off-screen coordinates also fall back to the default position.
   assert.deepEqual(restoreBounds({ displayId: 2, x: -5000, y: 100 }, screen, { width: 360, inputHeight: 280 }).bounds, {
     x: 2824, y: 528, width: 360, height: 280,
   });

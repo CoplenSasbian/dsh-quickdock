@@ -18,10 +18,11 @@ button,textarea,input{font-family:inherit}button{-webkit-app-region:no-drag}butt
 .composer-wrap{padding:5px 8px 7px;flex:1 1 auto;min-height:0;display:flex}.composer{flex:1 1 auto;min-height:0;background:var(--bg-3);border:1px solid var(--border-2);border-radius:11px;padding:7px 7px 5px 10px;display:flex;flex-direction:column;transition:border-color .15s,background .15s}.composer:focus-within{border-color:rgba(77,142,255,.6);background:var(--qd-bg-layer-1)}.composer textarea{width:100%;flex:1 1 auto;min-height:20px;background:transparent;border:0;outline:0;resize:none;color:var(--text-1);font-size:12.5px;line-height:1.55;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--qd-scrollbar) transparent}.composer textarea::placeholder{color:var(--text-3)}
 .funcbar{display:flex;align-items:center;gap:2px;padding:1px 0 0;flex:none;flex-wrap:nowrap;overflow:hidden}.fkey{display:flex;align-items:center;gap:3px;padding:3px 7px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-2);font-size:11px;cursor:pointer;white-space:nowrap;max-width:260px;min-width:0}.fkey:hover{background:var(--qd-interactive-hover);color:var(--text-1)}.fkey>span:nth-child(2){overflow:hidden;text-overflow:ellipsis}.fk-icon{font-size:9px;opacity:.85}.fk-caret{font-size:6px;opacity:.55}.fkey.accent{color:var(--purple);background:rgba(169,123,240,.12)}.fkey.warn{color:var(--yellow)}.func-spacer{flex:1}.send-btn{width:28px;height:28px;border-radius:50%;border:0;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;font-size:13px;margin-left:4px}.send-btn:disabled{background:var(--bg-3);color:var(--text-3)}
 #panelB{flex:1 1 auto;min-height:0}.exec-head{display:flex;align-items:center;gap:7px;height:34px;padding:0 8px 0 12px;border-bottom:1px solid var(--border-1);flex:none;-webkit-app-region:drag;cursor:grab}.exec-head:active{cursor:grabbing}.status-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--text-3);-webkit-app-region:no-drag}.status-dot.running{background:var(--brand);animation:pulse 1.6s infinite}.status-dot.done{background:var(--green)}.status-dot.error{background:var(--red)}.status-dot.ask{background:var(--yellow)}.status-dot.offline{background:transparent;border:1px dashed var(--text-3)}@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(77,142,255,.55)}70%{box-shadow:0 0 0 6px rgba(77,142,255,0)}100%{box-shadow:0 0 0 0 rgba(77,142,255,0)}}.exec-title{flex:1;min-width:0;font-size:12px;font-weight:500;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.exec-actions{display:flex;align-items:center;gap:1px;-webkit-app-region:no-drag}.icon-btn{width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:5px;border:0;background:transparent;color:var(--text-2);cursor:pointer;font-size:12px;line-height:1;flex:none;-webkit-app-region:no-drag}.icon-btn:hover{background:var(--qd-fill-mid);color:var(--text-1)}.icon-btn.on{color:var(--brand);background:rgba(77,142,255,.14)}
-.steps{overflow-y:auto;overflow-x:hidden;padding:6px 0;min-height:0;flex:1 1 auto;scrollbar-width:thin;scrollbar-color:var(--qd-scrollbar) transparent}.steps::-webkit-scrollbar,.menu::-webkit-scrollbar,.think-body::-webkit-scrollbar{width:6px}.steps::-webkit-scrollbar-thumb,.menu::-webkit-scrollbar-thumb,.think-body::-webkit-scrollbar-thumb{background:var(--qd-scrollbar);border-radius:3px}.step{display:flex;align-items:center;gap:8px;min-height:25px;padding:3px 11px;font-size:11.5px;color:var(--text-2)}.step:hover{background:var(--qd-fill-soft)}.step-icon{width:14px;flex:none;text-align:center;font-size:11px;line-height:1}.step.done .step-icon{color:var(--green)}.step.fail .step-icon{color:var(--red)}.step.todo .step-icon{color:var(--text-3)}.step-label{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.step-time{font-size:10.5px;color:var(--text-3);flex:none;font-variant-numeric:tabular-nums}
-/* 原始 JSON：跟在 description 后面，占满剩余宽度并省略 */
-.step-json{flex:1 1 0;min-width:24px;margin-left:6px;font-family:var(--qd-font-code);font-size:var(--qd-font-size-code);line-height:1.3;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.75}.step.run{position:relative;background:var(--qd-run-row-bg);animation:runRow 2s ease-in-out infinite}.step.run:before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:var(--brand);animation:runBar 1.4s ease-in-out infinite}.step.run .step-icon{display:flex;align-items:center;justify-content:center}.step.run .step-icon:before{content:"";width:9px;height:9px;border-radius:50%;border:1.5px solid var(--qd-run-ring-track);border-top-color:var(--brand);animation:spin .8s linear infinite}.step.run .step-label{color:var(--text-1);background-image:linear-gradient(90deg,var(--text-1) 0%,var(--text-1) 40%,var(--qd-run-shine-strong) 50%,var(--text-1) 60%,var(--text-1) 100%);background-size:200% 100%;background-repeat:no-repeat;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:shine 2.2s linear infinite}@keyframes runRow{0%,100%{background:var(--qd-run-row-bg)}50%{background:var(--qd-run-row-bg-hi)}}@keyframes runBar{0%,100%{opacity:.35}50%{opacity:1}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shine{0%{background-position:100% 0}100%{background-position:0 0}}
-.think{margin:4px 12px 2px;border-radius:6px;background:rgba(169,123,240,.055);border:1px solid rgba(169,123,240,.16);overflow:hidden}.think-head{display:flex;align-items:center;gap:6px;width:100%;padding:4px 8px;border:0;background:transparent;cursor:pointer;font-size:10.5px;color:#b79ae8;text-align:left}.think-head:hover{background:rgba(169,123,240,.08)}.th-icon{font-size:9px}.th-preview{flex:1;min-width:0;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px}.th-chev{font-size:7px;transition:transform .15s}.think.open .th-chev{transform:rotate(90deg)}.think-body{display:none;padding:0 9px 8px 23px;font-size:10.5px;line-height:1.65;color:#9d92b0;max-height:150px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:anywhere}.think.open .think-body{display:block}.think.streaming .th-label:after{content:"…";animation:blink 1.2s steps(2) infinite}@keyframes blink{0%,50%{opacity:1}50.1%,100%{opacity:.25}}.say{margin:5px 12px 4px;padding:7px 10px;background:var(--qd-fill-subtle);border-radius:6px;border-left:2px solid var(--qd-fill-strong);font-size:11.5px;line-height:1.62;color:var(--text-1);white-space:pre-wrap;overflow-wrap:anywhere}.say.streaming:after{content:"";display:inline-block;width:5px;height:11px;background:var(--brand);vertical-align:-1px;margin-left:2px;animation:blink 1s steps(2) infinite}.verdict{margin:7px 12px 5px;padding:8px 10px;background:rgba(240,82,82,.07);border-left:2px solid var(--red);font-size:11px;line-height:1.55;color:var(--text-1);white-space:pre-wrap;overflow-wrap:anywhere}.empty{padding:12px;color:var(--text-3);font-size:11px;text-align:center}
+.steps{overflow-y:auto;overflow-x:hidden;padding:6px 0;min-height:0;flex:1 1 auto;scrollbar-width:thin;scrollbar-color:var(--qd-scrollbar) transparent}.steps::-webkit-scrollbar,.menu::-webkit-scrollbar,.tb-box::-webkit-scrollbar{width:6px}.steps::-webkit-scrollbar-thumb,.menu::-webkit-scrollbar-thumb,.tb-box::-webkit-scrollbar-thumb{background:var(--qd-scrollbar);border-radius:3px}.step{display:flex;align-items:center;gap:8px;min-height:25px;padding:3px 11px;font-size:11.5px;color:var(--text-2)}.step:hover{background:var(--qd-fill-soft)}.step-icon{width:14px;flex:none;text-align:center;font-size:11px;line-height:1}.step.done .step-icon{color:var(--green)}.step.fail .step-icon{color:var(--red)}.step.todo .step-icon{color:var(--text-3)}.step-label{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.step-time{font-size:10.5px;color:var(--text-3);flex:none;font-variant-numeric:tabular-nums}
+/* Raw JSON: follows the description, fills the remaining width, elided. */
+/* Tool subtitle: command / path / needle. One line, muted, elided. */
+.step-sub{flex:0 1 auto;min-width:24px;margin-left:6px;font-family:var(--qd-font-code);font-size:var(--qd-font-size-code);line-height:1.3;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.75}.step.run{position:relative;background:var(--qd-run-row-bg);animation:runRow 2s ease-in-out infinite}.step.run:before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:var(--brand);animation:runBar 1.4s ease-in-out infinite}.step.run .step-icon{display:flex;align-items:center;justify-content:center}.step.run .step-icon:before{content:"";width:9px;height:9px;border-radius:50%;border:1.5px solid var(--qd-run-ring-track);border-top-color:var(--brand);animation:spin .8s linear infinite}.step.run .step-label{color:var(--text-1);background-image:linear-gradient(90deg,var(--text-1) 0%,var(--text-1) 40%,var(--qd-run-shine-strong) 50%,var(--text-1) 60%,var(--text-1) 100%);background-size:200% 100%;background-repeat:no-repeat;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:shine 2.2s linear infinite}@keyframes runRow{0%,100%{background:var(--qd-run-row-bg)}50%{background:var(--qd-run-row-bg-hi)}}@keyframes runBar{0%,100%{opacity:.35}50%{opacity:1}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shine{0%{background-position:100% 0}100%{background-position:0 0}}
+.think{margin:4px 12px 2px;border-radius:6px;background:rgba(169,123,240,.055);border:1px solid rgba(169,123,240,.16);overflow:hidden}.think-head{display:flex;align-items:center;gap:6px;width:100%;padding:4px 8px;border:0;background:transparent;cursor:pointer;font-size:10.5px;color:#b79ae8;text-align:left}.think-head:hover{background:rgba(169,123,240,.08)}.th-icon{font-size:9px}.th-preview{flex:1;min-width:0;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px}.th-chev{font-size:7px;transition:transform .15s}.think.open .th-chev{transform:rotate(90deg)}.think-body{display:grid;grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows .26s cubic-bezier(.22,.7,.35,1),opacity .18s ease,visibility 0s linear .26s}.think.open .think-body{grid-template-rows:1fr;opacity:1;visibility:visible;transition:grid-template-rows .26s cubic-bezier(.22,.7,.35,1),opacity .18s ease .04s,visibility 0s linear 0s}.tb-clip{min-height:0;overflow:hidden}.tb-box{padding:0 9px 8px 23px;font-size:10.5px;line-height:1.65;color:#9d92b0;max-height:150px;overflow-y:auto;scrollbar-width:thin;white-space:pre-wrap;overflow-wrap:anywhere}.think.streaming .th-label:after{content:"…";animation:blink 1.2s steps(2) infinite}@keyframes blink{0%,50%{opacity:1}50.1%,100%{opacity:.25}}.say{margin:5px 12px 4px;padding:7px 10px;background:var(--qd-fill-subtle);border-radius:6px;border-left:2px solid var(--qd-fill-strong);font-size:11.5px;line-height:1.62;color:var(--text-1);white-space:pre-wrap;overflow-wrap:anywhere}.say.streaming:after{content:"";display:inline-block;width:5px;height:11px;background:var(--brand);vertical-align:-1px;margin-left:2px;animation:blink 1s steps(2) infinite}.verdict{margin:7px 12px 5px;padding:8px 10px;background:rgba(240,82,82,.07);border-left:2px solid var(--red);font-size:11px;line-height:1.55;color:var(--text-1);white-space:pre-wrap;overflow-wrap:anywhere}.empty{padding:12px;color:var(--text-3);font-size:11px;text-align:center}
 .exec-foot{display:flex;align-items:center;gap:8px;height:34px;padding:0 8px 0 12px;border-top:1px solid var(--border-1);flex:none;font-size:10.5px;color:var(--text-3);font-variant-numeric:tabular-nums}.ef-spacer{flex:1}.progress{flex:1;height:2px;background:var(--qd-interactive-hover);border-radius:1px;overflow:hidden;max-width:80px}.progress i{display:block;height:100%;width:35%;background:var(--brand);border-radius:1px}.progress.running i{animation:progress 1.8s ease-in-out infinite}.progress.done i{width:100%;background:var(--green)}.progress.error i{width:100%;background:var(--red)}.progress.idle i{width:0}@keyframes progress{0%{transform:translateX(-110%)}100%{transform:translateX(300%)}}.stop-btn{display:flex;align-items:center;gap:4px;border:1px solid rgba(240,82,82,.5);background:rgba(240,82,82,.14);color:#ff9a9a;font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer}.stop-btn .sq{width:7px;height:7px;background:currentColor;border-radius:1px}
 .card{margin:8px 12px 6px;border:1px solid var(--border-2);border-radius:8px;background:var(--bg-2);overflow:hidden}.card.approval{border-color:rgba(245,166,35,.42)}.card.question{border-color:rgba(77,142,255,.42)}.card-head{display:flex;align-items:center;gap:6px;padding:7px 10px 6px;font-size:11px;font-weight:500}.approval .card-head{color:var(--yellow)}.question .card-head{color:var(--brand)}.ch-tag{font-size:9px;padding:1px 5px;border-radius:3px;background:var(--qd-fill-mid);color:var(--text-2);font-weight:400}.card-body{padding:0 10px 9px}.cmd{font-family:var(--qd-font-code);font-size:var(--qd-font-size-code);line-height:1.5;color:var(--text-1);background:rgba(0,0,0,.2);border-radius:5px;padding:6px 8px;overflow-wrap:anywhere;white-space:pre-wrap;margin-bottom:7px;border-left:2px solid rgba(245,166,35,.5);max-height:120px;overflow-y:auto}.card-reason,.card-q-detail{font-size:10.5px;color:var(--text-2);line-height:1.5;margin-bottom:8px;white-space:pre-wrap}.card-q{font-size:11.5px;color:var(--text-1);line-height:1.55;margin-bottom:8px;white-space:pre-wrap}.opts{display:flex;flex-direction:column;gap:5px}.opt{display:flex;align-items:flex-start;gap:7px;padding:6px 8px;border-radius:6px;border:1px solid var(--border-2);background:var(--qd-fill-subtle);cursor:pointer;font-size:11px;color:var(--text-1);text-align:left;width:100%}.opt:hover,.opt.sel{background:rgba(77,142,255,.1);border-color:var(--brand)}.opt.sel .opt-key{background:var(--brand);color:#fff}.opt-key{flex:none;min-width:14px;height:14px;padding:0 2px;border-radius:3px;background:var(--qd-fill-mid);font-size:9px;display:flex;align-items:center;justify-content:center;color:var(--text-2);margin-top:.5px}.opt-text{flex:1;min-width:0;line-height:1.45}.opt-text small{display:block;color:var(--text-3);font-size:10px;margin-top:1px}.answer-input{width:100%;resize:vertical;min-height:54px;max-height:120px;margin-top:7px;padding:7px 8px;border-radius:6px;border:1px solid var(--border-2);background:var(--bg-1);color:var(--text-1);font-size:11px;line-height:1.5}.card-actions{display:flex;gap:6px;margin-top:8px}.card-btn{flex:1;min-height:27px;border-radius:6px;border:1px solid var(--border-2);background:var(--qd-fill-soft);color:var(--text-1);font-size:11px;cursor:pointer;padding:4px 8px}.card-btn:hover{background:var(--qd-fill-strong)}.card-btn.primary{background:rgba(62,207,142,.16);border-color:rgba(62,207,142,.55);color:var(--green)}.card-btn.danger{background:rgba(240,82,82,.12);border-color:rgba(240,82,82,.45);color:#ff9a9a}.card-foot{padding:8px 10px 0;font-size:9.5px;color:var(--text-3)}
 .menu{position:fixed;z-index:300;background:var(--qd-bg-overlay);border:1px solid var(--border-2);border-radius:9px;box-shadow:0 16px 40px rgba(0,0,0,.65);padding:5px;display:none;overflow-y:auto;overflow-x:hidden;max-height:440px;pointer-events:auto;scrollbar-width:thin;scrollbar-color:var(--qd-scrollbar) transparent}.menu.open{display:block}.menu-title{font-size:9.5px;color:var(--text-3);letter-spacing:.08em;padding:5px 8px 4px}.menu-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:11.5px;color:var(--text-1);border:0;background:transparent;width:100%;text-align:left}.menu-item:hover{background:var(--qd-interactive-hover)}.menu-item.sel{background:rgba(77,142,255,.14);color:var(--brand)}.mi-main{flex:1;min-width:0}.mi-name,.mi-sub{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mi-sub{font-size:9.5px;color:var(--text-3);margin-top:1px}.mi-check{flex:none;font-size:10px;color:var(--brand);width:10px}.menu-sep{height:1px;background:var(--border-1);margin:4px 2px}
@@ -29,61 +30,63 @@ button,textarea,input{font-family:inherit}button{-webkit-app-region:no-drag}butt
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}.step.run .step-label{background-image:none;-webkit-text-fill-color:var(--text-1)}}
 
 
-/* ================= 展示窗口 ================= */
-/* 展示窗口本身没有底色，透明交给窗口 */
-/* 外边距必须和输入窗口的 .stack 一致（都是 10px），否则两块面板左右对不齐：
-   输入面板 = 窗口宽 - 20，展示面板 = 窗口宽 - 0，视觉上展示窗口会「更宽」。 */
+/* ===================== Run window ===================== */
+/* The run window has no background of its own: transparency comes from the OS window. */
+/* The padding must match .stack in the input window (10px): otherwise the two
+   panels are not aligned and the run panel looks wider than the input panel. */
 .display-body{background:transparent!important;overflow:hidden;display:flex;flex-direction:column;height:100%;padding:10px;box-sizing:border-box}
 
-/* #blocks 既是面板也是滚动容器：
-     内容短 → height:auto 贴着内容；内容长 → max-height 封顶后内部滚动。
-   圆角画在这个元素上，滚动的只是它内部的内容，所以四角永远可见。 */
+/* #blocks is both panel and scroll container: it hugs short content and caps
+   at max-height for long content. Corners live on this element, so they stay
+   visible while the inner rows scroll. */
 .blocks{display:flex;flex-direction:column;flex:0 0 auto;width:100%;height:auto;max-height:100%;
   overflow-y:auto;overflow-x:hidden;box-sizing:border-box;
   background:var(--bg-1);border:1px solid var(--border-1);border-radius:9px;
   pointer-events:auto;-webkit-app-region:no-drag;
   scrollbar-width:thin;scrollbar-color:var(--qd-scrollbar) transparent;
-  /* 贴在输入窗口**下方**时内容靠上；贴在上方时靠下（见 body.above） */
+  /* Below the input window: content starts at the top (see body.above for the opposite). */
   margin-bottom:auto}
 .blocks::-webkit-scrollbar{width:6px}
 .blocks::-webkit-scrollbar-thumb{background:var(--qd-scrollbar);border-radius:3px}
 
-/* 贴在输入窗口**上方** → 面板贴着窗口底边，内容从底部生长。
-   不能用 justify-content:flex-end —— 内容溢出时它会让 scrollHeight 失真，
-   滚动就坏了。用 auto margin 吸收多余空间，溢出时自然归零。 */
+/* Above the input window: the panel sticks to the bottom edge and grows upward.
+   Do not use justify-content:flex-end here: it distorts scrollHeight once the
+   content overflows. The auto margin absorbs slack and collapses when full. */
 body.above .blocks{margin-top:auto;margin-bottom:0}
 
-/* 一行 = 小图标 + 文本 + 时间；无边框、无圆角、无阴影 */
+/* One row = icon + text + time; no border, radius or shadow. */
 .drow{flex:0 0 auto;pointer-events:auto}
 .drow:hover{background:var(--qd-fill-soft)}
 .drow .think{margin:0;border:0;border-radius:0;background:transparent}
 .drow .think-head{padding:4px 10px}
-.drow .think-body{padding:0 10px 6px 30px}
+.drow .tb-box{padding:0 10px 6px 30px}
 .drow .say{margin:0;padding:4px 10px;border-left:0;background:transparent;border-radius:0;font-size:11.5px;color:var(--text-1);white-space:pre-wrap;word-break:break-word}
 .drow .card{margin:6px 8px}
-/* 正在执行的那一行：图标位置换成转圈，文字隐藏 */
+/* Running row: the icon slot becomes a spinner. */
 .drow .step.run .step-icon{color:transparent}
 
-/* ================= 输入窗口的「运行态」 ================= */
-/* 结构：标题条（可拖动）+ 中部当前动作 + 底部步数与停止 */
+/* ===================== Input window: run state ===================== */
+/* Structure: draggable header + current action + step counts and stop. */
 .run-head{display:flex;align-items:center;gap:7px;height:34px;padding:0 7px 0 12px;border-bottom:1px solid var(--border-1);flex:none;-webkit-app-region:drag;cursor:grab}
 .run-head:active{cursor:grabbing}
 .run-title{flex:1;min-width:0;font-size:12px;font-weight:500;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-app-region:no-drag}
 .run-elapsed{font-size:11px;color:var(--text-3);flex:none;font-variant-numeric:tabular-nums;-webkit-app-region:no-drag;margin-left:2px}
+/* Same action set as the composer bar (open / list / pin / close). */
+.run-actions{display:flex;align-items:center;gap:2px;flex:none;margin-left:4px;-webkit-app-region:no-drag}
 .run-now-wrap{flex:1 1 auto;min-height:0;display:flex;align-items:center;padding:6px 12px;overflow:hidden}
 .run-now{width:100%;font-size:11.5px;line-height:1.55;color:var(--text-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .run-foot{display:flex;align-items:center;gap:8px;height:34px;padding:0 8px 0 12px;border-top:1px solid var(--border-1);flex:none}
 .run-sub{flex:1;min-width:0;font-size:10.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 
 /* ============================================================================
-   视觉打磨（覆盖层）
+   Visual polish layer
    ---------------------------------------------------------------------------
-   只做「看起来更像 DSH 自己的一部分」这件事，不改任何尺寸契约：
-   两个窗口的宽高、面板间距、拖动区、命中区都必须保持原样。
-   所有颜色都走 --qd-* / --qd-fill-* 变量，深浅两套主题自动跟着变。
+   Makes the dock look like part of DSH without changing any size contract:
+   window sizes, panel gap, drag zones and hit regions stay as they are.
+   All colors go through --qd-* / --qd-fill-* so both themes follow.
    ========================================================================== */
 
-/* ---------- 面板：更柔的投影，玻璃感来自内高光而不是不透明背景 ---------- */
+/* ---------- Panel: softer shadow; the glass feel comes from an inner highlight ---------- */
 .panel{
   border-radius:14px;
   box-shadow:
@@ -98,25 +101,25 @@ html[data-theme="light"] .panel{
     inset 0 1px 0 rgba(255,255,255,.9);
 }
 
-/* ---------- 标题条 ---------- */
+/* ---------- Title bar ---------- */
 .bar{height:38px;padding:0 8px 0 13px;gap:5px}
 .sess-title{font-size:12.5px;font-weight:600;letter-spacing:.01em;line-height:1.2}
 .sess-title.blank{font-weight:500;letter-spacing:0}
 .sess-meta{font-size:10.5px;letter-spacing:.02em;opacity:.85}
 
-/* 状态点：空闲时是灰点，运行时带一圈光环 */
+/* Status dot: grey when idle, with a halo while active. */
 .status-dot{transition:box-shadow .18s,background .18s}
 .status-dot.running{box-shadow:0 0 0 3px rgba(77,142,255,.22)}
 .status-dot.ask{box-shadow:0 0 0 3px rgba(245,166,35,.22)}
 .status-dot.error{box-shadow:0 0 0 3px rgba(240,82,82,.22)}
 
-/* ---------- 图标按钮 ---------- */
+/* ---------- Icon buttons ---------- */
 .icon-btn{width:26px;height:26px;border-radius:7px;font-size:12.5px;transition:background .12s,color .12s,transform .12s}
 .icon-btn:hover{background:var(--qd-interactive-hover);color:var(--qd-label-primary)}
 .icon-btn:active{background:var(--qd-interactive-active);transform:scale(.94)}
 .icon-btn.on{color:var(--qd-brand-primary);background:var(--qd-fill-mid)}
 
-/* ---------- 工作区 / 会话选择器 ---------- */
+/* ---------- Workspace chip ---------- */
 .picker{padding:4px 8px;border-radius:8px}
 .picker:hover{background:var(--qd-interactive-hover)}
 .picker.open{background:var(--qd-interactive-active)}
@@ -128,19 +131,19 @@ html[data-theme="light"] .panel{
 .picker:hover .pk-caret{opacity:.75}
 .new-btn{border-radius:8px}
 
-/* ---------- 输入框容器 ---------- */
+/* ---------- Composer ---------- */
 .composer{border-radius:12px;transition:border-color .16s,background .16s,box-shadow .16s}
 .composer:focus-within{box-shadow:0 0 0 3px rgba(77,142,255,.1)}
 .composer textarea{font-size:12.5px;line-height:1.55}
 
-/* ---------- 功能键 ---------- */
+/* ---------- Function keys ---------- */
 .fkey{gap:4px;padding:4px 8px;border-radius:7px}
 .fkey:hover{background:var(--qd-interactive-hover);color:var(--qd-label-primary)}
 .fkey:active{background:var(--qd-interactive-active)}
 .fk-icon{font-size:10.5px;opacity:.6}
 .fk-caret{font-size:8px;opacity:.4}
 
-/* ---------- 发送键 ---------- */
+/* ---------- Send button ---------- */
 .send-btn{
   width:30px;height:30px;font-size:14px;
   box-shadow:0 4px 12px -3px rgba(77,142,255,.55);
@@ -150,7 +153,7 @@ html[data-theme="light"] .panel{
 .send-btn:active:not(:disabled){transform:translateY(1px) scale(.97)}
 .send-btn:disabled{background:var(--qd-fill-mid);color:var(--qd-label-tertiary);box-shadow:none}
 
-/* ---------- 下拉菜单 ---------- */
+/* ---------- Dropdown menu ---------- */
 .menu{
   border-radius:12px;padding:6px;
   -webkit-backdrop-filter:blur(18px) saturate(140%);
@@ -168,7 +171,36 @@ html[data-theme="light"] .menu{box-shadow:0 22px 44px -14px rgba(20,26,40,.3), i
 .mi-check{color:var(--qd-brand-primary);font-size:12px}
 .menu-sep{margin:5px 6px;opacity:.8}
 
-/* ---------- 展示窗口：每一行都像 DSH 里的一条流式记录 ---------- */
+/* Long lists: title and search stay fixed, only the list scrolls. */
+.menu.open{display:flex;flex-direction:column;overflow:hidden}
+.menu-search{
+  flex:none;width:100%;margin:1px 0 5px;padding:5px 8px;
+  border-radius:6px;border:1px solid var(--border-1);background:var(--qd-fill-subtle);
+  color:var(--qd-label-primary);font-size:11.5px;line-height:1.4;
+}
+.menu-search::placeholder{color:var(--qd-label-tertiary)}
+.menu-search:focus{outline:0;border-color:rgba(77,142,255,.55);background:var(--qd-bg-layer-1)}
+.menu-list{
+  flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--qd-scrollbar) transparent;
+}
+.menu-list::-webkit-scrollbar{width:8px}
+.menu-list::-webkit-scrollbar-thumb{
+  border-radius:8px;border:2px solid transparent;background-clip:padding-box;background:var(--qd-scrollbar);
+}
+.menu-group{
+  font-size:9.5px;color:var(--qd-label-tertiary);letter-spacing:.06em;
+  padding:6px 8px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.menu-item.active{background:var(--qd-interactive-hover)}
+.menu-item.sel.active{background:rgba(77,142,255,.2)}
+.menu-empty{padding:10px 9px;font-size:11px;color:var(--qd-label-tertiary)}
+
+/* Menu overflow: the window grows upward while the panel keeps its height. */
+body.menu-expanded{display:flex;flex-direction:column;justify-content:flex-end}
+body.menu-expanded .stack{flex:0 0 auto}
+
+/* ---------- Run window rows ---------- */
 .blocks{padding:2px 0}
 .drow{animation:qdRowIn .16s ease-out}
 @keyframes qdRowIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
@@ -177,17 +209,29 @@ html[data-theme="light"] .menu{box-shadow:0 22px 44px -14px rgba(20,26,40,.3), i
 .drow .step.run{margin:2px 8px;box-shadow:inset 2px 0 0 var(--qd-brand-primary)}
 .drow .step.done .step-icon{color:var(--qd-state-success)}
 .drow .step.fail .step-icon{color:var(--qd-state-error)}
-.drow .step-label{font-size:12px}
-.drow .step-json{opacity:.6}
+.drow .step-label{font-size:12px;flex-shrink:3}
+.drow .step-sub{opacity:.6;flex-shrink:1}
+/* Tool metadata: read -> line range; edit -> green +N / red -M. */
+.step-lines,.step-diff{
+  flex:none;margin-left:6px;
+  font-family:var(--qd-font-code);font-size:10px;line-height:1.3;
+  white-space:nowrap;font-variant-numeric:tabular-nums;
+}
+.step-lines{color:var(--text-3);opacity:.85}
+.step-diff{display:inline-flex;gap:5px}
+.step-diff .add{color:var(--green)}
+.step-diff .del{color:var(--red)}
+/* The timestamp absorbs the free space so metadata hugs the file name. */
+.step-time{margin-left:auto}
 .drow .say{font-size:12.5px;line-height:1.62;margin:2px 12px 4px}
 .drow .think{border-radius:9px;margin:3px 10px}
 .drow .card{border-radius:10px;margin:6px 10px;box-shadow:0 6px 18px -8px rgba(0,0,0,.45)}
 
-/* 审批 / 提问卡片按钮 */
+/* Approval / question card buttons */
 .card-btn{border-radius:7px;transition:background .13s,transform .12s}
 .card-btn:active{transform:translateY(1px)}
 
-/* ---------- 运行态面板 ---------- */
+/* ---------- Run panel ---------- */
 .run-head{height:38px}
 .run-title{font-size:12.5px;font-weight:600;letter-spacing:.01em}
 .run-elapsed{font-size:11px;letter-spacing:.04em;opacity:.8}
@@ -195,17 +239,17 @@ html[data-theme="light"] .menu{box-shadow:0 22px 44px -14px rgba(20,26,40,.3), i
 .stop-btn{border-radius:8px;transition:background .13s,transform .12s}
 .stop-btn:active{transform:translateY(1px)}
 
-/* ---------- 滚动条 ---------- */
+/* ---------- Scrollbars ---------- */
 .blocks::-webkit-scrollbar,.steps::-webkit-scrollbar,.menu::-webkit-scrollbar{width:8px}
 .blocks::-webkit-scrollbar-thumb,.steps::-webkit-scrollbar-thumb,.menu::-webkit-scrollbar-thumb{border-radius:8px;border:2px solid transparent;background-clip:padding-box}
 
-/* ---------- 提示条 ---------- */
+/* ---------- Toast ---------- */
 .toast{border-radius:9px;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 14px 34px -10px rgba(0,0,0,.6)}
 
 
 
 
-/* ---------- 流式输出（逐字） ---------- */
+/* ---------- Live stream ---------- */
 .drow .live{
   margin:5px 10px 7px;
   padding:8px 11px;
@@ -219,7 +263,14 @@ html[data-theme="light"] .menu{box-shadow:0 22px 44px -14px rgba(20,26,40,.3), i
   color:#b79ae8;
   white-space:pre-wrap;overflow-wrap:anywhere;
   margin-bottom:5px;
+  /* Never slice the text: cap the height and scroll instead, JS keeps it pinned. */
+  max-height:150px;
+  overflow-y:auto;
+  scrollbar-width:thin;
+  scrollbar-color:var(--qd-scrollbar) transparent;
 }
+.drow .live-think::-webkit-scrollbar{width:6px}
+.drow .live-think::-webkit-scrollbar-thumb{background:var(--qd-scrollbar);border-radius:3px}
 html[data-theme="light"] .drow .live-think{color:#7b52c9}
 .drow .live-tools{
   font-family:var(--qd-font-code);font-size:11px;line-height:1.5;
@@ -230,12 +281,18 @@ html[data-theme="light"] .drow .live-think{color:#7b52c9}
   font-size:12.5px;line-height:1.62;
   color:var(--text-1);
   white-space:pre-wrap;overflow-wrap:anywhere;
+  max-height:190px;
+  overflow-y:auto;
+  scrollbar-width:thin;
+  scrollbar-color:var(--qd-scrollbar) transparent;
 }
+.drow .live-say::-webkit-scrollbar{width:6px}
+.drow .live-say::-webkit-scrollbar-thumb{background:var(--qd-scrollbar);border-radius:3px}
 .drow .live.idle::before{
-  content:'正在思考…';
+  content:attr(data-idle);
   font-size:11.5px;color:var(--text-3);
 }
-/* 光标：只画在最后一行内容上 */
+/* Caret: only on the last content line. */
 .drow .live[data-tail="say"] .live-say::after,
 .drow .live[data-tail="think"] .live-think::after,
 .drow .live[data-tail="tools"] .live-tools::after{
@@ -250,7 +307,7 @@ html[data-theme="light"] .drow .live-think{color:#7b52c9}
 }
 @keyframes qdBlink{0%,49%{opacity:1}50%,100%{opacity:0}}
 
-/* 运行态面板里的流式摘录 */
+/* Live excerpt inside the run panel */
 .run-now.streaming{
   color:var(--text-1);
 }
@@ -269,12 +326,12 @@ html[data-theme="light"] .drow .live-think{color:#7b52c9}
 }
 
 
-/* 运行态面板：思考阶段的文字用紫色区分 */
+/* Run panel: thinking text is purple. */
 .run-now.thinking{color:#b79ae8}
 html[data-theme="light"] .run-now.thinking{color:#7b52c9}
 
 
-/* ---------- 标题行里的工作区标签（只读上下文，不再独占一行） ---------- */
+/* ---------- Read-only workspace chip in the title bar ---------- */
 .ws-chip{
   display:inline-flex;align-items:center;gap:4px;
   min-width:0;max-width:38%;
@@ -292,18 +349,18 @@ html[data-theme="light"] .run-now.thinking{color:#7b52c9}
 }
 html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
 
-/* 新建对话现在是标题行里的图标按钮 */
+/* New conversation is an icon button in the title bar. */
 #newBtn{font-size:15px;font-weight:400;line-height:1;padding-bottom:1px}
 #newBtn:hover{color:var(--qd-brand-primary)}
 
 
-/* ---------- 运行态面板：详情区（动作 + 流式正文） ---------- */
+/* ---------- Run panel: detail area (action + live text) ---------- */
 .run-body{
   flex:1 1 auto;
   min-height:0;
   display:flex;
   flex-direction:column;
-  justify-content:flex-end;   /* 内容从底部往上贴：最新的一行永远最靠近统计栏 */
+  justify-content:flex-end;   /* Content sticks to the bottom: the newest line stays near the status bar. */
   gap:4px;
   padding:6px 12px 8px;
   overflow:hidden;
@@ -333,19 +390,76 @@ html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
 }
 .run-body .run-now::-webkit-scrollbar{display:none}
 
+/* ---------- In-place approval block ---------- */
+.run-approval{
+  flex:none;
+  margin:0 10px 7px;
+  padding:7px 9px 8px;
+  border:1px solid rgba(245,166,35,.42);
+  border-radius:9px;
+  background:rgba(245,166,35,.07);
+}
+.run-approval[hidden]{display:none}
+.ra-head{
+  display:flex;align-items:baseline;gap:5px;
+  font-size:11px;font-weight:500;color:var(--yellow);
+}
+.ra-icon{font-size:10px}
+.ra-tool{
+  margin-left:auto;
+  font-family:var(--qd-font-code);
+  font-size:9.5px;
+  color:var(--text-3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:45%;
+}
+.ra-reason{
+  margin-top:4px;
+  font-size:11px;line-height:1.5;
+  color:var(--text-1);
+  white-space:pre-wrap;overflow-wrap:anywhere;
+  max-height:3.2em;overflow:auto;
+  scrollbar-width:thin;
+}
+.ra-actions{display:flex;gap:6px;margin-top:7px}
+.ra-actions .card-btn{
+  flex:1;min-height:24px;padding:2px 8px;font-size:11px;border-radius:6px;
+}
 
-/* ---------- 工具行：可展开（运行中展开，完成后折叠） ---------- */
+
+/* ---------- Tool rows: expanded while running, collapsed when done ---------- */
 .drow .step.expandable{cursor:pointer}
 .drow .step-chev{
   flex:none;width:12px;text-align:center;
   font-size:9px;line-height:1;
   color:var(--text-3);opacity:.65;
-  transition:color .12s,opacity .12s;
+  transition:color .12s,opacity .12s,transform .2s cubic-bezier(.22,.7,.35,1);
 }
 .drow .step.expandable:hover .step-chev{opacity:1;color:var(--text-2)}
-.drow .step.open .step-chev{color:var(--brand);opacity:1}
+.drow .step.open .step-chev{color:var(--brand);opacity:1;transform:rotate(90deg)}
 
+/* The detail body is a grid row animating 0fr -> 1fr: it expands to the
+   content's natural height (and follows detail loaded after the click) without
+   measuring it in JS. Visibility is delayed on close so the animation shows. */
 .drow .step-detail{
+  display:grid;
+  grid-template-rows:0fr;
+  opacity:0;
+  visibility:hidden;
+  transition:grid-template-rows .26s cubic-bezier(.22,.7,.35,1),
+             opacity .18s ease,
+             visibility 0s linear .26s;
+}
+.drow .step-detail.open{
+  grid-template-rows:1fr;
+  opacity:1;
+  visibility:visible;
+  transition:grid-template-rows .26s cubic-bezier(.22,.7,.35,1),
+             opacity .18s ease .04s,
+             visibility 0s linear 0s;
+}
+.drow .sd-clip{min-height:0;overflow:hidden}
+.drow .sd-box{
   margin:1px 8px 5px 26px;
   padding:7px 9px;
   border:1px solid var(--qd-border-l1);
@@ -355,13 +469,33 @@ html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
   overflow:auto;
   scrollbar-width:thin;
 }
-.drow .step-detail[hidden]{display:none}
-.drow .step-detail.empty{color:var(--text-3);font-size:11px;background:transparent;border-style:dashed}
+.drow .sd-box.empty{color:var(--text-3);font-size:11px;background:transparent;border-style:dashed}
 
 .drow .sd-args{
   margin:0;
   font-family:var(--qd-font-code);font-size:10.5px;line-height:1.5;
   color:var(--text-2);
+}
+.drow .sd-arg{display:flex;flex-direction:column;gap:1px;padding:2px 0}
+.drow .sd-arg + .sd-arg{border-top:1px solid var(--qd-separator)}
+.drow .sd-arg.inline{flex-direction:row;align-items:baseline;gap:7px}
+.drow .sd-key{
+  flex:none;min-width:0;
+  font-size:9.5px;letter-spacing:.04em;
+  color:var(--text-3);
+  overflow-wrap:anywhere;
+}
+.drow .sd-arg.inline .sd-key{min-width:52px;max-width:104px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drow .sd-val{
+  min-width:0;color:var(--text-2);
+  white-space:pre-wrap;overflow-wrap:anywhere;
+}
+.drow .sd-val{max-height:120px;overflow:auto;scrollbar-width:thin}
+.drow .sd-arg.inline .sd-val{flex:1;white-space:pre;overflow:hidden;text-overflow:ellipsis;max-height:none}
+.drow .sd-pre{
+  margin:0;
+  font-family:var(--qd-font-code);font-size:10.5px;line-height:1.5;
+  color:var(--text-3);
   white-space:pre-wrap;word-break:break-word;
 }
 .drow .sd-result{
@@ -382,12 +516,12 @@ html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
 }
 
 
-/* 执行过程窗口的显示/隐藏按钮：藏起来时变暗 */
+/* Run-window toggle: dimmed while the window is hidden. */
 .icon-btn.off{opacity:.4}
 .icon-btn.off:hover{opacity:.75}
 
 
-/* ---------- 正文 Markdown ---------- */
+/* ---------- Markdown body ---------- */
 .drow .say.md{overflow-wrap:anywhere}
 .drow .md-p{margin:0 0 .5em}
 .drow .md-p:last-child{margin-bottom:0}
@@ -456,40 +590,12 @@ h4.md-h,h5.md-h,h6.md-h{font-size:12.5px}
 .drow .md del{opacity:.6}
 
 
-/* ---------- 展示窗口的工具条 ---------- */
-.display-head{
-  position:sticky;
-  top:0;
-  z-index:2;
-  display:flex;
-  align-items:center;
-  gap:4px;
-  flex:none;
-  height:30px;
-  padding:0 6px 0 11px;
-  margin:-1px -1px 0;
-  background:var(--bg-1);
-  border-bottom:1px solid var(--border-1);
-  border-radius:9px 9px 0 0;
-  -webkit-app-region:drag;
-  cursor:grab;
-}
-.display-head:active{cursor:grabbing}
-.dh-title{
-  font-size:11.5px;
-  font-weight:500;
-  color:var(--text-2);
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  -webkit-app-region:no-drag;
-}
-.display-head .icon-btn{width:22px;height:22px;font-size:11.5px}
-.drows{display:flex;flex-direction:column;flex:0 0 auto;width:100%}
+/* ---------- Run window: content only, no title bar or buttons ---------- */
+.drows{display:flex;flex-direction:column;flex:0 0 auto;width:100%;padding:4px 0 2px}
 .drows:empty{display:none}
 
 
-/* 标题行塞了 5 个按钮：收紧一点，给标题和“更省地方” (480 宽下更明显) */
+/* Five buttons in the title bar: tighten spacing to leave room for the title. */
 .bar{gap:3px}
 .bar .icon-btn{width:24px;height:24px}
 .ws-chip{max-width:34%}

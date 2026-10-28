@@ -1,33 +1,37 @@
-# 依赖
+# Dependencies
 node_modules/
+# Local npm cache (used when the default cache directory is not writable)
+.npm-cache/
 
-# Electron 由 scripts/ensure-electron.mjs 下载到
-# %LOCALAPPDATA%\dsh-quickdock\electron\，不进仓库
+# Electron downloaded by scripts/ensure-electron.mjs into
+# %LOCALAPPDATA%/dsh-quickdock/electron; never committed.
 electron/
 
-# 运行时产物
+# Runtime artifacts
 *.log
 dock.log
 host.log
 diag.json
 window.json
 
-# Electron 遗留文件
+# Electron leftovers
 default_app*.asar
-locale/
 
-# Windows 保留名，无法删除也无法提交
+# Windows reserved name: neither deletable nor committable
 nul
 
-# 编辑器 / 系统
+# Editors / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-# 本地调试用的 Electron 解压目录（scripts/dev-harness.mjs 冒烟用）
+# Local Electron extraction used by the dev harness
 .electron-test/
 
-# 调试期临时产物
+# Temporary debug output
 scripts/_*
 .playwright-mcp/
+# One-off local verification scripts and screenshots (the Chrome profile may be
+# locked by the OS, so it is not cleaned up)
+tmp/

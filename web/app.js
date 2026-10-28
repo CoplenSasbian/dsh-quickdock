@@ -1,102 +1,121 @@
-/* QuickDock 页面逻辑。原生 JS、无依赖、无外部请求。
- * 一份脚本服务两个窗口：window.__QD_VIEW__ 为 'display' 时走展示窗口分支。
- * 通信：同源 /quickdock/api/*，Bearer token（URL ?t= 注入，sessionStorage 记忆）。
- * 事件：SSE state 全量 / theme 令牌。
- * 窗口：window.quickDock（Electron preload，可选）—— setInteractive / setHitRegions /
- *       setDragZones / setAlwaysOnTop / setDisplayEmpty / hide / getState。
- *       窗口位置完全由用户拖拽决定（拖动区见 DRAG_SELECTOR）。
+/* QuickDock page bootstrap.
+ *
+ * One script serves both windows: window.__QD_VIEW__ selects the input window
+ * (composer, function keys, run panel) or the display window (step list).
+ *
+ * Transport: same-origin /quickdock/api/* with a Bearer token (from ?t=,
+ * remembered per session), SSE for state / theme / locale payloads, and the
+ * optional window.quickDock preload bridge for click-through and window control.
  */
 (function () {
   'use strict';
 
-  /* ================= token ================= */
+  var U = window.QD.util;
+  var i18n = window.QD.i18n;
+  var t = i18n.t;
+
+  /* ------------------------------- transport ------------------------------- */
+
   var params = new URLSearchParams(location.search);
   var TOKEN = params.get('t') || sessionStorage.getItem('qd-token') || '';
   if (TOKEN) sessionStorage.setItem('qd-token', TOKEN);
 
+  /** Call one API endpoint; the Host puts the reason in the body on failure. */
   function api(path, body) {
     return fetch('/quickdock/api/' + path, {
       method: body === undefined ? 'GET' : 'POST',
       headers: body === undefined ? { Authorization: 'Bearer ' + TOKEN }
         : { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body)
-    }).then(function (r) {
-      // 宿主把失败原因放在 body 里（{ok:false,error}）。先把 body 读出来，
-      // 这样 toast 能显示「为什么」而不是只有一句 "400"。
-      return r.json().catch(function () { return null; }).then(function (data) {
+    }).then(function (response) {
+      return response.json().catch(function () { return null; }).then(function (data) {
         if (data && data.ok === false && data.error) throw new Error(String(data.error));
-        if (!r.ok) throw new Error((data && data.error) ? String(data.error) : ('请求失败 HTTP ' + r.status));
+        if (!response.ok) {
+          throw new Error(data && data.error ? String(data.error) : t('error.http', { status: response.status }));
+        }
         return data;
       });
     });
   }
 
-  /* ================= dom ================= */
-  function $(id) { return document.getElementById(id); }
+  /* ---------------------------------- dom ---------------------------------- */
 
-  // 两个视图共用同一个脚本：
-  //  - 'input'  输入窗口：工作区/会话选择 + 输入框 + 功能键
-  //  - 'display' 展示窗口：执行过程的块（思考/工具调用/回复…），块间透明
   var VIEW = window.__QD_VIEW__ === 'display' ? 'display' : 'input';
   var isDisplay = VIEW === 'display';
+  // The <title> is static markup; the localized variant comes from the catalog.
+  var titleKey = isDisplay ? 'app.displayTitle' : 'app.inputTitle';
+  var localizedTitle = t(titleKey);
+  document.title = localizedTitle === titleKey ? 'QuickDock' : localizedTitle;
 
   var els = {
-    panelA: $('panelA'),
-    wsName: $('wsName'), sessTitle: $('sessTitle'), sessMeta: $('sessMeta'),
-    composer: $('composer'), sendBtn: $('sendBtn'), newBtn: $('newBtn'),
-    permText: $('permText'), modelText: $('modelText'), thinkText: $('thinkText'), agentText: $('agentText'),
-    agentBtn: $('agentBtn'), statusDot: $('statusDot'),
-    menu: $('menu'), toast: $('toast'),
-    confirm: $('confirm'), confirmOk: $('confirmOk'), confirmCancel: $('confirmCancel'),
-    pinBtnA: $('pinBtnA'), hideBtnA: $('hideBtnA'), listBtn: $('listBtn'), openBtn: $('openBtn'),
-    // 展示窗口专属：工具条 + 行容器
-    dhOpen: $('dhOpen'), dhPin: $('dhPin'), dhHide: $('dhHide'), dhDot: $('dhDot'), dhTitle: $('dhTitle'),
-    drows: $('drows'),
-    // 输入窗口的「运行态」面板（Agent 在跑时替换掉输入面板）
-    runPanel: $('runPanel'), runDot: $('runDot'), runTitle: $('runTitle'),
-    runElapsed: $('runElapsed'), runAction: $('runAction'), runNow: $('runNow'), runSub: $('runSub'),
-    stopBtnRun: $('stopBtnRun'), hideBtnR: $('hideBtnR'),
-    // 展示窗口的面板容器
-    blocks: $('blocks')
+    panelA: U.$('panelA'),
+    wsName: U.$('wsName'), sessTitle: U.$('sessTitle'), sessMeta: U.$('sessMeta'),
+    composer: U.$('composer'), sendBtn: U.$('sendBtn'), newBtn: U.$('newBtn'),
+    permText: U.$('permText'), modelText: U.$('modelText'), thinkText: U.$('thinkText'),
+    agentText: U.$('agentText'), agentBtn: U.$('agentBtn'), statusDot: U.$('statusDot'),
+    menu: U.$('menu'), toast: U.$('toast'),
+    confirm: U.$('confirm'), confirmOk: U.$('confirmOk'), confirmCancel: U.$('confirmCancel'),
+    pinBtnA: U.$('pinBtnA'), hideBtnA: U.$('hideBtnA'), listBtn: U.$('listBtn'), openBtn: U.$('openBtn'),
+    drows: U.$('drows'),
+    runPanel: U.$('runPanel'), runDot: U.$('runDot'), runTitle: U.$('runTitle'),
+    runElapsed: U.$('runElapsed'), runAction: U.$('runAction'), runNow: U.$('runNow'), runSub: U.$('runSub'),
+    stopBtnRun: U.$('stopBtnRun'), hideBtnR: U.$('hideBtnR'),
+    openBtnR: U.$('openBtnR'), listBtnR: U.$('listBtnR'), pinBtnR: U.$('pinBtnR'),
+    runApproval: U.$('runApproval'), runApprovalTool: U.$('runApprovalTool'),
+    runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny')
   };
-  // 展示窗口没有输入窗口的那套 DOM，统一置空，渲染时按需判空
   if (isDisplay) {
-    ['panelA', 'wsName', 'sessTitle', 'sessMeta', 'composer', 'sendBtn',
-      'newBtn', 'permText', 'modelText', 'thinkText', 'agentText', 'agentBtn', 'statusDot',
-      'menu', 'confirm', 'confirmOk', 'confirmCancel',
-      'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn', 'runPanel', 'runDot', 'runTitle', 'runElapsed', 'runAction', 'runNow', 'runSub',
-      'stopBtnRun', 'hideBtnR'
-    ].forEach(function (k) { els[k] = null; });
+    // The display window only has the row container and the toast.
+    ['panelA', 'wsName', 'sessTitle', 'sessMeta', 'composer', 'sendBtn', 'newBtn',
+      'permText', 'modelText', 'thinkText', 'agentText', 'agentBtn', 'statusDot', 'menu',
+      'confirm', 'confirmOk', 'confirmCancel', 'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn',
+      'runPanel', 'runDot', 'runTitle', 'runElapsed', 'runAction', 'runNow', 'runSub',
+      'stopBtnRun', 'hideBtnR', 'openBtnR', 'listBtnR', 'pinBtnR', 'runApproval',
+      'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny'].forEach(function (key) {
+      els[key] = null;
+    });
   } else {
-    // 输入窗口没有展示窗口的工具条
-    ['dhOpen', 'dhPin', 'dhHide', 'dhDot', 'dhTitle', 'drows'].forEach(function (k) { els[k] = null; });
+    els.drows = null;
   }
 
+  /* --------------------------------- state --------------------------------- */
+
   var state = null;
-  var theme = null;
   var connected = false;
   var pendingFork = false;
-  var menuOwner = null;
-  var menuActions = [];
+  var displayView = null;
 
-  /* ================= theme ================= */
+  /* --------------------------------- theme --------------------------------- */
+
   var FALLBACK = {
-    dark: { '--qd-bg-base': '#1b1b1c', '--qd-bg-layer-1': '#232324', '--qd-bg-layer-2': '#2a2a2b', '--qd-bg-overlay': '#232324', '--qd-border-l1': '#333335', '--qd-border-l2': '#3d3d40', '--qd-label-primary': '#e9e9ea', '--qd-label-secondary': '#9a9a9d', '--qd-label-tertiary': '#6b6b6e', '--qd-brand-primary': '#4d8eff', '--qd-state-success': '#3ecf8e', '--qd-state-error': '#f05252', '--qd-state-warn': '#f5a623', '--qd-state-idle': '#6b6b6e' },
-    light: { '--qd-bg-base': '#ffffff', '--qd-bg-layer-1': '#f6f7f8', '--qd-bg-layer-2': '#f0f1f3', '--qd-bg-overlay': '#ffffff', '--qd-border-l1': '#e3e4e6', '--qd-border-l2': '#d0d1d4', '--qd-label-primary': '#1c1c1e', '--qd-label-secondary': '#5f6066', '--qd-label-tertiary': '#96989e', '--qd-brand-primary': '#2b6cf6', '--qd-state-success': '#17a673', '--qd-state-error': '#d93636', '--qd-state-warn': '#d98300', '--qd-state-idle': '#96989e' }
+    dark: {
+      '--qd-bg-base': '#1b1b1c', '--qd-bg-layer-1': '#232324', '--qd-bg-layer-2': '#2a2a2b',
+      '--qd-bg-overlay': '#232324', '--qd-border-l1': '#333335', '--qd-border-l2': '#3d3d40',
+      '--qd-label-primary': '#e9e9ea', '--qd-label-secondary': '#9a9a9d', '--qd-label-tertiary': '#6b6b6e',
+      '--qd-brand-primary': '#4d8eff', '--qd-state-success': '#3ecf8e', '--qd-state-error': '#f05252',
+      '--qd-state-warn': '#f5a623', '--qd-state-idle': '#6b6b6e'
+    },
+    light: {
+      '--qd-bg-base': '#ffffff', '--qd-bg-layer-1': '#f6f7f8', '--qd-bg-layer-2': '#f0f1f3',
+      '--qd-bg-overlay': '#ffffff', '--qd-border-l1': '#e3e4e6', '--qd-border-l2': '#d0d1d4',
+      '--qd-label-primary': '#1c1c1e', '--qd-label-secondary': '#5f6066', '--qd-label-tertiary': '#96989e',
+      '--qd-brand-primary': '#2b6cf6', '--qd-state-success': '#17a673', '--qd-state-error': '#d93636',
+      '--qd-state-warn': '#d98300', '--qd-state-idle': '#96989e'
+    }
   };
 
   function applyTheme(payload) {
     if (!payload) return;
-    theme = payload;
     var scheme = payload.colorScheme === 'light' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', scheme);
     var root = document.documentElement.style;
-    var tokens = payload.tokens && Object.keys(payload.tokens).length ? payload.tokens : {};
-    var fallback = FALLBACK[scheme];
-    // 缺值宁可整体回落，也不要半套色（DESIGN 7.7）
-    var missing = ['--qd-bg-base', '--qd-label-primary'].some(function (n) { return !tokens[n]; });
-    var source = missing ? fallback : tokens;
-    Object.keys(source).forEach(function (k) { root.setProperty(k, source[k]); });
+    var tokens = payload.tokens || {};
+    // A partial theme would look broken: fall back to the built-in palette.
+    var incomplete = !tokens['--qd-bg-base'] || !tokens['--qd-label-primary'];
+    var source = incomplete ? FALLBACK[scheme] : tokens;
+    Object.keys(source).forEach(function (key) {
+      root.setProperty(key, source[key]);
+    });
     if (payload.fonts) {
       if (payload.fonts.text) root.setProperty('--qd-font-text', payload.fonts.text);
       if (payload.fonts.code) root.setProperty('--qd-font-code', payload.fonts.code);
@@ -105,53 +124,81 @@
     }
   }
 
-  /* ================= helpers ================= */
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-  function relTime(ts) {
-    if (!ts) return '';
-    var d = Date.now() - ts;
-    if (d < 60e3) return '刚刚';
-    if (d < 3600e3) return Math.floor(d / 60e3) + ' 分钟前';
-    if (d < 86400e3) return Math.floor(d / 3600e3) + ' 小时前';
-    return Math.floor(d / 86400e3) + ' 天前';
-  }
-  function toast(msg) {
-    // 展示窗口没有 toast 元素（els.toast 为 null）——静默降级为 console
-    if (!els.toast) { console.log('[QuickDock] ' + msg); return; }
-    els.toast.textContent = msg;
+  /* --------------------------------- toast --------------------------------- */
+
+  function toast(message) {
+    if (!els.toast) {
+      console.log('[QuickDock] ' + message);
+      return;
+    }
+    els.toast.textContent = message;
     els.toast.hidden = false;
-    clearTimeout(toast._t);
-    toast._t = setTimeout(function () { els.toast.hidden = true; }, 4000);
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(function () {
+      els.toast.hidden = true;
+    }, 4000);
   }
 
-  /* ================= SSE ================= */
-  var es = null;
-  var esTimer = null;
+  function toastError(error) {
+    toast(String(error && error.message || error));
+  }
+
+  /* ---------------------------------- SSE ---------------------------------- */
+
+  var source = null;
+  var reconnectTimer = null;
+
   function connectStream() {
     if (!TOKEN) return;
-    if (es) { try { es.close(); } catch (e) {} }
-    es = new EventSource('/quickdock/api/stream?t=' + encodeURIComponent(TOKEN));
-    es.addEventListener('state', function (ev) {
-      try { applyState(JSON.parse(ev.data)); } catch (e) {}
+    if (source) {
+      try {
+        source.close();
+      } catch (error) {
+        /* ignore */
+      }
+    }
+    source = new EventSource('/quickdock/api/stream?t=' + encodeURIComponent(TOKEN));
+    source.addEventListener('state', function (event) {
+      try {
+        applyState(JSON.parse(event.data));
+      } catch (error) {
+        /* malformed frame: keep the last state */
+      }
     });
-    es.addEventListener('theme', function (ev) {
-      try { applyTheme(JSON.parse(ev.data)); } catch (e) {}
+    source.addEventListener('theme', function (event) {
+      try {
+        applyTheme(JSON.parse(event.data));
+      } catch (error) {
+        /* ignore */
+      }
     });
-    es.onerror = function () {
+    source.addEventListener('locale', function (event) {
+      try {
+        var payload = JSON.parse(event.data);
+        if (!i18n.setPayload(payload)) return;
+        if (menu && menu.isOpen()) menu.close();
+        render();
+        if (displayView) {
+          displayView.invalidate();
+          displayView.render(state);
+        }
+      } catch (error) {
+        /* ignore */
+      }
+    });
+    source.onerror = function () {
       connected = false;
       markOffline();
-      if (esTimer) return;
-      esTimer = setTimeout(function () { esTimer = null; connectStream(); }, 2000);
+      if (reconnectTimer) return;
+      reconnectTimer = setTimeout(function () {
+        reconnectTimer = null;
+        connectStream();
+      }, 2000);
     };
-    es.onopen = function () {
-      if (!connected) {
-        connected = true;
-        api('state').then(applyState).catch(function () {});
-      }
+    source.onopen = function () {
+      if (connected) return;
+      connected = true;
+      api('state').then(applyState).catch(function () {});
     };
   }
 
@@ -159,235 +206,20 @@
     document.body.classList.add('offline');
   }
 
-  /* ================= state render ================= */
-  function currentWorkspace() {
-    if (!state) return null;
-    return state.workspaces.find(function (w) { return w.id === state.workspaceId; }) || null;
-  }
   function applyState(next) {
-    var first = !state;
+    if (!next) return;
     state = next;
     connected = true;
     document.body.classList.remove('offline');
-    render(first);
+    render();
   }
 
-  function render(first) {
-    if (isDisplay) { renderDisplay(); return; }
-    var ws = currentWorkspace();
+  /* ------------------------------ list visibility ------------------------------ */
 
-    // 顶栏：只读展示（会话由 DSH 侧点 Dock 决定，这里不提供切换）
-    els.wsName.textContent = ws ? ws.name : '未绑定工作区';
-    els.sessTitle.textContent = state.session ? state.session.title : '新对话';
-    els.sessTitle.classList.toggle('blank', !state.session);
-    els.sessMeta.textContent = state.session ? relTime(state.session.updatedAt || 0) : '';
-
-    // 功能键
-    var perms = state.catalogs.permissions || [];
-    var perm = perms.find(function (p) { return p.value === state.settings.permission; });
-    els.permText.textContent = perm ? perm.name : (state.settings.permission || '权限');
-    var models = state.catalogs.models || [];
-    var model = models.find(function (m) { return m.id === state.settings.model; });
-    els.modelText.textContent = model ? model.name : (state.settings.model ? state.settings.model.split('/')[1] : '模型');
-    els.thinkText.textContent = state.settings.reasoning ? reasoningLabel(state.settings.reasoning) : '思考';
-    els.agentBtn.classList.toggle('hidden', !state.newSession);
-    if (!els.agentBtn.classList.contains('hidden')) {
-      var agents = state.catalogs.agents || [];
-      var ag = agents.find(function (a) { return a.id === state.settings.agentPreset; });
-      els.agentText.textContent = ag ? ag.name : (state.settings.agentPreset || 'Agent');
-    }
-
-    // 输入窗口只负责输入；执行过程交给独立的展示窗口。
-    // 状态点放在标题条上，让人一眼看出 Agent 在跑/完成/失败。
-    var status = state.status;
-    if (els.statusDot) {
-      els.statusDot.className = 'status-dot ' + ({
-        running: 'running', done: 'done', error: 'error', ask: 'ask', idle: '', offline: 'offline'
-      }[status] || '');
-      els.statusDot.title = ({
-        running: '正在执行', done: '已完成', error: '失败', ask: '等待确认', idle: '空闲', offline: '离线'
-      }[status] || '空闲');
-    }
-
-    // 输入态 / 运行态 二选一：
-    // Agent 干活的时候输入框、工作区、会话、模型、权限这些都没用，
-    // 全部收起，换成「在跑什么 + 跑了多久 + 停止」。
-    applyRunMode(status);
-
-    updatePin();
-  }
-
-  /** 是否处于「Agent 正在忙」的状态（此时输入框没有意义）。 */
-  function isBusy(status) {
-    return status === 'running' || status === 'ask'
-      || Boolean(state && state.interaction && state.interaction.status === 'open');
-  }
-
-  var runStartedAt = 0;
-  var runTicker = null;
-  var runLastStatus = '';
-
-  /**
-   * 切换输入窗口的两种形态，并刷新运行态里的信息。
-   */
-  function applyRunMode(status) {
-    if (!els.runPanel) return;
-    var busy = isBusy(status);
-    els.panelA.classList.toggle('hidden', busy);
-    els.runPanel.classList.toggle('hidden', !busy);
-    // 面板换了 → 拖动区/命中区都变了，必须重报。
-    // 不重报的话运行态下没有任何拖动区，窗口就拖不动了。
-    scheduleHitReport();
-
-    if (!busy) {
-      if (runTicker) { clearInterval(runTicker); runTicker = null; }
-      runStartedAt = 0;
-      runLastStatus = status;
-      return;
-    }
-
-    // 刚进入运行态：记下起点，之后按秒刷新时长
-    if (!runStartedAt) runStartedAt = Date.now();
-    if (!runTicker) {
-      runTicker = setInterval(function () {
-        if (!state || !isBusy(state.status)) return;
-        updateRunInfo();
-      }, 1000);
-    }
-    runLastStatus = status;
-    updateRunInfo();
-  }
-
-  /** 刷新运行态面板上的时长 / 当前动作 / 步数。 */
-  function updateRunInfo() {
-    if (!els.runPanel || !state) return;
-    var status = state.status;
-    var inter = state.interaction;
-
-    if (els.runDot) {
-      els.runDot.className = 'status-dot ' + ({
-        running: 'running', ask: 'ask', done: 'done', error: 'error'
-      }[status] || '');
-    }
-    if (els.runTitle) {
-      els.runTitle.textContent = inter && inter.status === 'open'
-        ? (inter.kind === 'approval' ? '等待确认' : '等待回答')
-        : status === 'ask' ? '等待回答'
-        : status === 'running' ? '正在执行'
-        : status === 'done' ? '已完成'
-        : status === 'error' ? '执行失败'
-        : '就绪';
-    }
-    if (els.runElapsed) {
-      els.runElapsed.textContent = runStartedAt ? formatElapsed(Date.now() - runStartedAt) : '';
-    }
-
-    var stream = state.stream;
-    var steps = state.steps || [];
-
-    // ①「正在跑什么」：流里的工具调用优先，否则最近一条工具步骤。
-    //    展示窗口是列表（一行一个动作），这里是详情，所以把命令/参数也带出来。
-    var action = '';
-    if (stream && stream.tools && stream.tools.length) {
-      var tool = stream.tools[stream.tools.length - 1];
-      action = (tool.name || '工具') + '  ' + compactArgs(tool.args);
-    }
-    if (!action) {
-      for (var a = steps.length - 1; a >= 0; a--) {
-        var step = steps[a];
-        if (step && step.kind === 'tool') {
-          action = (step.tool || '工具') + '  ' + compactArgs(step.command);
-          break;
-        }
-      }
-    }
-    if (els.runAction) {
-      var shownAction = shortText(action, 150);
-      if (els.runAction.textContent !== shownAction) els.runAction.textContent = shownAction;
-      els.runAction.hidden = !shownAction;
-    }
-
-    // ②「正在输出什么」：优先逐字流（思考链 / 正文），没有流才退回最近一条记录。
-    //    长文本一律取**尾部**：人要看的是最新在写什么，而不是开头。
-    var live = stream ? (stream.text || stream.thinking || '') : '';
-    var latest = '';
-    for (var i = steps.length - 1; i >= 0; i--) {
-      var s = steps[i];
-      if (!s) continue;
-      var text = s.kind === 'think' ? (s.text || '')
-        : s.kind === 'say' ? (s.text || '')
-        : (s.description || '');
-      if (text) { latest = text; break; }
-    }
-    var body = shortText(live, 400) || shortText(latest, 400);
-    if (els.runNow) {
-      var shown = body || (status === 'running' ? '正在启动…' : '');
-      if (els.runNow.textContent !== shown) els.runNow.textContent = shown;
-      els.runNow.classList.toggle('streaming', Boolean(live));
-      // 只在"思考中"这一阶段用紫色，肉眼能分清是在想还是在说
-      els.runNow.classList.toggle('thinking', Boolean(stream && stream.thinking && !stream.text));
-      // 贴底：CSS 给了固定高度，长文本要把最新几行露出来
-      if (els.runNow.scrollHeight > els.runNow.clientHeight) els.runNow.scrollTop = els.runNow.scrollHeight;
-    }
-    if (els.runSub) {
-      var running = 0, done = 0, failed = 0;
-      steps.forEach(function (s) {
-        if (s.status === 'run') running++;
-        else if (s.status === 'fail') failed++;
-        else if (s.status === 'done') done++;
-      });
-      var bits = [];
-      if (done) bits.push('已完成 ' + done);
-      if (failed) bits.push('失败 ' + failed);
-      if (state.backgroundRunning) bits.push('后台 ' + state.backgroundRunning);
-      els.runSub.textContent = bits.join(' · ');
-    }
-  }
-
-  function formatElapsed(ms) {
-    var total = Math.max(0, Math.floor(ms / 1000));
-    var m = Math.floor(total / 60);
-    var s = total % 60;
-    if (m >= 60) {
-      var h = Math.floor(m / 60);
-      return h + ':' + String(m % 60).padStart(2, '0') + ':' + String(s).padStart(2, '0');
-    }
-    return m + ':' + String(s).padStart(2, '0');
-  }
-
-  /**
-   * 展示窗口：每条记录渲染成一个独立的块，块与块之间**完全透明**。
-   *
-   * 窗口本身是固定高度的（config.displayHeight），内容超出就在窗口内滚动；
-   * 没有内容时整个窗口隐藏（由宿主根据 state 决定）。
-   */
-  /** 按工具名推断动作类型，画出对应的小图标。 */
-  function toolIcon(tool) {
-    var t = String(tool || '').toLowerCase();
-    if (!t) return '○';
-    if (/image|screenshot|photo|vision/.test(t)) return '▦';
-    if (/write|create|save|append|mkdir|touch|delete|remove|move|rename/.test(t)) return '✎';
-    if (/edit|replace|patch|update|insert|modify/.test(t)) return '✐';
-    if (/read|cat|view|open|load|show/.test(t)) return '▤';
-    if (/grep|search|find|query|glob|match/.test(t)) return '⌕';
-    if (/list|ls|dir|tree|walk/.test(t)) return '☰';
-    if (/command|shell|bash|exec|terminal|run|spawn/.test(t)) return '›';
-    if (/web|http|fetch|browser|url/.test(t)) return '⊕';
-    if (/todo|plan|task|check/.test(t)) return '☑';
-    if (/agent|subagent|delegate|spawn_agent/.test(t)) return '◎';
-    return '⚙';
-  }
-
-  /** 上一次渲染的结构签名（步骤/交互卡/是否有流）。相同时不重建 DOM。 */
-  var displaySig = null;
-  /* ---------- 执行过程窗口的显示/隐藏（两个窗口共享） ---------- */
-  // 用 localStorage 而不是内存变量：输入窗口和展示窗口是两个独立的渲染进程，
-  // 只有存储事件能可靠地把"用户把它藏起来了"这件事传过去。
+  // Two independent renderer processes share this through storage events only.
   var LIST_KEY = 'qd-list-hidden';
+  var LIST_TTL = 2 * 60 * 60 * 1000; // hiding is temporary: it expires
   var listHidden = readListHidden();
-
-  /** 2 小时后自动恢复显示：藏起来是个临时动作，不该永远生效把用户关在门外。 */
-  var LIST_TTL = 2 * 60 * 60 * 1000;
 
   function readListHidden() {
     try {
@@ -397,7 +229,7 @@
       if (!saved || saved.hidden !== true) return false;
       if (!Number.isFinite(saved.at) || Date.now() - saved.at > LIST_TTL) return false;
       return true;
-    } catch (e) {
+    } catch (error) {
       return false;
     }
   }
@@ -406,760 +238,487 @@
     listHidden = Boolean(value);
     try {
       localStorage.setItem(LIST_KEY, JSON.stringify({ hidden: listHidden, at: Date.now() }));
-    } catch (e) {}
+    } catch (error) {
+      /* storage may be unavailable */
+    }
   }
 
-  /** 同步标题栏按钮的外观（输入窗口才有这个按钮）。 */
   function syncListButton() {
-    if (!els.listBtn) return;
-    els.listBtn.classList.toggle('off', listHidden);
-    els.listBtn.setAttribute('aria-pressed', listHidden ? 'false' : 'true');
-    els.listBtn.title = listHidden ? '显示执行过程窗口' : '隐藏执行过程窗口';
+    [els.listBtn, els.listBtnR].forEach(function (button) {
+      if (!button) return;
+      button.classList.toggle('off', listHidden);
+      button.setAttribute('aria-pressed', listHidden ? 'false' : 'true');
+      button.title = listHidden ? t('list.show') : t('list.hide');
+    });
   }
 
-  // 另一个窗口改了状态 → 这边跟着走
-  window.addEventListener('storage', function (ev) {
-    if (ev.key !== LIST_KEY) return;
+  window.addEventListener('storage', function (event) {
+    if (event.key !== LIST_KEY) return;
     listHidden = readListHidden();
     syncListButton();
-    if (isDisplay) renderDisplay(); else refreshDisplayVisibility();
+    if (isDisplay) {
+      if (displayView) displayView.render(state);
+    } else {
+      refreshDisplayVisibility();
+    }
   });
 
-  /** 输入窗口用：按当前 state 重新决定展示窗口该不该出现。 */
+  /** Input window: decide whether the run window should be visible. */
   function refreshDisplayVisibility() {
     var steps = (state && state.steps) || [];
-    var inter = state && state.interaction;
-    var hasInter = Boolean(inter && inter.status === 'open');
-    applyDisplayVisibility(Boolean(steps.length || hasInter || hasLiveText(state && state.stream)));
+    var interaction = state && state.interaction;
+    var hasInter = Boolean(interaction && interaction.status === 'open');
+    var stream = state && state.stream;
+    var hasContent = Boolean(steps.length || hasInter
+      || (stream && (stream.text || stream.thinking || (stream.tools && stream.tools.length))));
+    var quickDock = window.quickDock;
+    if (!quickDock || !quickDock.setDisplayEmpty) return;
+    try {
+      // Approvals must be visible even when the user hid the list.
+      quickDock.setDisplayEmpty(hasInter ? false : (listHidden || !hasContent));
+    } catch (error) {
+      /* IPC is optional outside Electron */
+    }
   }
-  /** 行 id → 用户显式选择的展开状态（覆盖"运行中自动展开"的默认值）。 */
-  var expandedSteps = {};
-  /** 行 id → 从宿主取回的完整细节 { args, result }。 */
-  var stepDetails = {};
 
-  function renderDisplay() {
-    var host = els.drows;
-    if (!host) return;
+  /* -------------------------------- rendering -------------------------------- */
 
-    var steps = state.steps || [];
-    var inter = state.interaction;
-    var hasInter = Boolean(inter && inter.status === 'open');
-    var stream = state.stream;
-    var hasStream = hasLiveText(stream);
+  function currentWorkspace() {
+    if (!state) return null;
+    return state.workspaces.find(function (row) {
+      return row.id === state.workspaceId;
+    }) || null;
+  }
 
-    updateDisplayHead(hasInter);
+  var REASONING_IDS = ['low', 'medium', 'high', 'max'];
 
-    var hasContent = Boolean(steps.length || hasInter || hasStream);
-    // 内容为空**或用户手动藏起来** → 通知宿主隐藏展示窗口
-    applyDisplayVisibility(hasContent);
-    if (!hasContent) {
-      displaySig = null;
-      host.textContent = '';
+  function currentModel() {
+    var models = (state && state.catalogs.models) || [];
+    return models.find(function (model) {
+      return model.id === state.settings.model;
+    }) || null;
+  }
+
+  /** Localized label for a reasoning effort id. */
+  function reasoningLabel(id) {
+    if (!id) return '';
+    var model = currentModel();
+    var named = model && model.reasoningNames && model.reasoningNames[id];
+    if (named) return named;
+    var key = 'reasoning.' + id;
+    var translated = t(key);
+    return translated === key ? id : translated;
+  }
+
+  function render() {
+    if (!state) return;
+    if (isDisplay) {
+      if (displayView) displayView.render(state);
       return;
     }
+    var workspace = currentWorkspace();
 
-    // 只有「结构」变了才重建 DOM（详见 buildDisplayRows 的注释）
-    var sig = steps.map(function (s) {
-      return s.id + ':' + s.status + ':' + ((s.text || s.command || '').length);
-    }).join('|')
-      + '#' + (hasInter ? inter.id + ':' + inter.status : '')
-      + '#' + (hasStream ? 'live' : '');
+    els.wsName.textContent = workspace ? workspace.name : t('bar.noWorkspace');
+    els.sessTitle.textContent = state.session ? state.session.title : t('bar.newSessionTitle');
+    els.sessTitle.classList.toggle('blank', !state.session);
+    els.sessMeta.textContent = state.session ? U.relTime(state.session.updatedAt || 0) : '';
 
-    // 重建前先记住滚动位置：跟随中→重建后贴底；用户翻上去了→保持原位置
-    var sc0 = scrollHost();
-    var prevTop = sc0 ? sc0.scrollTop : 0;
-    var wasAuto = autoScroll;
-
-    if (sig !== displaySig) {
-      displaySig = sig;
-      host.textContent = '';
-      buildDisplayRows(host, steps, inter, hasInter);
-    }
-
-    updateLiveRow();
-    applyAutoScroll(prevTop, wasAuto);
-    scheduleHitReport();
-  }
-
-  /* ---------- 工具行展开 ---------- */
-
-  /** 折叠 / 展开一行的详情（就地切换，不重建整个列表）。 */
-  function toggleStepDetail(id, block, status) {
-    var row = block.querySelector('.step');
-    var detail = block.querySelector('.step-detail');
-    if (!row || !detail) return;
-    var open = !row.classList.contains('open');
-    expandedSteps[id] = open;
-    row.classList.toggle('open', open);
-    var chev = row.querySelector('.step-chev');
-    if (chev) chev.textContent = open ? '▾' : '▸';
-    detail.hidden = !open;
-    if (open) fillStepDetail(detail, id, status);
-    scheduleHitReport();
-  }
-
-  /**
-   * 取某一行的完整细节（首次展开时才请求）。
-   *
-   * 缓存键带 status：工具跑完时结果才落库，同一行的 done 版本和 run 版本
-   * 内容不一样，只按 id 缓存会一直显示"没有输出"。
-   */
-  function fillStepDetail(el, id, status) {
-    var key = id + '@' + (status || '');
-    var cached = stepDetails[key];
-    if (cached) { renderStepDetail(el, cached); return; }
-    if (el.dataset.loading === '1') return;
-    el.dataset.loading = '1';
-    el.textContent = '加载中…';
-    api('step-detail?id=' + encodeURIComponent(id)).then(function (detail) {
-      stepDetails[key] = detail || {};
-      delete el.dataset.loading;
-      if (!el.isConnected) return;
-      renderStepDetail(el, stepDetails[key]);
-    }).catch(function (error) {
-      delete el.dataset.loading;
-      el.textContent = '详情加载失败：' + String(error && error.message || error);
+    var permission = (state.catalogs.permissions || []).find(function (option) {
+      return option.value === state.settings.permission;
     });
-  }
+    els.permText.textContent = permission ? permission.name : (state.settings.permission || t('key.permission'));
 
-  function renderStepDetail(el, detail) {
-    var args = String(detail.args || '');
-    var result = String(detail.result || '');
-    el.textContent = '';
-    el.classList.toggle('empty', !args && !result);
-    if (!args && !result) { el.textContent = '（这一步没有更多细节）'; return; }
-    if (args) {
-      var pre = document.createElement('pre');
-      pre.className = 'sd-args';
-      pre.textContent = prettyArgs(args);
-      el.appendChild(pre);
+    var model = currentModel();
+    els.modelText.textContent = model
+      ? model.name
+      : (state.settings.model ? state.settings.model.split('/')[1] : t('key.model'));
+    els.thinkText.textContent = state.settings.reasoning ? reasoningLabel(state.settings.reasoning) : t('key.thinking');
+    els.agentBtn.classList.toggle('hidden', !state.newSession);
+    if (!els.agentBtn.classList.contains('hidden')) {
+      var preset = (state.catalogs.agents || []).find(function (agent) {
+        return agent.id === state.settings.agentPreset;
+      });
+      els.agentText.textContent = preset ? preset.name : (state.settings.agentPreset || t('key.agent'));
     }
-    if (result) {
-      var wrap = document.createElement('div');
-      wrap.className = 'sd-result';
-      var label = document.createElement('span');
-      label.className = 'sd-label';
-      label.textContent = '输出';
-      var out = document.createElement('pre');
-      out.className = 'sd-out';
-      out.textContent = result;
-      wrap.appendChild(label);
-      wrap.appendChild(out);
-      el.appendChild(wrap);
+
+    var status = state.status;
+    if (els.statusDot) {
+      els.statusDot.className = 'status-dot ' + ({
+        running: 'running', done: 'done', error: 'error', ask: 'ask', idle: '', offline: 'offline'
+      }[status] || '');
+      els.statusDot.title = statusTitle(status);
     }
+
+    // Input form vs run panel: while the agent works the form has no use.
+    applyRunMode(status);
+    updatePin();
   }
 
-  /** 参数尽量格式化成可读 JSON；流式/被截断的 JSON 原样显示。 */
-  function prettyArgs(raw) {
-    try { return JSON.stringify(JSON.parse(raw), null, 2); } catch (e) { return raw; }
+  var STATUS_KEYS = {
+    running: 'status.running', done: 'status.done', error: 'status.failed',
+    ask: 'status.ask', idle: 'status.idle', offline: 'status.offline'
+  };
+
+  function statusTitle(status) {
+    return t(STATUS_KEYS[status] || 'status.idle');
   }
 
-  /** 让宿主按「有内容 & 没被手动隐藏」决定展示窗口的可见性。 */
-  function applyDisplayVisibility(hasContent) {
-    if (!window.quickDock || !window.quickDock.setDisplayEmpty) return;
-    try { window.quickDock.setDisplayEmpty(listHidden || !hasContent); } catch (e) {}
+  /** Whether the agent is busy (the composer would be meaningless). */
+  function isBusy(status) {
+    return status === 'running' || status === 'ask'
+      || Boolean(state && state.interaction && state.interaction.status === 'open');
   }
 
-  /** 渲染 Markdown；万一 markdown.js 没加载成功就退回纯文本（绝不用原始 innerHTML）。 */
-  function mdHtml(text) {
-    if (typeof renderMarkdown === 'function') {
-      try { return renderMarkdown(text); } catch (error) { console.warn('[QuickDock] markdown failed:', error); }
+  var runStartedAt = 0;
+  var runTicker = null;
+
+  function applyRunMode(status) {
+    if (!els.runPanel) return;
+    var busy = isBusy(status);
+    els.panelA.classList.toggle('hidden', busy);
+    els.runPanel.classList.toggle('hidden', !busy);
+    // The panel decides dragging/hit regions: re-report after switching.
+    scheduleHitReport();
+    syncListButton();
+
+    if (!busy) {
+      if (runTicker) {
+        clearInterval(runTicker);
+        runTicker = null;
+      }
+      runStartedAt = 0;
+      return;
     }
-    return mdFallbackEscape(text);
+    if (!runStartedAt) runStartedAt = Date.now();
+    if (!runTicker) {
+      runTicker = setInterval(function () {
+        if (!state || !isBusy(state.status)) return;
+        updateRunInfo();
+      }, 1000);
+    }
+    updateRunInfo();
   }
 
-  function mdFallbackEscape(text) {
-    return String(text == null ? '' : text)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\n/g, '<br>');
-  }
+  /** Refresh elapsed time, current action and step counts of the run panel. */
+  function updateRunInfo() {
+    if (!els.runPanel || !state) return;
+    var status = state.status;
+    var interaction = state.interaction;
 
-  /** 展示窗口工具条：状态点 / 标题 / 顶置态。 */
-  function updateDisplayHead(hasInter) {
-    if (els.dhDot) {
-      els.dhDot.className = 'status-dot ' + ({
+    if (els.runDot) {
+      els.runDot.className = 'status-dot ' + ({
         running: 'running', ask: 'ask', done: 'done', error: 'error'
-      }[state.status] || '');
-      els.dhDot.title = ({
-        running: '正在执行', ask: '等待确认', done: '已完成', error: '失败'
-      }[state.status] || '空闲');
+      }[status] || '');
     }
-    if (els.dhTitle) {
-      els.dhTitle.textContent = hasInter
-        ? '等待确认'
-        : state.status === 'running' ? '执行中' : '执行过程';
-    }
-    if (els.dhPin) {
-      var pinned = Boolean(state.runtime && state.runtime.alwaysOnTop);
-      els.dhPin.classList.toggle('on', pinned);
-      els.dhPin.setAttribute('aria-pressed', pinned ? 'true' : 'false');
-    }
-  }
-
-  /** 有没有可显示的流式内容。 */
-  function hasLiveText(stream) {
-    if (!stream) return false;
-    return Boolean(stream.text || stream.thinking || (stream.tools && stream.tools.length));
-  }
-
-  /**
-   * 从工具参数里挑出最有用的一段：命令 / 描述 / 路径 / 查询词。
-   * 流式参数可能还没闭合，解析失败就原样返回。
-   */
-  function compactArgs(raw) {
-    var text = String(raw || '').trim();
-    if (!text) return '';
-    var parsed = null;
-    try { parsed = JSON.parse(text); } catch (e) {}
-    if (parsed && typeof parsed === 'object') {
-      var keys = ['command', 'description', 'file_path', 'path', 'query', 'pattern', 'url', 'text'];
-      for (var i = 0; i < keys.length; i++) {
-        var value = parsed[keys[i]];
-        if (typeof value === 'string' && value.trim()) return value.trim();
+    if (els.runTitle) {
+      var title = 'status.ready';
+      if (interaction && interaction.status === 'open') {
+        title = interaction.kind === 'approval' ? 'status.ask' : 'status.waitingAnswer';
+      } else if (status === 'ask') {
+        title = 'status.waitingAnswer';
+      } else if (status === 'running') {
+        title = 'status.running';
+      } else if (status === 'done') {
+        title = 'status.done';
+      } else if (status === 'error') {
+        title = 'status.failed';
       }
-      return text;
+      els.runTitle.textContent = t(title);
     }
-    return text;
-  }
-
-  /** 压成一行、只留尾部（运行态面板只有两行位置）。 */
-  function shortText(text, limit) {
-    var value = String(text || '').replace(/\s+/g, ' ').trim();
-    if (!value) return '';
-    return value.length > limit ? '…' + value.slice(-limit) : value;
-  }
-
-  /** 长文本只显示最后一截，避免整窗滚不完。 */
-  function tailText(text, limit) {
-    var value = String(text || '');
-    return value.length > limit ? '…' + value.slice(-limit) : value;
-  }
-
-  /** （重）建步骤与交互卡，末尾留一个流式块的坑位。 */
-  function buildDisplayRows(host, steps, inter, hasInter) {
-    // 只有**最后一条**处于 run 的才算是「正在执行」。
-    // 会话被中断（重启/任务被杀）时步骤会一直停在 run 状态，
-    // 全部照 run 渲染会同时出现一堆转圈，所以只让最后一条显示为进行中。
-    var lastRun = -1;
-    steps.forEach(function (s, i) { if (s && s.status === 'run') lastRun = i; });
-
-    steps.forEach(function (s, i) {
-      var block = document.createElement('div');
-      block.className = 'drow';
-      var isRunning = i === lastRun;
-      if (s.kind === 'think') {
-        block.appendChild(thinkBlock(s));
-      } else if (s.kind === 'say') {
-        // 正文按 Markdown 渲染（markdown.js 里的 renderMarkdown，先把整段转义再拼 HTML）
-        var say = document.createElement('div');
-        say.className = 'say md' + (isRunning ? ' streaming' : '');
-        say.innerHTML = mdHtml(s.text || '');
-        block.appendChild(say);
-      } else {
-        var row = document.createElement('div');
-        var state_ = isRunning ? 'run'
-          : s.status === 'fail' ? 'fail'
-          : s.status === 'done' ? 'done'
-          : 'todo';
-        row.className = 'step ' + state_;
-        var icon = document.createElement('span');
-        icon.className = 'step-icon';
-        // 图标表达**动作类型**（命令/读/写/改/搜…），不随状态变；
-        // 状态交给颜色（绿=完成、红=失败、蓝=进行中），正在跑时由 CSS 换成转圈。
-        icon.textContent = isRunning ? '' : toolIcon(s.tool);
-
-        // 前面放 description（人能读懂的摘要），后面跟原始 JSON（省略号截断）
-        var primary = String(s.description || '').trim();
-        var detail = String(s.command || '').trim();
-        if (!primary) { primary = detail; detail = ''; }
-        if (primary === detail) detail = '';
-
-        var label = document.createElement('span');
-        label.className = 'step-label';
-        label.textContent = primary || s.label || s.text || '';
-        if (primary || detail) label.title = (primary + ' ' + detail).trim();
-
-        row.appendChild(icon);
-        row.appendChild(label);
-        if (detail) {
-          var json = document.createElement('span');
-          json.className = 'step-json';
-          json.textContent = detail;
-          row.appendChild(json);
-        }
-        var time = document.createElement('span');
-        time.className = 'step-time';
-        // 注意：配置在 state.config 里（不是全局 config —— 那个变量不存在，
-        // 引用它会抛 ReferenceError 中断整个 forEach，导致内容区被清空却不填充）。
-        var showTiming = !state.config || state.config.showTiming !== false;
-        time.textContent = showTiming && s.time ? String(s.time).slice(11, 19) : '';
-        row.appendChild(time);
-
-        block.appendChild(row);
-
-        // 和思考链同一条规矩：**运行中默认展开，完成后自动折叠**，点一下可再展开。
-        // 展开的是完整参数与输出，按需向宿主取（不进 state，避免逐字流把包撑大）。
-        // 只有真正的工具调用才可展开（审批行也标成 kind:'tool'，但它没有参数）。
-        if (s.id.indexOf('tool-') === 0) {
-          row.classList.add('expandable');
-          var chev = document.createElement('span');
-          chev.className = 'step-chev';
-          row.appendChild(chev);
-
-          var detail = document.createElement('div');
-          detail.className = 'step-detail';
-          detail.hidden = true;
-          block.appendChild(detail);
-
-          var open = typeof expandedSteps[s.id] === 'boolean' ? expandedSteps[s.id] : isRunning;
-          if (open) {
-            row.classList.add('open');
-            chev.textContent = '▾';
-            detail.hidden = false;
-            fillStepDetail(detail, s.id, s.status);
-          } else {
-            chev.textContent = '▸';
-          }
-          row.addEventListener('click', function () { toggleStepDetail(s.id, block, s.status); });
-        }
-      }
-      host.appendChild(block);
-    });
-
-    if (hasInter) {
-      var card = buildInteractionCard(inter);
-      if (card) {
-        var wrap = document.createElement('div');
-        wrap.className = 'drow';
-        wrap.appendChild(card);
-        host.appendChild(wrap);
-      }
+    if (els.runElapsed) {
+      els.runElapsed.textContent = runStartedAt ? U.formatElapsed(Date.now() - runStartedAt) : '';
     }
 
-    // 流式块的坑位：内容由 updateLiveRow() 就地更新（不重建节点）
-    var live = document.createElement('div');
-    live.className = 'drow';
-    live.id = 'liveRow';
-    live.hidden = true;
-    host.appendChild(live);
-  }
-
-  /**
-   * 就地更新流式块。
-   *
-   * 逐字流每秒推送 10+ 次，如果每次都重建 DOM，行的淡入动画会反复重放（整屏闪动）；
-   * 这里只改 textContent，节点不动。
-   */
-  function updateLiveRow() {
-    var row = document.getElementById('liveRow');
-    if (!row) return;
     var stream = state.stream;
-    if (!hasLiveText(stream)) {
-      row.hidden = true;
-      row.textContent = '';
-      return;
+    var steps = state.steps || [];
+
+    // 1) What is running now: the live tool call, else the last tool row.
+    var action = '';
+    if (stream && stream.tools && stream.tools.length) {
+      var tool = stream.tools[stream.tools.length - 1];
+      action = (tool.name || t('display.toolFallback')) + '  ' + U.compactArgs(tool.args);
     }
-    row.hidden = false;
-    var box = row.firstElementChild;
-    if (!box || box.className !== 'live') {
-      row.textContent = '';
-      box = document.createElement('div');
-      box.className = 'live';
-      var think = document.createElement('div');
-      think.className = 'live-think';
-      var tools = document.createElement('div');
-      tools.className = 'live-tools';
-      var say = document.createElement('div');
-      say.className = 'live-say';
-      box.appendChild(think);
-      box.appendChild(tools);
-      box.appendChild(say);
-      row.appendChild(box);
-    }
-    var thinkEl = box.children[0];
-    var toolsEl = box.children[1];
-    var sayEl = box.children[2];
-
-    // 思考链：只显示尾部（长思考不必整段滚）
-    var thinking = stream.thinking ? tailText(stream.thinking, 900) : '';
-    if (thinkEl.textContent !== thinking) thinkEl.textContent = thinking;
-    thinkEl.hidden = !thinking;
-
-    var list = stream.tools || [];
-    var tools = list.length
-      ? list.map(function (t) { return (t.name || '工具') + ' ' + (t.args || ''); }).join(' ')
-      : '';
-    if (toolsEl.textContent !== tools) toolsEl.textContent = tools;
-    toolsEl.hidden = !tools;
-
-    var say = stream.text ? tailText(stream.text, 4000) : '';
-    if (sayEl.textContent !== say) sayEl.textContent = say;
-    sayEl.hidden = !say;
-    box.classList.toggle('idle', !thinking && !say && !tools);
-    // 光标画在"最后一行内容"上（CSS 用 data-tail 选选择器）
-    box.setAttribute('data-tail', say ? 'say' : (tools ? 'tools' : (thinking ? 'think' : '')));
-  }
-
-  /* ================= 展示窗口的自动滚动 ================= */
-  // 默认贴到最新一条；用户手动往上翻就停住，翻回底部再恢复自动跟随。
-  var autoScroll = true;
-  var scrollGuard = false;
-
-  function scrollHost() {
-    return document.getElementById('blocks');
-  }
-
-  function isNearBottom(el, slack) {
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= (slack || 24);
-  }
-
-  /** 重建 DOM 后恢复滚动位置：跟随中→贴底，否则保持用户原来的位置。 */
-  function applyAutoScroll(prevTop, wasAuto) {
-    var sc = scrollHost();
-    if (!sc) return;
-    scrollGuard = true;
-    if (wasAuto) sc.scrollTop = sc.scrollHeight;
-    else sc.scrollTop = prevTop;
-    // 下一帧再放开，避免上面这次赋值触发的 scroll 事件改写 autoScroll
-    setTimeout(function () { scrollGuard = false; }, 0);
-  }
-
-  /** 绑定滚动容器（只在展示窗口、只绑一次）。 */
-  function bindAutoScroll() {
-    var sc = scrollHost();
-    if (!sc || sc.__qdBound) return;
-    sc.__qdBound = true;
-    sc.addEventListener('scroll', function () {
-      if (scrollGuard) return;
-      // 用户滚到底 = 恢复跟随；滚上去 = 暂停跟随
-      autoScroll = isNearBottom(sc, 24);
-    }, { passive: true });
-  }
-
-  var REASONING_LABELS = { low: '低', medium: '中', high: '高', max: '最高' };
-  function reasoningLabel(id) { return REASONING_LABELS[id] || id; }
-
-  function thinkBlock(s) {
-    var box = document.createElement('div');
-    box.className = 'think';
-    var head = document.createElement('button');
-    head.className = 'think-head';
-    head.type = 'button';
-    var icon = document.createElement('span');
-    icon.className = 'th-icon'; icon.textContent = '✦';
-    var preview = document.createElement('span');
-    preview.className = 'th-preview';
-    var one = String(s.text || '').replace(/\s+/g, ' ').trim();
-    preview.textContent = one.length > 42 ? one.slice(0, 42) + '…' : one;
-    var chev = document.createElement('span');
-    chev.className = 'th-chev'; chev.textContent = '▶';
-    head.appendChild(icon); head.appendChild(preview); head.appendChild(chev);
-    var body = document.createElement('div');
-    body.className = 'think-body';
-    body.textContent = s.text || '';
-    head.addEventListener('click', function () {
-      box.classList.toggle('open');
-      // 展开会改变高度：命中区要重报，跟随中就重新贴底
-      scheduleHitReport();
-      var sc = scrollHost();
-      if (sc && autoScroll) sc.scrollTop = sc.scrollHeight;
-    });
-    box.appendChild(head); box.appendChild(body);
-    return box;
-  }
-
-  /**
-   * 构建交互卡片（审批 / 提问）。
-   * 返回元素而不是直接塞进容器 —— 展示窗口用它。
-   */
-  function buildInteractionCard(inter) {
-    if (!inter || inter.status !== 'open') return null;
-    if (inter.kind === 'approval') {
-      var card = document.createElement('div');
-      card.className = 'card approval';
-      card.appendChild(cardHead('⚠ 需要确认', inter.toolName || ''));
-      var body = document.createElement('div');
-      body.className = 'card-body';
-      var cmd = document.createElement('div');
-      cmd.className = 'cmd';
-      cmd.textContent = inter.reason || inter.callId || '';
-      body.appendChild(cmd);
-      body.appendChild(cardActions([
-        { label: '允许', cls: 'primary', value: 'allow' },
-        { label: '拒绝', cls: 'danger', value: 'deny' }
-      ], inter.id));
-      card.appendChild(body);
-      var foot = document.createElement('div');
-      foot.className = 'card-foot';
-      foot.textContent = '此决定会记入会话日志 · 仅本次有效';
-      card.appendChild(foot);
-      return card;
-    } else if (inter.kind === 'question') {
-      var qcard = document.createElement('div');
-      qcard.className = 'card question';
-      qcard.appendChild(cardHead('? 提问', ''));
-      var qbody = document.createElement('div');
-      qbody.className = 'card-body';
-      (inter.questions || []).forEach(function (q) {
-        var qd = document.createElement('div');
-        qd.className = 'card-q';
-        qd.textContent = q.question || q.header || '';
-        qbody.appendChild(qd);
-        if (q.options && q.options.length) {
-          var opts = document.createElement('div');
-          opts.className = 'opts';
-          q.options.forEach(function (o, idx) {
-            var b = document.createElement('button');
-            b.type = 'button';
-            b.className = 'opt';
-            var key = document.createElement('span');
-            key.className = 'opt-key'; key.textContent = String(idx + 1);
-            var text = document.createElement('span');
-            text.className = 'opt-text';
-            text.textContent = o.label;
-            if (o.description) {
-              var sm = document.createElement('small');
-              sm.textContent = o.description;
-              text.appendChild(sm);
-            }
-            b.appendChild(key); b.appendChild(text);
-            b.addEventListener('click', function () {
-              api('answer', { id: inter.id, answers: [{ id: q.id, selected: [o.label] }] }).catch(toastErr);
-              markAnswered();
-            });
-            opts.appendChild(b);
-          });
-          qbody.appendChild(opts);
-        } else {
-          var input = document.createElement('textarea');
-          input.className = 'answer-input';
-          input.placeholder = '输入回答…';
-          var ok = document.createElement('button');
-          ok.type = 'button';
-          ok.className = 'card-btn primary';
-          ok.textContent = '提交';
-          ok.addEventListener('click', function () {
-            var v = input.value.trim();
-            if (!v) return;
-            api('answer', { id: inter.id, answers: [{ id: q.id, selected: [v] }] }).catch(toastErr);
-            markAnswered();
-          });
-          qbody.appendChild(input); qbody.appendChild(ok);
+    if (!action) {
+      for (var index = steps.length - 1; index >= 0; index -= 1) {
+        var step = steps[index];
+        if (step && step.kind === 'tool') {
+          action = (step.tool || t('display.toolFallback')) + '  ' + U.compactArgs(step.command);
+          break;
         }
-      });
-      qcard.appendChild(qbody);
-      return qcard;
+      }
     }
-    return null;
+    if (els.runAction) {
+      var shownAction = U.shortText(action, 150);
+      if (els.runAction.textContent !== shownAction) els.runAction.textContent = shownAction;
+      els.runAction.hidden = !shownAction;
+    }
+
+    // 2) What is being written now: live stream first, committed row second.
+    var live = stream ? (stream.text || stream.thinking || '') : '';
+    var latest = '';
+    for (var back = steps.length - 1; back >= 0; back -= 1) {
+      var row = steps[back];
+      if (!row) continue;
+      var text = row.kind === 'think' ? (row.text || '')
+        : row.kind === 'say' ? (row.text || '')
+          : (row.description || '');
+      if (text) {
+        latest = text;
+        break;
+      }
+    }
+    var body = U.shortText(live, 400) || U.shortText(latest, 400);
+    if (els.runNow) {
+      var shown = body || (status === 'running' ? t('run.starting') : '');
+      if (els.runNow.textContent !== shown) els.runNow.textContent = shown;
+      els.runNow.classList.toggle('streaming', Boolean(live));
+      // Purple only while thinking, so "thinking" and "talking" differ.
+      els.runNow.classList.toggle('thinking', Boolean(stream && stream.thinking && !stream.text));
+      if (els.runNow.scrollHeight > els.runNow.clientHeight) {
+        els.runNow.scrollTop = els.runNow.scrollHeight;
+      }
+    }
+    if (els.runSub) {
+      var done = 0;
+      var failed = 0;
+      steps.forEach(function (row) {
+        if (row.status === 'fail') failed += 1;
+        else if (row.status === 'done') done += 1;
+      });
+      var bits = [];
+      if (done) bits.push(t('run.doneCount', { count: done }));
+      if (failed) bits.push(t('run.failedCount', { count: failed }));
+      if (state.backgroundRunning) bits.push(t('run.backgroundCount', { count: state.backgroundRunning }));
+      els.runSub.textContent = bits.join(' · ');
+    }
+
+    // 3) Approval block: answer without leaving the input window.
+    if (els.runApproval) {
+      var approval = interaction && interaction.status === 'open' && interaction.kind === 'approval'
+        ? interaction
+        : null;
+      els.runApproval.hidden = !approval;
+      if (approval) {
+        var reason = approvalText(approval);
+        els.runApprovalTool.textContent = approval.toolName ? String(approval.toolName) : '';
+        els.runApprovalReason.textContent = reason;
+        els.runApprovalReason.hidden = !reason;
+        els.runApprovalReason.title = reason;
+      }
+    }
   }
 
-  function cardHead(text, tag) {
-    var head = document.createElement('div');
-    head.className = 'card-head';
-    head.textContent = text;
-    if (tag) {
-      var t = document.createElement('span');
-      t.className = 'ch-tag';
-      t.textContent = tag;
-      head.appendChild(t);
+  /** Approval text: current locale first, then Chinese, then the raw reason. */
+  function approvalText(interaction) {
+    var localized = interaction && interaction.displayReason;
+    if (localized && typeof localized === 'object') {
+      var picked = localized[i18n.locale()] || localized.zh || localized.en;
+      if (typeof picked === 'string' && picked.trim()) return picked.trim();
     }
-    return head;
+    if (typeof localized === 'string' && localized.trim()) return localized.trim();
+    return String((interaction && (interaction.reason || interaction.callId)) || '');
   }
-  function cardActions(items, id) {
-    var row = document.createElement('div');
-    row.className = 'card-actions';
-    items.forEach(function (it) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'card-btn ' + (it.cls || '');
-      b.textContent = it.label;
-      b.addEventListener('click', function () {
-        api('answer', { id: id, outcome: it.value }).catch(toastErr);
-        markAnswered();
-      });
-      row.appendChild(b);
-    });
-    return row;
-  }
-  function markAnswered() {
-    if (state.interaction) state.interaction.status = 'answered';
-    render();
-  }
-  function toastErr(e) { toast(String(e && e.message || e)); }
 
-  /** 同步顶置按钮的选中态。 */
   function updatePin() {
-    if (!els.pinBtnA) return;
-    var pinned = Boolean(state.runtime && state.runtime.alwaysOnTop);
-    els.pinBtnA.classList.toggle('on', pinned);
-    els.pinBtnA.setAttribute('aria-pressed', pinned ? 'true' : 'false');
-  }
-
-  /* ================= menu ================= */
-  function closeMenu() {
-    if (els.menu) els.menu.classList.remove('open');
-    menuOwner = null;
-    menuActions = [];
-  }
-  function openMenu(owner, title, items) {
-    if (menuOwner === owner) { closeMenu(); return; }
-    menuOwner = owner;
-    menuActions = items;
-    els.menu.textContent = '';
-    if (title) {
-      var t = document.createElement('div');
-      t.className = 'menu-title';
-      t.textContent = title;
-      els.menu.appendChild(t);
-    }
-    items.forEach(function (it) {
-      if (it.sep) {
-        var sep = document.createElement('div');
-        sep.className = 'menu-sep';
-        els.menu.appendChild(sep);
-        return;
-      }
-      if (it.head) {
-        // 分组标题（跨工作区的会话列表用）
-        var head = document.createElement('div');
-        head.className = 'menu-group';
-        head.textContent = it.head;
-        els.menu.appendChild(head);
-        return;
-      }
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'menu-item' + (it.sel ? ' sel' : '');
-      var main = document.createElement('span');
-      main.className = 'mi-main';
-      var name = document.createElement('span');
-      name.className = 'mi-name';
-      name.textContent = it.name;
-      main.appendChild(name);
-      if (it.sub) {
-        var sub = document.createElement('span');
-        sub.className = 'mi-sub';
-        sub.textContent = it.sub;
-        main.appendChild(sub);
-      }
-      var check = document.createElement('span');
-      check.className = 'mi-check';
-      check.textContent = it.sel ? '✓' : '';
-      b.appendChild(main); b.appendChild(check);
-      if (it.disabled) b.disabled = true;
-      b.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        closeMenu();
-        it.onPick();
-      });
-      els.menu.appendChild(b);
+    var pinned = Boolean(state && state.runtime && state.runtime.alwaysOnTop);
+    [els.pinBtnA, els.pinBtnR].forEach(function (button) {
+      if (!button) return;
+      button.classList.toggle('on', pinned);
+      button.setAttribute('aria-pressed', pinned ? 'true' : 'false');
     });
-    // 锁定宽度到面板内（DESIGN：绝不超出窗口）
-    var MENU_W = Math.max(220, Math.min(344, window.innerWidth - 16));
-    els.menu.style.width = MENU_W + 'px';
-    els.menu.style.left = Math.max(8, Math.min(8, window.innerWidth - MENU_W - 8)) + 'px';
-
-    // 先显示出来量一次自然高度（visibility 藏住，避免闪一下）
-    els.menu.style.visibility = 'hidden';
-    els.menu.style.maxHeight = '440px';
-    els.menu.classList.add('open');
-    var natural = els.menu.offsetHeight;
-
-    var rect = owner && owner.getBoundingClientRect ? owner.getBoundingClientRect() : null;
-    var PAD = 6;
-    if (rect) {
-      var spaceBelow = Math.max(0, window.innerHeight - rect.bottom - PAD);
-      var spaceAbove = Math.max(0, rect.top - PAD);
-      // 窗口只有 190px 高：下方放不下就往上翻（以前固定往下开，菜单整个被窗口裁掉）
-      var openUp = natural > spaceBelow && spaceAbove > spaceBelow;
-      var available = Math.max(openUp ? spaceAbove : spaceBelow, 96);
-      var height = Math.min(natural, available, 440);
-      els.menu.style.maxHeight = height + 'px';
-      els.menu.style.top = (openUp
-        ? Math.max(PAD, rect.top - height - 4)
-        : Math.min(rect.bottom + 4, window.innerHeight - PAD - height)) + 'px';
-    } else {
-      els.menu.style.maxHeight = '440px';
-      els.menu.style.top = '40px';
-    }
-    els.menu.style.visibility = '';
   }
 
-  document.addEventListener('click', function (ev) {
-    if (!els.menu) return;
-    if (!els.menu.classList.contains('open')) return;
-    if (els.menu.contains(ev.target)) return;
-    closeMenu();
-  });
+  /* ---------------------------------- menu ---------------------------------- */
 
-  /* ================= pickers & fkeys ================= */
-  // 以下到「danger confirm」结束都是**输入窗口专属**的交互绑定。
-  // 展示窗口没有这些元素（els.* 为 null），整段跳过。
-  if (!isDisplay) {
+  var menu = null;
+  if (els.menu) {
+    menu = window.QD.menu.create({
+      menuEl: els.menu,
+      getPanel: function () {
+        return els.panelA && !els.panelA.classList.contains('hidden') ? els.panelA : null;
+      },
+      t: t,
+      onLayout: function () {
+        scheduleHitReport();
+      }
+    });
+  }
 
-  $('permBtn').addEventListener('click', function (ev) {
-    ev.stopPropagation();
-    var items = (state.catalogs.permissions || []).map(function (p) {
+  /* ------------------------------ display window ------------------------------ */
+
+  if (isDisplay && els.drows) {
+    displayView = window.QD.display.create({
+      root: els.drows,
+      api: api,
+      getState: function () {
+        return state;
+      },
+      isListHidden: function () {
+        return listHidden;
+      },
+      scheduleHitReport: function () {
+        scheduleHitReport();
+      },
+      toastError: toastError,
+      onAnswered: function () {
+        scheduleHitReport();
+      }
+    });
+  }
+
+  /* --------------------------- function-key menus --------------------------- */
+
+  function requireState() {
+    if (state) return true;
+    toast(t('menu.notConnected'));
+    return false;
+  }
+
+  /** Turn a list of options into menu entries with a "picked" marker. */
+  function selectItems(rows, selected, onPick) {
+    return rows.map(function (row) {
       return {
-        name: p.name, sub: p.description || '', sel: p.value === state.settings.permission,
+        name: row.name,
+        sub: row.sub || '',
+        group: row.group || '',
+        sel: row.value === selected,
         onPick: function () {
-          if (p.value === 'danger-full-access') confirmDanger(function () {
-            api('settings', { permission: p.value }).catch(toastErr);
-          });
-          else api('settings', { permission: p.value }).catch(toastErr);
+          onPick(row.value);
         }
       };
     });
-    openMenu(ev.currentTarget, '权限策略', items);
-  });
+  }
 
-  $('modelBtn').addEventListener('click', function (ev) {
-    ev.stopPropagation();
-    api('catalogs').then(function (catalogs) {
+  function openPermissionMenu(owner) {
+    var rows = (state.catalogs.permissions || []).map(function (option) {
+      return { name: option.name, sub: option.description || '', value: option.value };
+    });
+    menu.open(owner, t('menu.permissionTitle'), selectItems(rows, state.settings.permission, function (value) {
+      // Full access is irreversible for the turn and prompts like DSH does.
+      if (value === 'danger-full-access') {
+        confirmDanger(function () {
+          api('settings', { permission: value }).catch(toastError);
+        });
+        return;
+      }
+      api('settings', { permission: value }).catch(toastError);
+    }));
+  }
+
+  function modelMenuItems() {
+    return (state.catalogs.models || []).map(function (model) {
+      return {
+        name: model.name,
+        sub: model.context ? t('menu.context', { count: model.context.toLocaleString() }) : '',
+        group: model.group || '',
+        sel: model.id === state.settings.model,
+        onPick: function () {
+          api('settings', { model: model.id, reasoning: '' }).catch(toastError);
+        }
+      };
+    });
+  }
+
+  function openModelMenu(owner, catalogs) {
+    if (!state) return;
+    if (catalogs && Array.isArray(catalogs.models)) {
       state.catalogs = catalogs;
-      var items = (catalogs.models || []).map(function (m) {
-        return {
-          name: m.name, sub: m.context ? m.context.toLocaleString() + ' ctx' : '', sel: m.id === state.settings.model,
-          onPick: function () { api('settings', { model: m.id, reasoning: '' }).catch(toastErr); }
-        };
-      });
-      openMenu(ev.currentTarget, '模型', items.length ? items : [{ name: '（无可用模型）', disabled: true }]);
-    }).catch(toastErr);
-  });
+      render();
+    }
+    var items = modelMenuItems();
+    menu.open(owner, t('menu.modelTitle'), items.length
+      ? items
+      : [{ name: state.catalogs.models.length ? t('menu.loading') : t('menu.noModels'), disabled: true }]);
+  }
 
-  $('thinkBtn').addEventListener('click', function (ev) {
-    ev.stopPropagation();
-    var efforts = [];
-    var model = (state.catalogs.models || []).find(function (m) { return m.id === state.settings.model; });
-    (model && model.reasoning && model.reasoning.length ? model.reasoning : ['low', 'high', 'max']).forEach(function (r) {
-      efforts.push({
-        name: reasoningLabel(r), sel: r === state.settings.reasoning,
-        onPick: function () { api('settings', { reasoning: r }).catch(toastErr); }
-      });
+  function openThinkingMenu(owner) {
+    var model = currentModel();
+    var ids = model && model.reasoning && model.reasoning.length ? model.reasoning : REASONING_IDS;
+    var items = ids.map(function (id) {
+      return {
+        name: reasoningLabel(id),
+        sel: id === state.settings.reasoning,
+        onPick: function () {
+          api('settings', { reasoning: id }).catch(toastError);
+        }
+      };
     });
-    efforts.push({ name: '关闭', sel: !state.settings.reasoning, onPick: function () { api('settings', { reasoning: '' }).catch(toastErr); } });
-    openMenu(ev.currentTarget, '思考强度', efforts);
-  });
-
-  els.agentBtn.addEventListener('click', function (ev) {
-    ev.stopPropagation();
-    var items = (state.catalogs.agents || []).map(function (a) {
-      return { name: a.name, sel: a.id === state.settings.agentPreset, onPick: function () {
-        api('settings', { agentPreset: a.id }).catch(toastErr);
-      } };
+    items.push({
+      name: t('menu.off'),
+      sel: !state.settings.reasoning,
+      onPick: function () {
+        api('settings', { reasoning: '' }).catch(toastError);
+      }
     });
-    openMenu(ev.currentTarget, 'Agent 预设', items.length ? items : [{ name: '（默认）', sel: true, onPick: function () { api('settings', { agentPreset: '' }).catch(toastErr); } }]);
-  });
+    menu.open(owner, t('menu.thinkingTitle'), items);
+  }
 
-  /* ================= composer & buttons ================= */
-  els.composer.addEventListener('input', function () {
-    els.sendBtn.disabled = !els.composer.value.trim();
-    // 高度由 flex 撑满，无需测量
-  });
-  els.composer.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); send(); }
-  });
-  els.sendBtn.addEventListener('click', send);
+  function openAgentMenu(owner) {
+    var items = (state.catalogs.agents || []).map(function (agent) {
+      return {
+        name: agent.name,
+        sub: agent.description || '',
+        sel: agent.id === state.settings.agentPreset,
+        onPick: function () {
+          api('settings', { agentPreset: agent.id }).catch(toastError);
+        }
+      };
+    });
+    if (!items.length) {
+      items = [{
+        name: t('menu.defaultAgent'),
+        sel: true,
+        onPick: function () {
+          api('settings', { agentPreset: '' }).catch(toastError);
+        }
+      }];
+    }
+    menu.open(owner, t('menu.agentTitle'), items);
+  }
+
+  if (!isDisplay) {
+    U.on(U.$('permBtn'), 'click', function (event) {
+      event.stopPropagation();
+      // The anchor must be read synchronously: currentTarget is null later.
+      var owner = event.currentTarget;
+      if (!requireState()) return;
+      openPermissionMenu(owner);
+    });
+
+    U.on(U.$('modelBtn'), 'click', function (event) {
+      event.stopPropagation();
+      var owner = event.currentTarget;
+      if (!requireState()) return;
+      var items = modelMenuItems();
+      if (!items.length) {
+        api('catalogs').then(function (catalogs) {
+          openModelMenu(owner, catalogs);
+        }).catch(toastError);
+        return;
+      }
+      menu.open(owner, t('menu.modelTitle'), items);
+      // Refresh the catalog in the background for the next open.
+      api('catalogs').then(function (catalogs) {
+        if (catalogs && Array.isArray(catalogs.models)) state.catalogs = catalogs;
+      }).catch(function () {});
+    });
+
+    U.on(U.$('thinkBtn'), 'click', function (event) {
+      event.stopPropagation();
+      var owner = event.currentTarget;
+      if (!requireState()) return;
+      openThinkingMenu(owner);
+    });
+
+    U.on(els.agentBtn, 'click', function (event) {
+      event.stopPropagation();
+      var owner = event.currentTarget;
+      if (!requireState()) return;
+      openAgentMenu(owner);
+    });
+  }
+
+  /* ------------------------------- composer ------------------------------- */
 
   function send() {
     var text = els.composer.value.trim();
@@ -1170,161 +729,220 @@
     if (!state.sessionId) body.workspaceId = state.workspaceId || undefined;
     api('task', body).then(function () {
       pendingFork = false;
-    }).catch(function (e) {
-      toastErr(e);
+    }).catch(function (error) {
+      toastError(error);
       els.composer.value = text;
       els.sendBtn.disabled = false;
     });
   }
 
-  els.newBtn.addEventListener('click', function (ev) {
-    ev.stopPropagation();
-    if (ev.shiftKey || ev.altKey) {
-      // 从当前会话分叉（DESIGN D2）
-      if (!state.sessionId) { toast('没有可分叉的会话'); return; }
-      pendingFork = true;
-      toast('下一条消息将从当前会话分叉');
-    } else {
-      api('select', { newSession: true }).catch(toastErr);
+  if (!isDisplay) {
+    U.on(els.composer, 'input', function () {
+      els.sendBtn.disabled = !els.composer.value.trim();
+    });
+    U.on(els.composer, 'keydown', function (event) {
+      if (event.key !== 'Enter' || event.shiftKey) return;
+      event.preventDefault();
+      send();
+    });
+    U.on(els.sendBtn, 'click', send);
+
+    U.on(els.newBtn, 'click', function (event) {
+      event.stopPropagation();
+      if (event.shiftKey || event.altKey) {
+        // Fork: inherit the current history, then diverge (DESIGN D2).
+        if (!state.sessionId) {
+          toast(t('menu.noSessionToFork'));
+          return;
+        }
+        pendingFork = true;
+        toast(t('menu.forkArmed'));
+        return;
+      }
+      api('select', { newSession: true }).catch(toastError);
+    });
+
+    U.on(els.stopBtnRun, 'click', function () {
+      api('stop', {}).catch(toastError);
+    });
+
+    U.on(els.runAllow, 'click', function (event) {
+      event.stopPropagation();
+      answerApproval('allow');
+    });
+    U.on(els.runDeny, 'click', function (event) {
+      event.stopPropagation();
+      answerApproval('deny');
+    });
+  }
+
+  /** Answer the open approval in place (input window block). */
+  function answerApproval(outcome) {
+    var interaction = state && state.interaction;
+    if (!interaction || interaction.status !== 'open') return;
+    api('answer', { id: interaction.id, outcome: outcome }).catch(toastError);
+    interaction.status = 'answered';
+    render();
+  }
+
+  /* ------------------------------ shared buttons ------------------------------ */
+
+  function openInDsh() {
+    if (!state || !state.sessionId) {
+      toast(t('error.noSession'));
+      return;
     }
+    api('open-in-dsh', {}).catch(toastError);
+  }
+
+  function togglePin() {
+    var next = !(state && state.runtime && state.runtime.alwaysOnTop);
+    api('window', { alwaysOnTop: next }).catch(toastError);
+    if (window.quickDock && window.quickDock.setAlwaysOnTop) window.quickDock.setAlwaysOnTop(next);
+  }
+
+  function hideWindow() {
+    if (window.quickDock && window.quickDock.hide) window.quickDock.hide();
+  }
+
+  U.on(els.openBtn, 'click', function (event) {
+    event.stopPropagation();
+    openInDsh();
   });
-
-  on(els.stopBtnRun, 'click', function () {
-    api('stop', {}).catch(toastErr);
+  U.on(els.openBtnR, 'click', function (event) {
+    event.stopPropagation();
+    openInDsh();
   });
-
-  on(els.pinBtnA, 'click', function (ev) { ev.stopPropagation(); togglePin(); });
-
-  on(els.openBtn, 'click', function (ev) { ev.stopPropagation(); openInDsh(); });
-
-  on(els.listBtn, 'click', function (ev) {
-    ev.stopPropagation();
+  U.on(els.pinBtnA, 'click', function (event) {
+    event.stopPropagation();
+    togglePin();
+  });
+  U.on(els.pinBtnR, 'click', function (event) {
+    event.stopPropagation();
+    togglePin();
+  });
+  U.on(els.listBtn, 'click', function (event) {
+    event.stopPropagation();
     writeListHidden(!listHidden);
     syncListButton();
     refreshDisplayVisibility();
   });
-
-  on(els.hideBtnA, 'click', hide);
-  on(els.hideBtnR, 'click', hide);
-  function hide() {
-    if (window.quickDock && window.quickDock.hide) window.quickDock.hide();
-  }
-
-  document.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape') {
-      // 展示窗口没有确认框和菜单（els.* 为 null）
-      if (els.confirm && !els.confirm.hidden) { els.confirm.hidden = true; return; }
-      if (els.menu && els.menu.classList.contains('open')) { closeMenu(); return; }
-      hide();
-    }
-    // 数字键快选（选择题）
-    var inter = state && state.interaction;
-    if (inter && inter.status === 'open' && inter.kind === 'question' && /^[0-9]$/.test(ev.key) && document.activeElement.tagName !== 'TEXTAREA') {
-      var q = (inter.questions || [])[0];
-      var idx = Number(ev.key) - 1;
-      if (q && q.options && q.options[idx]) {
-        api('answer', { id: inter.id, answers: [{ id: q.id, selected: [q.options[idx].label] }] }).catch(toastErr);
-        markAnswered();
-      }
-    }
+  U.on(els.listBtnR, 'click', function (event) {
+    event.stopPropagation();
+    writeListHidden(!listHidden);
+    syncListButton();
+    refreshDisplayVisibility();
   });
+  U.on(els.hideBtnA, 'click', hideWindow);
+  U.on(els.hideBtnR, 'click', hideWindow);
 
-  /* ================= danger confirm ================= */
-  var confirmCb = null;
-  function confirmDanger(cb) {
-    confirmCb = cb;
+  /* -------------------------------- confirm -------------------------------- */
+
+  var confirmCallback = null;
+
+  function confirmDanger(callback) {
+    confirmCallback = callback;
     els.confirm.hidden = false;
   }
-  els.confirmOk.addEventListener('click', function () {
+
+  U.on(els.confirmOk, 'click', function () {
     els.confirm.hidden = true;
-    if (confirmCb) { confirmCb(); confirmCb = null; }
+    if (confirmCallback) {
+      var callback = confirmCallback;
+      confirmCallback = null;
+      callback();
+    }
   });
-  els.confirmCancel.addEventListener('click', function () {
+  U.on(els.confirmCancel, 'click', function () {
     els.confirm.hidden = true;
-    confirmCb = null;
+    confirmCallback = null;
   });
 
-  } // end if (!isDisplay) —— 输入窗口专属绑定到此结束
+  /* -------------------------------- keyboard -------------------------------- */
 
-  /* ================= 两个窗口共用的按钮行为 ================= */
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      if (els.confirm && !els.confirm.hidden) {
+        els.confirm.hidden = true;
+        return;
+      }
+      if (menu && menu.isOpen()) {
+        menu.close();
+        return;
+      }
+      hideWindow();
+    }
+    // Number keys answer a single-choice question, unless the user is typing.
+    var interaction = state && state.interaction;
+    var typing = document.activeElement && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName);
+    if (!interaction || interaction.status !== 'open' || interaction.kind !== 'question') return;
+    if (!/^[0-9]$/.test(event.key) || typing || (menu && menu.isOpen())) return;
+    var question = (interaction.questions || [])[0];
+    var choice = Number(event.key) - 1;
+    if (!question || !question.options || !question.options[choice]) return;
+    api('answer', {
+      id: interaction.id,
+      answers: [{ id: question.id, selected: [question.options[choice].label] }]
+    }).catch(toastError);
+    interaction.status = 'answered';
+    render();
+  });
 
-  /** 安全绑定：元素不存在时跳过，避免脚本中断。 */
-  function on(el, event, handler) {
-    if (el && el.addEventListener) el.addEventListener(event, handler);
-  }
+  /* ------------------------------ click-through ------------------------------ */
+  // The window is click-through by default; the page reports which rectangles
+  // are interactive and the Host toggles hit-testing from the cursor position.
 
-  /** 顶置开关：两个窗口的 ⤒ 是同一个状态。 */
-  function togglePin() {
-    var next = !(state.runtime && state.runtime.alwaysOnTop);
-    api('window', { alwaysOnTop: next }).catch(toastErr);
-    if (window.quickDock && window.quickDock.setAlwaysOnTop) window.quickDock.setAlwaysOnTop(next);
-  }
-
-  /**
-   * 在 DSH 主窗口里打开当前会话。
-   *
-   * dock 是独立进程，碰不到浏览器里的 SPA；这条命令经由宿主转到
-   * client 半（浏览器插件），由它调 ctx.uiWorkspace.openSession()。
-   */
-  function openInDsh() {
-    if (!state || !state.sessionId) { toast('还没有绑定会话'); return; }
-    api('open-in-dsh', {}).catch(toastErr);
-  }
-
-  /* ================= 展示窗口的工具条 ================= */
-
-  if (isDisplay) {
-    on(els.dhOpen, 'click', function (ev) { ev.stopPropagation(); openInDsh(); });
-    on(els.dhPin, 'click', function (ev) { ev.stopPropagation(); togglePin(); });
-    on(els.dhHide, 'click', function (ev) {
-      ev.stopPropagation();
-      writeListHidden(true);
-      applyDisplayVisibility(false);
-    });
-  }
-
-  /* ================= 点击穿透（异形命中区） ================= */
-  // 窗口默认是 OS 级穿透（setIgnoreMouseEvents），靠 forward 把鼠标事件转发进来。
-  // 页面把「可交互区域」矩形报告给主进程，主进程用光标位置判断何时取消穿透。
-  //
-  // 拖动条必须在可交互区域内：主进程取消穿透后，-webkit-app-region: drag 才能生效。
   var DRAG_SELECTOR = '.bar, .sess-head, .exec-head, .run-head';
   var hitReportTimer = null;
 
   function collectRects(selector) {
     var rects = [];
     var nodes = document.querySelectorAll(selector);
-    for (var i = 0; i < nodes.length; i++) {
-      var el = nodes[i];
-      if (el.hidden || el.classList.contains('hidden')) continue;
-      var r = el.getBoundingClientRect();
-      if (!r.width || !r.height) continue;
-      rects.push({ x: r.left, y: r.top, width: r.width, height: r.height });
+    for (var i = 0; i < nodes.length; i += 1) {
+      var node = nodes[i];
+      if (node.hidden || node.classList.contains('hidden')) continue;
+      var rect = node.getBoundingClientRect();
+      if (!rect.width || !rect.height) continue;
+      rects.push({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
     }
     return rects;
   }
 
   function reportHitRegions() {
-    var qd = window.quickDock;
-    if (!qd) return;
+    var quickDock = window.quickDock;
+    if (!quickDock) return;
     if (isDisplay) {
-      // 展示窗口：**块本身**可交互（这样能滚轮滚动、能展开思考块），
-      // 块与块之间的空隙保持透明且穿透 —— 正是「每个模块一个块，中间透明」。
-      if (qd.setHitRegions) {
-        try { qd.setHitRegions(collectRects('.blocks')); } catch (e) {}
+      // The display window is interactive only where content sits, so the gaps
+      // between rows stay transparent and click-through.
+      if (quickDock.setHitRegions) {
+        try {
+          quickDock.setHitRegions(collectRects('.blocks'));
+        } catch (error) {
+          /* ignore */
+        }
       }
-      if (qd.setDragZones) {
-        try { qd.setDragZones([]); } catch (e) {}
+      if (quickDock.setDragZones) {
+        try {
+          quickDock.setDragZones([]);
+        } catch (error) {
+          /* ignore */
+        }
       }
       return;
     }
-    // 可交互区：面板 + 菜单 + 提示 + 弹层
-    if (qd.setHitRegions) {
-      try { qd.setHitRegions(collectRects('.panel, .menu, .toast, .modal-backdrop')); } catch (e) {}
+    if (quickDock.setHitRegions) {
+      try {
+        quickDock.setHitRegions(collectRects('.panel, .menu, .toast, .modal-backdrop'));
+      } catch (error) {
+        /* ignore */
+      }
     }
-    // 拖动区：标题条。主进程据此在光标悬停时取消穿透，让 drag 生效。
-    if (qd.setDragZones) {
-      try { qd.setDragZones(collectRects(DRAG_SELECTOR)); } catch (e) {}
+    if (quickDock.setDragZones) {
+      try {
+        quickDock.setDragZones(collectRects(DRAG_SELECTOR));
+      } catch (error) {
+        /* ignore */
+      }
     }
   }
 
@@ -1333,60 +951,74 @@
     hitReportTimer = setTimeout(reportHitRegions, 50);
   }
 
-  document.addEventListener('mousemove', function (ev) {
-    var qd = window.quickDock;
-    if (!qd || !qd.setInteractive) return;
+  document.addEventListener('mousemove', function (event) {
+    var quickDock = window.quickDock;
+    if (!quickDock || !quickDock.setInteractive) return;
+    var target = event.target && event.target.closest;
     if (isDisplay) {
-      var dhit = ev.target && ev.target.closest && ev.target.closest('.blocks');
-      qd.setInteractive(Boolean(dhit));
+      quickDock.setInteractive(Boolean(target && target.call(event.target, '.blocks')));
       return;
     }
-    var hit = ev.target && ev.target.closest && ev.target.closest('.panel, .menu, .toast, .modal-backdrop, ' + DRAG_SELECTOR);
-    // 拖动条上保持可交互：穿透状态下 ev.target 未必可靠，
-    // 但在拖动条上必须 true，否则窗口会被重新穿透，拖动失效。
-    var overDrag = ev.target && ev.target.closest && ev.target.closest(DRAG_SELECTOR);
-    qd.setInteractive(Boolean(hit) || Boolean(overDrag));
+    var inside = target && target.call(event.target, '.panel, .menu, .toast, .modal-backdrop, ' + DRAG_SELECTOR);
+    // Drag bars must stay interactive even while the window is click-through.
+    var overDrag = target && target.call(event.target, DRAG_SELECTOR);
+    quickDock.setInteractive(Boolean(inside) || Boolean(overDrag));
   });
 
-  // 尺寸/布局变化后重新上报命中区
   window.addEventListener('resize', scheduleHitReport);
   if (window.ResizeObserver) {
-    try { new ResizeObserver(scheduleHitReport).observe(document.body); } catch (e) {}
+    try {
+      var sizeObserver = new ResizeObserver(scheduleHitReport);
+      // #blocks hugs its content: detail rows grow/shrink it while their
+      // transition runs or their content finishes loading.
+      sizeObserver.observe(document.body);
+      var blocksEl = document.getElementById('blocks');
+      if (blocksEl) sizeObserver.observe(blocksEl);
+    } catch (error) {
+      /* ignore */
+    }
   }
   scheduleHitReport();
 
-  /* ================= boot ================= */
+  /* ---------------------------------- boot ---------------------------------- */
+
   if (TOKEN) {
-    api('state').then(applyState).catch(function (e) { toastErr(e); markOffline(); });
+    api('state').then(applyState).catch(function (error) {
+      toastError(error);
+      markOffline();
+    });
     connectStream();
   } else {
     markOffline();
   }
-  if (!isDisplay && els.sendBtn) els.sendBtn.disabled = true;
-  if (!isDisplay) { syncListButton(); }
 
-  /**
-   * 展示窗口：跟随主进程的「贴上/贴下」切换内容对齐方向。
-   *
-   * 贴在上方时内容从底部往上生长（紧贴输入窗口，不会在中间留空隙）；
-   * 贴在下方时从顶部往下生长。窗口本身尺寸始终不变。
-   */
-  if (isDisplay) {
-    function applyAbove(value) {
+  if (!isDisplay) {
+    if (els.sendBtn) els.sendBtn.disabled = true;
+    syncListButton();
+  }
+
+  if (isDisplay && displayView) {
+    // Content grows towards the input window depending on which side it sits.
+    displayView.bindAutoScroll();
+    displayView.initialScroll();
+    var applyAbove = function (value) {
       document.body.classList.toggle('above', Boolean(value));
-    }
-    // 自动滚动：绑定滚动容器，首次进来先贴底
-    bindAutoScroll();
-    var scInit = scrollHost();
-    if (scInit) scInit.scrollTop = scInit.scrollHeight;
-
-    var qd = window.quickDock;
-    if (qd) {
-      if (qd.onStateChanged) {
-        qd.onStateChanged(function (s) { if (s) applyAbove(s.displayAbove); });
+    };
+    var quickDock = window.quickDock;
+    if (quickDock) {
+      if (quickDock.onStateChanged) {
+        quickDock.onStateChanged(function (next) {
+          if (next) applyAbove(next.displayAbove);
+        });
       }
-      if (qd.getState) {
-        try { qd.getState().then(function (s) { if (s) applyAbove(s.displayAbove); }).catch(function () {}); } catch (e) {}
+      if (quickDock.getState) {
+        try {
+          quickDock.getState().then(function (next) {
+            if (next) applyAbove(next.displayAbove);
+          }).catch(function () {});
+        } catch (error) {
+          /* ignore */
+        }
       }
     }
   }

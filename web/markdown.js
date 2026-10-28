@@ -1,13 +1,13 @@
-/* eslint-disable */
-/**
- * 极简 Markdown 渲染（正文用）。
+/* exported renderMarkdown */
+/* Minimal Markdown renderer for the committed reply text.
  *
- * 硬规矩：**先整体转义，再按规则拼 HTML**。模型输出里的任何
- * script 标签、img onerror 之类的写法，都只会变成可见文本，不存在注入面。
+ * Hard rule: escape everything first, then assemble HTML. Raw HTML in model
+ * output (script tags, img onerror, ...) can only ever become visible text, so
+ * there is no injection surface.
  *
- * 支持：围栏代码块、标题、分隔线、引用、有序/无序列表（含缩进）、表格、
- *      行内代码、粗体、斜体、删除线、链接。
- * 流式过程不用它 —— 半截的代码围栏或不闭合的 ** 渲染出来只会更乱。
+ * Supports: fenced code, headings, rules, quotes, ordered/unordered lists
+ * (with indentation), tables, inline code, bold, italic, strikethrough, links.
+ * Streaming text does not use it: half-open fences or unbalanced ** read worse.
  */
 
 var MD_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
@@ -17,7 +17,7 @@ function mdEscape(text) {
 }
 
 function mdInline(escaped) {
-  // 先把行内代码抠出来，免得里面的 * _ 被当成强调
+  // Extract inline code first so its * and _ are not read as emphasis.
   var codes = [];
   var text = escaped.replace(/`([^`\n]+)`/g, function (_, code) {
     codes.push(code);
@@ -95,7 +95,7 @@ function mdList(lines, start) {
   var tag = ordered ? 'ol' : 'ul';
   var html = '<' + tag + ' class="md-list">';
   items.forEach(function (item) {
-    // 缩进只做视觉层级：两级够用，嵌套 <ul> 反而容易把布局搞乱
+    // Indentation is visual only: two levels; nested <ul> breaks the layout.
     var depth = Math.min(2, Math.floor((item.indent - baseIndent) / 2));
     html += '<li class="md-li md-li-' + depth + '">' + mdInline(mdEscape(item.text)) + '</li>';
   });
@@ -110,7 +110,7 @@ function renderMarkdown(source) {
   while (index < lines.length) {
     var line = lines[index];
 
-    // 围栏代码块
+    // Fenced code block.
     var fence = line.match(/^\s*(```+|~~~+)\s*([\w+#.-]*)\s*$/);
     if (fence) {
       var marker = fence[1].charAt(0);

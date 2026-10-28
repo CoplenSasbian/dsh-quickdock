@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
@@ -7,30 +7,18 @@
   <title>QuickDock Display</title>
   <!--QD_STYLES-->
   <!--QD_THEME-->
+  <!--QD_I18N-->
 </head>
 <body class="display-body">
   <!--
-    展示窗口：贴在输入窗口的上边或下边。
-
-    #blocks 同时是**面板**和**滚动容器**：
-      · 内容短 → 高度跟着内容走（面板贴在被吸附的那一侧）
-      · 内容长 → 高度封顶在窗口高度，内部滚动
-    这样圆角永远在可视边缘上，不会因为内容被滚到视口外而变成直角。
+    Run window: attached above or below the input window.
+    #blocks is both the panel and the scroll container: it shrinks to its
+    content and caps at the window height, so the rounded corners always stay
+    on screen while the rows scroll inside.
   -->
-  <div id="blocks" class="blocks" role="log" aria-label="执行过程">
-    <!--
-      一行小小的工具条：状态 + 三个动作。
-      sticky 吸在滚动容器顶部，内容再长也不会把按钮滚走。
-    -->
-    <div class="display-head" id="displayHead">
-      <span class="status-dot" id="dhDot" title="状态" aria-label="状态"></span>
-      <span class="dh-title" id="dhTitle">执行过程</span>
-      <span class="bar-spacer"></span>
-      <button class="icon-btn" id="dhOpen" title="在 DSH 中打开当前会话" aria-label="在 DSH 中打开当前会话">↗</button>
-      <button class="icon-btn" id="dhPin" title="顶置" aria-label="顶置" aria-pressed="false">⤒</button>
-      <button class="icon-btn" id="dhHide" title="隐藏执行过程窗口" aria-label="隐藏执行过程窗口">▤</button>
-    </div>
-    <!-- 步骤行都放这里：renderDisplay 只清空它，不动上面的工具条 -->
+  <div id="blocks" class="blocks" role="log" data-i18n-aria-label="display.logLabel">
+    <!-- No title bar or buttons: this window only shows the run itself. -->
+    <!-- Step rows: renderDisplay() only replaces children of this node. -->
     <div id="drows" class="drows"></div>
   </div>
   <div class="toast" id="toast" role="status" hidden></div>

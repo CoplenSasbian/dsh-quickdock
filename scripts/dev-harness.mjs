@@ -1,12 +1,14 @@
 /**
- * QuickDock 本地调试宿主（不是生产代码，只用来在没有完整 DSH 的环境里验证宿主半）。
+ * Local debug host for the Host half (not production code). It provides a mock
+ * DSH context and services so the plugin's routes, state and event folding can
+ * be exercised without a full DSH installation.
  *
- * 用法：
+ * Usage:
  *   node --import ./scripts/register-hook.mjs scripts/dev-harness.mjs
  *
- * 环境变量：
- *   QD_PORT         固定端口（默认随机）
- *   QD_NO_ELECTRON=1 不真的 spawn Electron（只验证 API 层）
+ * Environment:
+ *   QD_PORT          fixed port (random by default)
+ *   QD_NO_ELECTRON=1 do not spawn Electron (API layer only)
  */
 import http from 'node:http'
 import { apply } from '../index.js'
@@ -15,7 +17,7 @@ const listenPort = Number(process.env.QD_PORT || 0)
 
 const sessionsStore = new Map()
 const workspaces = [
-  // s-cold 故意**不**放进 sessionsStore：模拟"没在当前进程里打开过"的冷会话
+  // s-cold is deliberately absent from sessionsStore: a cold session.
   { id: 'ws-demo', title: 'dsh-quickdock', path: 'D:/node/dsh-quickdock', sessionIds: ['s-demo', 's-cold'] },
   { id: 'ws-other', title: 'another-workspace', path: 'D:/node/another', sessionIds: ['s-other'] }
 ]
@@ -36,8 +38,8 @@ function makeSession(id, title) {
     header: { cwd: 'D:/node/dsh-quickdock', createdAt: Date.now() - 3600_000 }
   }
 }
-sessionsStore.set('s-demo', makeSession('s-demo', '把 QuickDock 接进 DSH'))
-sessionsStore.set('s-other', makeSession('s-other', '另一个工作区里的会话'))
+sessionsStore.set('s-demo', makeSession('s-demo', 'Wire QuickDock into DSH'))
+sessionsStore.set('s-other', makeSession('s-other', 'Session in another workspace'))
 
 const MODEL_CATALOG = {
   default: { provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'high' },
@@ -46,8 +48,8 @@ const MODEL_CATALOG = {
     id: 'deepseek-official',
     name: 'DeepSeek',
     models: [
-      { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', reasoning: { efforts: [{ id: 'high', name: '高' }, { id: 'max', name: '最高' }], defaultEffort: 'high' } },
-      { id: 'deepseek-pro', name: 'DeepSeek Pro', reasoning: { efforts: [{ id: 'low', name: '低' }, { id: 'high', name: '高' }], defaultEffort: 'high' } }
+      { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash', reasoning: { efforts: [{ id: 'high', name: 'High' }, { id: 'max', name: 'Max' }], defaultEffort: 'high' } },
+      { id: 'deepseek-pro', name: 'DeepSeek Pro', reasoning: { efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }], defaultEffort: 'high' } }
     ]
   }],
   failures: []
@@ -55,9 +57,9 @@ const MODEL_CATALOG = {
 
 const PERMISSION_CATALOG = {
   options: [
-    { value: 'read-only', name: '只读', description: '只能读取，不能修改文件' },
-    { value: 'workspace-write', name: '工作区写入', description: '可在工作区内修改文件' },
-    { value: 'danger-full-access', name: '完全访问', description: '不限制文件与命令' }
+    { value: 'read-only', name: 'Read only', description: 'Read files, no modifications' },
+    { value: 'workspace-write', name: 'Workspace write', description: 'Modify files inside the workspace' },
+    { value: 'danger-full-access', name: 'Full access', description: 'No file or command restrictions' }
   ],
   defaultOptions: [],
   defaultPreset: 'workspace-write'
@@ -67,19 +69,19 @@ const sessionController = {
   async create(request) {
     record('sessionController.create', request)
     const id = 's-new-' + Math.random().toString(36).slice(2, 8)
-    sessionsStore.set(id, makeSession(id, '新会话'))
+    sessionsStore.set(id, makeSession(id, 'New session'))
     workspaces[0].sessionIds.push(id)
     return { sessionId: id }
   },
   async fork(request) {
     record('sessionController.fork', request)
     const id = 's-fork-' + Math.random().toString(36).slice(2, 8)
-    sessionsStore.set(id, makeSession(id, '分叉会话'))
+    sessionsStore.set(id, makeSession(id, 'Forked session'))
     return { sessionId: id }
   },
   async prompt(request, signal) {
-    // 与真实 DSH 一致：prompt 的第一件事就是 signal.throwIfAborted()，
-    // 传 undefined 会抛 TypeError，最终变成空 body 的 400。
+    // Same as real DSH: prompt() calls signal.throwIfAborted() first, so an
+    // undefined signal throws a TypeError and becomes an empty 400.
     if (!signal || typeof signal.throwIfAborted !== 'function') {
       throw new Error('sessionController.prompt requires an AbortSignal as the second argument')
     }
@@ -101,7 +103,7 @@ const sessionController = {
     record('sessionController.modelCatalog')
     return MODEL_CATALOG
   },
-  /** 冷安全列表：真实 DSH 里标题来自投影缓存，冷会话同样有。 */
+  /** Cold-safe list: real DSH projects titles for cold sessions too. */
   async list() {
     record('sessionController.list')
     const rows = []
@@ -118,14 +120,14 @@ const sessionController = {
             projections: { values: { title: live.title, sessionListMetadata: { blank: false, lastPromptAt: Date.now() - 60_000 } } }
           })
         } else {
-          // 冷会话：sessions 里没有它，但 list 仍然给出标题
+          // Cold session: absent from sessions, still listed with a title.
           rows.push({
             sessionId: id,
             updatedAt: Date.now() - 7200_000,
             running: false,
             blank: false,
             cwd: w.path,
-            projections: { values: { title: '冷会话也应有标题', sessionListMetadata: { blank: false, lastPromptAt: Date.now() - 7200_000 } } }
+            projections: { values: { title: 'Cold sessions still have titles', sessionListMetadata: { blank: false, lastPromptAt: Date.now() - 7200_000 } } }
           })
         }
       }
@@ -152,7 +154,7 @@ const services = {
   agentPresets: {
     async list() {
       record('agentPresets.list')
-      return [{ id: 'default', name: '默认' }, { id: 'reviewer', name: '审查员', description: '只读审查' }]
+      return [{ id: 'default', name: 'Default' }, { id: 'reviewer', name: 'Reviewer', description: 'Read-only review' }]
     }
   },
   agents: {
@@ -198,7 +200,7 @@ const ctx = {
   }
 }
 
-/* ---------------- HTTP 服务 ---------------- */
+/* ---------------- HTTP server ---------------- */
 let origin = ''
 const routes = []
 const fetchRoutes = new Map()
@@ -234,7 +236,7 @@ connection = {
   }
 }
 
-// DSH 里这两个服务是通过 inject 直接挂在 ctx 上的（ctx.webServer / ctx.connection）
+// In DSH both services hang on ctx through inject (ctx.webServer / ctx.connection).
 Object.defineProperty(ctx, 'webServer', { get: () => webServer, enumerable: true })
 Object.defineProperty(ctx, 'connection', { get: () => connection, enumerable: true })
 
@@ -271,6 +273,10 @@ async function testRoutes(req, res, url) {
     const body = await readJson(req)
     return send(200, await bridge('theme', { theme: body }))
   }
+  if (url.pathname === '/test/locale') {
+    const body = await readJson(req)
+    return send(200, await bridge('locale', { locale: body.locale }))
+  }
   if (url.pathname === '/test/bind') {
     const body = await readJson(req)
     return send(200, await bridge('bind', { sessionId: body.sessionId || 's-demo' }))
@@ -303,7 +309,7 @@ async function testRoutes(req, res, url) {
     const request = {
       agent: { id: body.sessionId || 's-demo' },
       toolName: body.toolName || 'bash',
-      reason: body.reason || '写入受限目录',
+      reason: body.reason || 'write outside the workspace',
       callId: 'call-1'
     }
     let result = 'unavailable'
@@ -318,7 +324,7 @@ async function testRoutes(req, res, url) {
     const body = await readJson(req)
     const request = {
       agent: { id: body.sessionId || 's-demo' },
-      questions: body.questions || [{ id: 'q1', question: '用哪种方案？', options: [{ label: 'A' }, { label: 'B' }] }]
+      questions: body.questions || [{ id: 'q1', question: 'Which option?', options: [{ label: 'A' }, { label: 'B' }] }]
     }
     let result = null
     for (const handler of eventHandlers.get('user-questions/request') || []) {
@@ -352,6 +358,7 @@ server.listen(listenPort, '127.0.0.1', () => {
     showTiming: true,
     maxSteps: 200,
     theme: 'auto',
+    locale: 'auto',
     headerButton: true,
     headerButtonOrder: 1010,
     approvalTimeoutMs: 300000

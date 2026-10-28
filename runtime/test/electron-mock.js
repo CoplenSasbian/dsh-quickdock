@@ -41,6 +41,9 @@ function createElectronMock() {
     }
     getBounds() { return Object.assign({}, this.bounds); }
     setBounds(bounds) { this.bounds = Object.assign({}, bounds); this.calls.push(['bounds', this.getBounds()]); }
+    getContentSize() { return [this.bounds.width, this.bounds.height]; }
+    setContentSize(width, height) { this.bounds.width = width; this.bounds.height = height; this.calls.push(['contentSize', width, height]); }
+    getContentBounds() { return this.getBounds(); }
     setMenuBarVisibility(value) { this.calls.push(['menu', value]); }
     setAlwaysOnTop(value, level) { this.calls.push(['alwaysOnTop', value, level]); }
     setVisibleOnAllWorkspaces(...args) { this.calls.push(['allWorkspaces', ...args]); }

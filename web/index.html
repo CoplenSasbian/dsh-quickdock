@@ -1,92 +1,102 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src data:;">
   <title>QuickDock</title>
+  <!-- Host-inlined assets: theme tokens, style sheet, locale catalog, scripts. -->
   <!--QD_STYLES-->
   <!--QD_THEME-->
+  <!--QD_I18N-->
 </head>
 <body>
   <!--
-    输入窗口：固定尺寸，可拖动。
-    执行过程在**独立的展示窗口**里（web/display.html），贴在本窗口的上边或下边。
-    这样两个窗口的尺寸各自恒定，不会因为执行内容增减而变化。
+    Input window: fixed size, draggable.
+    The run log lives in a separate window (display.html) attached above or
+    below this one, so neither window resizes while content grows.
   -->
   <main id="dock" class="stack" aria-label="QuickDock">
-    <section id="panelA" class="panel" aria-label="输入面板">
+    <section id="panelA" class="panel" data-i18n-aria-label="bar.inputPanel">
       <!--
-        一行搞定：会话标题 + 当前工作区（只读，跟在标题后面当上下文）
-        + 状态点 + 新建对话 + 顶置 + 关闭。
-
-        dock 绑定哪个会话，只由 DSH 里点「Dock」决定 —— 这里不提供切换。
-        工作区不值得独占一行，挂在标题后面一眼就能看到"这条消息发去哪"。
+        One row: session title + read-only workspace chip + status dot + actions.
+        Which session is bound is decided in DSH (header Dock button), not here.
       -->
       <div class="bar">
-        <span class="sess-title blank" id="sessTitle">正在连接…</span>
+        <span class="sess-title blank" id="sessTitle" data-i18n="bar.connecting">Connecting…</span>
         <span class="sess-meta" id="sessMeta"></span>
-        <span class="ws-chip" title="当前工作区"><span class="pk-icon">▣</span><span class="pk-name" id="wsName">工作区</span></span>
+        <span class="ws-chip" data-i18n-title="bar.workspaceTitle"><span class="pk-icon">▣</span><span class="pk-name" id="wsName" data-i18n="bar.workspace">Workspace</span></span>
         <span class="bar-spacer"></span>
-        <span class="status-dot" id="statusDot" title="状态" aria-label="状态"></span>
-        <button class="icon-btn" id="openBtn" title="在 DSH 中打开当前会话" aria-label="在 DSH 中打开当前会话">↗</button>
-        <button class="icon-btn" id="listBtn" title="显示 / 隐藏执行过程窗口" aria-label="显示或隐藏执行过程窗口" aria-pressed="true">▤</button>
-        <button class="icon-btn" id="newBtn" title="新建对话（Shift/Alt 点 = 从当前会话分叉）" aria-label="新建对话">＋</button>
-        <button class="icon-btn" id="pinBtnA" title="顶置" aria-label="顶置" aria-pressed="false">⤒</button>
-        <button class="icon-btn" id="hideBtnA" title="关闭 QuickDock (Esc)" aria-label="关闭 QuickDock">✕</button>
+        <span class="status-dot" id="statusDot" data-i18n-title="bar.statusTitle" data-i18n-aria-label="bar.statusTitle"></span>
+        <button class="icon-btn" id="openBtn" data-i18n-title="bar.openInDsh" data-i18n-aria-label="bar.openInDsh">↗</button>
+        <button class="icon-btn" id="listBtn" data-i18n-title="bar.toggleList" data-i18n-aria-label="bar.toggleListLabel" aria-pressed="true">▤</button>
+        <button class="icon-btn" id="newBtn" data-i18n-title="bar.newSession" data-i18n-aria-label="bar.newSessionLabel">＋</button>
+        <button class="icon-btn" id="pinBtnA" data-i18n-title="bar.pin" data-i18n-aria-label="bar.pin" aria-pressed="false">⤒</button>
+        <button class="icon-btn" id="hideBtnA" data-i18n-title="bar.close" data-i18n-aria-label="bar.close">✕</button>
       </div>
-      <!--
-        输入框：一个圆角容器内同时放文本域和底部控件行
-        （权限 / 模型 / 思考 / 发送都收进框里，整体更宽更矮）
-      -->
+      <!-- Composer: text area plus the four function keys and the send button. -->
       <div class="composer-wrap">
         <div class="composer">
-          <textarea id="composer" rows="1" maxlength="100000" placeholder="发送消息或任务…" aria-label="消息或任务"></textarea>
+          <textarea id="composer" rows="1" maxlength="100000" data-i18n-placeholder="composer.placeholder" data-i18n-aria-label="composer.label"></textarea>
           <div class="funcbar">
-            <button class="fkey" id="permBtn" aria-haspopup="menu"><span class="fk-icon">▣</span><span id="permText">权限</span><span class="fk-caret">▾</span></button>
-            <button class="fkey" id="modelBtn" aria-haspopup="menu"><span class="fk-icon">◈</span><span id="modelText">模型</span><span class="fk-caret">▾</span></button>
-            <button class="fkey" id="thinkBtn" aria-haspopup="menu"><span class="fk-icon">✦</span><span id="thinkText">思考</span><span class="fk-caret">▾</span></button>
+            <button class="fkey" id="permBtn" aria-haspopup="menu"><span class="fk-icon">▣</span><span id="permText" data-i18n="key.permission">Permission</span><span class="fk-caret">▾</span></button>
+            <button class="fkey" id="modelBtn" aria-haspopup="menu"><span class="fk-icon">◈</span><span id="modelText" data-i18n="key.model">Model</span><span class="fk-caret">▾</span></button>
+            <button class="fkey" id="thinkBtn" aria-haspopup="menu"><span class="fk-icon">✦</span><span id="thinkText" data-i18n="key.thinking">Thinking</span><span class="fk-caret">▾</span></button>
             <button class="fkey accent hidden" id="agentBtn" aria-haspopup="menu"><span class="fk-icon">◎</span><span id="agentText">Agent</span><span class="fk-caret">▾</span></button>
             <span class="func-spacer"></span>
-            <button class="send-btn" id="sendBtn" title="发送 (Enter)" aria-label="发送" disabled>↑</button>
+            <button class="send-btn" id="sendBtn" data-i18n-title="composer.send" data-i18n-aria-label="composer.sendLabel" disabled>↑</button>
           </div>
         </div>
       </div>
     </section>
 
     <!--
-      运行态面板：Agent 在跑的时候替换掉输入面板。
-
-      这里**不是**展示窗口那些步骤行的复读机 —— 展示窗口是"列表"
-      （一行一个动作，够看进度就行），这里是"详情"：
-        · runAction：正在跑什么工具、什么命令/参数（截尾）
-        · runNow：正在逐字输出的内容（思考 / 正文，贴底显示最新几行）
-      内容从底部往上贴，最新的一行永远靠近底部的统计栏。
+      Run panel: replaces the composer while the agent is busy.
+      It is a detail view (current action + live text), not a copy of the
+      step list shown in the display window.
     -->
-    <section id="runPanel" class="panel hidden" aria-label="运行状态">
+    <section id="runPanel" class="panel hidden" data-i18n-aria-label="run.label">
       <div class="run-head">
-        <span class="status-dot" id="runDot" title="状态" aria-label="状态"></span>
-        <span class="run-title" id="runTitle">正在执行</span>
-        <span class="run-elapsed" id="runElapsed">0:00</span>
-        <button class="icon-btn" id="hideBtnR" title="关闭 QuickDock (Esc)" aria-label="关闭 QuickDock">✕</button>
+        <span class="status-dot" id="runDot" data-i18n-title="bar.statusTitle" data-i18n-aria-label="bar.statusTitle"></span>
+        <span class="run-title" id="runTitle" data-i18n="run.title">Running</span>
+        <span class="run-elapsed" id="runElapsed"></span>
+        <!-- Same actions as the composer bar, minus "new conversation". -->
+        <div class="run-actions">
+          <button class="icon-btn" id="openBtnR" data-i18n-title="bar.openInDsh" data-i18n-aria-label="bar.openInDsh">↗</button>
+          <button class="icon-btn" id="listBtnR" data-i18n-title="bar.toggleList" data-i18n-aria-label="bar.toggleListLabel" aria-pressed="true">▤</button>
+          <button class="icon-btn" id="pinBtnR" data-i18n-title="bar.pin" data-i18n-aria-label="bar.pin" aria-pressed="false">⤒</button>
+          <button class="icon-btn" id="hideBtnR" data-i18n-title="bar.close" data-i18n-aria-label="bar.close">✕</button>
+        </div>
       </div>
       <div class="run-body">
         <div class="run-action" id="runAction" hidden></div>
-        <div class="run-now" id="runNow">正在启动…</div>
+        <div class="run-now" id="runNow" data-i18n="run.starting">Starting…</div>
+      </div>
+      <!--
+        In-place approval. It must live in this window: if the run-log window is
+        hidden there would otherwise be nothing to click, and DSH would wait.
+      -->
+      <div class="run-approval" id="runApproval" hidden>
+        <div class="ra-head"><span class="ra-icon">⚠</span><span data-i18n="card.needConfirm">Needs confirmation</span><span class="ra-tool" id="runApprovalTool"></span></div>
+        <div class="ra-reason" id="runApprovalReason"></div>
+        <div class="ra-actions">
+          <button class="card-btn primary" id="runAllow" data-i18n="card.allow">Allow</button>
+          <button class="card-btn danger" id="runDeny" data-i18n="card.deny">Deny</button>
+        </div>
       </div>
       <div class="run-foot">
         <span class="run-sub" id="runSub"></span>
-        <button class="stop-btn" id="stopBtnRun"><span class="sq"></span>停止</button>
+        <button class="stop-btn" id="stopBtnRun"><span class="sq"></span><span data-i18n="run.stop">Stop</span></button>
       </div>
     </section>
   </main>
-  <div class="menu" id="menu" role="menu"></div>
+  <div class="menu" id="menu" role="menu" data-i18n-aria-label="menu.menuLabel"></div>
   <div class="toast" id="toast" role="status" hidden></div>
   <div class="modal-backdrop" id="confirm" hidden>
     <section class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmText">
-      <div class="confirm-title" id="confirmTitle">启用完全权限？</div>
-      <p id="confirmText">Agent 将可以不受工作区限制地读取、修改文件并执行命令。请仅在完全信任当前任务时继续。</p>
-      <div class="confirm-actions"><button class="card-btn" id="confirmCancel">取消</button><button class="card-btn danger" id="confirmOk">启用完全权限</button></div>
+      <div class="confirm-title" id="confirmTitle" data-i18n="confirm.title">Enable full access?</div>
+      <p id="confirmText" data-i18n="confirm.text">The agent will be able to read and modify files and run commands outside the workspace.</p>
+      <div class="confirm-actions"><button class="card-btn" id="confirmCancel" data-i18n="confirm.cancel">Cancel</button><button class="card-btn danger" id="confirmOk" data-i18n="confirm.ok">Enable full access</button></div>
     </section>
   </div>
   <script>window.__QD_VIEW__ = 'input';</script>

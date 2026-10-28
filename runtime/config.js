@@ -1,8 +1,15 @@
 'use strict';
 
+/**
+ * Dock process configuration: command-line flags, environment variables and the
+ * inline JSON payload `--quickdock-config`. The Host passes the same values
+ * through DSH_QUICKDOCK_* variables; explicit flags win over the environment.
+ */
+
 const fs = require('node:fs');
 const path = require('node:path');
 
+/** Parse `--key value` / `--key=value` / `--flag` arguments. */
 function argumentMap(argv) {
   const result = Object.create(null);
   for (let index = 0; index < argv.length; index += 1) {
@@ -17,17 +24,26 @@ function argumentMap(argv) {
   return result;
 }
 
+/** First value found among argument names, then environment names. */
 function first(args, env, names, envNames) {
   for (const name of names) if (args[name] !== undefined) return args[name];
   for (const name of envNames || []) if (env[name]) return env[name];
   return undefined;
 }
 
+/** Positive safe integer or the fallback. */
 function positiveInteger(value, fallback) {
   const number = Number(value);
   return Number.isSafeInteger(number) && number > 0 ? number : fallback;
 }
 
+/**
+ * Resolve the configuration.
+ * @param {string[]} argv process arguments (without the script path).
+ * @param {NodeJS.ProcessEnv} env process environment.
+ * @returns {object} normalized configuration.
+ * @throws {Error} when the page URL or host PID is missing, or the URL is not loopback.
+ */
 function parseConfig(argv, env) {
   const args = argumentMap(argv || []);
   const environment = env || process.env;
@@ -47,6 +63,7 @@ function parseConfig(argv, env) {
   if (!url && port && token) url = 'http://127.0.0.1:' + positiveInteger(port, 0) + '/quickdock?t=' + encodeURIComponent(token);
   if (!url) throw new Error('Missing QuickDock URL (--quickdock-url or DSH_QUICKDOCK_URL)');
   const parsed = new URL(url);
+  // The dock only ever loads the Host's loopback page.
   if (!['http:', 'https:'].includes(parsed.protocol) || !['127.0.0.1', 'localhost', '::1', '[::1]'].includes(parsed.hostname)) {
     throw new Error('QuickDock only loads a loopback HTTP URL');
   }
@@ -60,15 +77,14 @@ function parseConfig(argv, env) {
     hostPid,
     statePath: first(args, environment, ['quickdock-state', 'state'], ['DSH_QUICKDOCK_STATE']) || inline.statePath,
     width: positiveInteger(inline.width, 480),
-    // 输入窗口的固定高度（独立窗口，只有输入相关的 UI）
+    // Input window: fixed height, input UI only.
     inputHeight: positiveInteger(inline.inputHeight, 172),
-    // 展示窗口的固定高度（独立窗口，贴在输入窗口的上/下边）
+    // Run window: fixed height, attached above or below the input window.
     displayHeight: positiveInteger(inline.displayHeight, 520),
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,
     focusOnSummon: inline.focusOnSummon === true,
     rememberGeometry: inline.rememberGeometry !== false,
-    // 窗口关闭是否连带退出进程。按需模式（autoLaunch=false）为 true，
-    // 常驻模式为 false —— 仅隐藏窗口，进程留着以便快速唤出。
+    // Closing the window ends the process in on-demand mode; resident mode hides it.
     exitOnClose: inline.exitOnClose !== false,
     saveDelayMs: positiveInteger(inline.saveDelayMs, 300),
     hostPollMs: positiveInteger(inline.hostPollMs, 2000),
@@ -77,6 +93,7 @@ function parseConfig(argv, env) {
   };
 }
 
+/** Default state file location (user data outside the plugin directory). */
 function defaultStatePath(app, env) {
   if (env.LOCALAPPDATA) return path.join(env.LOCALAPPDATA, 'dsh-quickdock', 'window.json');
   return path.join(app.getPath('userData'), 'window.json');

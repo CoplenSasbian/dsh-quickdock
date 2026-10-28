@@ -1,9 +1,17 @@
 'use strict';
 
+/**
+ * Debounced, atomic window-state store (window.json).
+ *
+ * Writes are coalesced because drag/resize events arrive continuously, and the
+ * file is replaced atomically so a crash mid-write cannot corrupt the state.
+ */
+
 const fs = require('node:fs');
 const path = require('node:path');
 const { DEFAULTS } = require('./geometry');
 
+/** Drop unknown fields and coerce numbers, so a corrupt file cannot leak in. */
 function cleanState(value) {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const state = {
@@ -34,6 +42,7 @@ class WindowStore {
     this.sequence = 0;
   }
 
+  /** Load a store; unreadable or corrupt state falls back to defaults. */
   static load(filePath, options) {
     const opts = options || {};
     const io = opts.fs || fs;
@@ -42,7 +51,6 @@ class WindowStore {
       initialState = cleanState(JSON.parse(io.readFileSync(filePath, 'utf8')));
     } catch (error) {
       if (error.code !== 'ENOENT' && error instanceof SyntaxError) {
-        // Corrupt state must not prevent the dock from starting.
         initialState = undefined;
       } else if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) {
         throw error;
@@ -51,6 +59,7 @@ class WindowStore {
     return new WindowStore(filePath, Object.assign({}, opts, { initialState }));
   }
 
+  /** Merge a patch and schedule a debounced flush. */
   update(patch) {
     this.state = cleanState(Object.assign({}, this.state, patch));
     this.dirty = true;
@@ -63,6 +72,7 @@ class WindowStore {
     return this.state;
   }
 
+  /** Write pending state (no-op when clean). */
   flush() {
     if (this.timer) {
       clearTimeout(this.timer);
@@ -75,6 +85,7 @@ class WindowStore {
     return this.queue;
   }
 
+  /** Write to a temporary file and rename it over the target. */
   async atomicWrite(contents) {
     const directory = path.dirname(this.filePath);
     const temporary = path.join(
@@ -91,6 +102,7 @@ class WindowStore {
     }
   }
 
+  /** Flush and let in-flight writes settle. */
   close() {
     return this.flush();
   }

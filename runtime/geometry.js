@@ -1,18 +1,17 @@
 'use strict';
 
 /**
- * 窗口几何。
+ * Window geometry.
  *
- * 窗口位置完全由用户拖拽决定，这里只负责两件事：
- *   1. 记住上次的位置，下次启动恢复
- *   2. 保证窗口不会跑到屏幕外
+ * The user drags the window wherever they want; this module only (1) restores
+ * the remembered position and (2) keeps the window reachable.
  */
 
 const DEFAULTS = Object.freeze({
   width: 480,
-  /** 输入窗口的固定高度 */
+  /** Fixed input window height. */
   inputHeight: 172,
-  /** 展示窗口的固定高度（内容超出时在窗口内滚动） */
+  /** Fixed run window height (content scrolls inside). */
   displayHeight: 520,
   margin: 16,
 });
@@ -36,10 +35,7 @@ function normalizeOptions(options) {
   };
 }
 
-/**
- * 首次启动的默认位置：右下角，留出 margin 间距。
- * （只在还没有记住任何位置时用；之后完全跟随用户拖拽。）
- */
+/** First-run position: bottom right of the work area with a margin. */
 function defaultBounds(workArea, size, margin) {
   const gap = Math.max(0, finite(margin, DEFAULTS.margin));
   return {
@@ -48,6 +44,7 @@ function defaultBounds(workArea, size, margin) {
   };
 }
 
+/** Fit a size into the work area. */
 function fitBounds(workArea, bounds) {
   const width = Math.min(Math.max(1, Math.round(bounds.width)), workArea.width);
   const height = Math.min(Math.max(1, Math.round(bounds.height)), workArea.height);
@@ -79,7 +76,7 @@ function currentDisplay(screen, point) {
   return primaryDisplay(screen);
 }
 
-/** 恢复窗口位置；尺寸始终用配置里的固定值，不沿用上次记录。 */
+/** Restore the saved position; the size always comes from the configuration. */
 function restoreBounds(saved, screen, options) {
   const opts = normalizeOptions(options);
   const primary = primaryDisplay(screen);
@@ -87,13 +84,12 @@ function restoreBounds(saved, screen, options) {
 
   const remembered = saved && displayById(screen, saved.displayId);
   const display = remembered || primary;
-  // 输入窗口：固定尺寸（宽 × inputHeight），用户可拖动
   const size = { width: opts.width, height: opts.inputHeight };
   const hasPosition = saved && Number.isFinite(saved.x) && Number.isFinite(saved.y);
 
   if (remembered && hasPosition) {
     const candidate = fitBounds(display.workArea, Object.assign({}, saved, size));
-    // 完全在屏幕外不算"记住的位置"，用安全兜底。
+    // A position that had to be clamped is not a remembered position.
     const visible = candidate.x === Math.round(saved.x) && candidate.y === Math.round(saved.y);
     if (visible) return { bounds: candidate, display };
   }
@@ -105,8 +101,8 @@ function restoreBounds(saved, screen, options) {
 }
 
 /**
- * 把窗口夹回可见范围：只改 x/y，尺寸原样保留。
- * 拖动可以让窗口跑到屏幕外，但松手时必须完整可见，否则再也拖不回来。
+ * Pull the window back into view. Only x/y change: dragging may leave the
+ * window partially off-screen, but releasing it must remain reachable.
  */
 function clampBounds(workArea, bounds) {
   const width = Math.max(1, Math.round(bounds.width));
@@ -119,6 +115,7 @@ function clampBounds(workArea, bounds) {
   };
 }
 
+/** Hit test in window-local coordinates (null when no regions were reported). */
 function pointInRects(point, bounds, rects) {
   if (!Array.isArray(rects)) return null;
   const x = point.x - bounds.x;

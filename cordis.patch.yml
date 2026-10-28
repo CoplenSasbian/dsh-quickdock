@@ -1,16 +1,16 @@
-# dsh-quickdock bundle patch：把宿主半挂进 profile 的插件树。
-# 字段必须与 index.js 的 Config schema 对齐（多余/过期的键不会生效，只会误导）。
+# dsh-quickdock bundle patch: mounts the Host half into the profile plugin tree.
+# Keys must match the Config schema in index.js (stale keys silently do nothing).
 - insert:
     - id: dsh-quickdock
       name: dsh-quickdock
       config:
         enabled: true
-        # 按需创建：点 Dock 才拉起 Electron，窗口关掉进程就退出。
-        # 改成 true 则常驻（关闭仅隐藏，唤出无延迟，代价是常驻 300MB 左右）。
+        # On demand: Electron starts on the first Dock click and exits with the window.
+        # Set true to stay resident (close only hides; no start-up latency).
         autoLaunch: false
-        # 两个窗口的内容宽度（输入 + 展示同宽）
+        # Content width shared by both windows.
         width: 480
-        # 输入窗口 / 展示窗口各自的固定高度（两个独立窗口）
+        # Fixed heights: input window and run window are separate windows.
         inputHeight: 172
         displayHeight: 520
         margin: 16
@@ -26,6 +26,7 @@
         showTiming: true
         maxSteps: 200
         theme: auto
+        locale: auto
         headerButton: true
         headerButtonOrder: 1010
         approvalTimeoutMs: 300000

@@ -1,82 +1,127 @@
-window.__ModuleLoader__.load({ id: "dsh-quickdock", factory: (require) => { var module = { exports: {} }; var exports = module.exports;
+window.__ModuleLoader__.load({ id: "dsh-quickdock", factory: (require) => { var module = { exports: {} };
+// The loader contract passes an exports binding even when the plugin exports nothing.
+// eslint-disable-next-line no-unused-vars
+var exports = module.exports;
 try {
 var React = require('react');
 /**
- * dsh-quickdock — Client 半（静态插件）
+ * dsh-quickdock — Client half (static plugin).
  *
- * 运行期可用符号：React、ctx、host（静态半只有 ctx 服务；host.call 属动态插件）。
- * 不 import 任何 @deepseek-ai/dsh-client-* 包。
+ * Available at runtime: React, ctx, host (a static plugin only has ctx
+ * services; host.call belongs to dynamic plugins). No @deepseek-ai/dsh-client-*
+ * package may be imported.
  *
- * 注册插槽 conversation.session.header.actions：
- * 会话标题栏「⧉」按钮 —— 把当前会话推到 QuickDock（优先级 1010，排在 dsh-rewind 之后）。
- * dock 的唤出由宿主 autoLaunch 常驻，无需侧栏按钮。
+ * Registers conversation.session.header.actions: the "Dock" button that pushes
+ * the current session to QuickDock (order 1010, after dsh-rewind). The dock is
+ * launched by the Host on demand, so no sidebar button is needed.
  */
 const PLUGIN_ID = 'dsh-quickdock'
 const HEADER_SLOT = 'conversation.session.header.actions'
+const BRIDGE = '/api/quickdock'
 
 function el(tag, props) {
   return React.createElement.apply(React, arguments)
 }
 
-/* ---------------- 错误提示 ---------------- */
-
-/**
- * 轮询 dock 启动结果。
- *
- * dock 启动是异步的（宿主要先探测 Electron、下载、spawn、等 ready），
- * bind 的同步返回拿不到最终结果。失败信息由宿主写入 status.error，
- * 这里轮询几秒把失败原因取回来 —— 失败必须让用户看见，不能静默。
- */
-async function waitForDockResult(timeoutMs) {
-  // 首次唤出可能要下载 Electron（约 100MB，几分钟），所以给足时间；
-  // 但一旦久等就要明确告诉用户「在准备什么」，不能让人对着无反应的按钮发呆。
-  const limit = timeoutMs || 180000
-  const started = Date.now()
-  let lastError = ''
-  let announced = false
-  while (Date.now() - started < limit) {
-    await new Promise(function (r) { setTimeout(r, 400) })
-    try {
-      const res = await fetch('/api/quickdock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'status' })
-      })
-      if (!res.ok) continue
-      const st = await res.json().catch(function () { return {} })
-      if (st && st.error) {
-        lastError = String(st.error)
-        // 错误可能重复上报，等一会儿看是否稳定
-        await new Promise(function (r) { setTimeout(r, 500) })
-        try {
-          const res2 = await fetch('/api/quickdock', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'status' })
-          })
-          const st2 = await res2.json().catch(function () { return {} })
-          // 还在重试（宿主会自动退避重拉）就先别报错
-          if (st2 && st2.error && !st2.starting) return showError(st2.error)
-        } catch (e) {}
-        if (!st.starting) return showError(lastError)
-        continue
-      }
-      if (st && st.running) return
-      if (st && st.starting && !announced && Date.now() - started > 4000) {
-        announced = true
-        showHint('QuickDock 正在准备桌面窗口（首次需要下载 Electron，约 1–2 分钟，只需一次）…')
-      }
-    } catch (e) {}
+/* i18n-catalog:start — kept in sync with locale/en.json + locale/zh.json */
+var MESSAGES = {
+  en: {
+    'client.sendToDock': 'Open this session in QuickDock',
+    'client.label': 'Dock',
+    'client.unknownError': 'Unknown error',
+    'client.startTimeout': 'QuickDock did not start in time. See {log}',
+    'client.preparing': 'QuickDock is preparing its desktop window (the first run downloads Electron, ~1–2 minutes, once)…',
+    'client.requestFailed': 'Request failed: HTTP {status}',
+    'client.dockFailed': 'QuickDock request failed: {reason}'
+  },
+  zh: {
+    'client.sendToDock': '在 QuickDock 中打开此会话',
+    'client.label': 'Dock',
+    'client.unknownError': '未知错误',
+    'client.startTimeout': 'QuickDock 启动超时。请看 {log}',
+    'client.preparing': 'QuickDock 正在准备桌面窗口（首次需要下载 Electron，约 1–2 分钟，只需一次）…',
+    'client.requestFailed': '请求失败：HTTP {status}',
+    'client.dockFailed': 'QuickDock 请求失败：{reason}'
   }
-  if (lastError) showError(lastError)
-  else showError('QuickDock 启动超时。请看 %LOCALAPPDATA%\\dsh-quickdock\\host.log')
+};
+/* i18n-catalog:end */
+
+var activeLocale = 'en'
+
+function normalizeLocale(value) {
+  var tag = String(value || '').toLowerCase()
+  var primary = tag.split(/[-_]/)[0]
+  return primary === 'zh' || primary === 'en' ? primary : ''
 }
 
+function detectLocale() {
+  try {
+    var tags = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language])
+    for (var i = 0; i < tags.length; i += 1) {
+      var hit = normalizeLocale(tags[i])
+      if (hit) return hit
+    }
+  } catch (error) {}
+  return 'en'
+}
+
+/** Translate one client string; English is the fallback layer. */
+function t(key, params) {
+  var table = MESSAGES[activeLocale] || MESSAGES.en
+  var template = table[key] !== undefined ? table[key] : (MESSAGES.en[key] || key)
+  if (!params) return template
+  return String(template).replace(/\{(\w+)\}/g, function (match, name) {
+    return Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match
+  })
+}
+
+/** Bridge call; the Host answers {ok, error} and HTTP errors carry a reason. */
+async function bridge(action, payload) {
+  const res = await fetch(BRIDGE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ action: action }, payload || {}))
+  })
+  const data = await res.json().catch(function () { return null })
+  if (!res.ok) throw new Error(t('client.requestFailed', { status: res.status }))
+  return data || {}
+}
+
+/* ---------------- locale sync ---------------- */
+
+/** Adopt a locale id, then let the Host localize its dock pages. */
+function applyLocale(locale) {
+  const next = normalizeLocale(locale)
+  if (next) activeLocale = next
+  bridge('locale', { locale: activeLocale }).catch(function () {})
+}
+
+function syncLocale(lctx) {
+  let snapshot = null
+  try {
+    snapshot = lctx.locale.getLocale()
+  } catch (error) {}
+  applyLocale(snapshot && snapshot.active ? snapshot.active : detectLocale())
+  try {
+    return lctx.effect(function () {
+      return lctx.locale.subscribe(function () {
+        try {
+          applyLocale(lctx.locale.getLocale().active)
+        } catch (error) {}
+      })
+    }, 'quickdock: locale sync')
+  } catch (error) {
+    return null
+  }
+}
+
+/* ---------------- toasts ---------------- */
+
 /**
- * 显示一条错误提示（DOM toast）。
+ * Show a message in the page corner.
  *
- * 设计原则：**错误必须让用户看见**。宿主失败时不静默降级、不假装成功，
- * 而是在按钮旁边明确提示原因。
+ * Errors are never silent: a dock that fails to start must explain itself,
+ * and a long first start must say what it is waiting for.
  */
 let toastEl = null
 let toastTimer = null
@@ -86,14 +131,8 @@ const TOAST_KINDS = {
   hint: { border: 'rgba(77, 142, 255, .55)', background: 'rgba(14, 24, 40, .96)', color: '#cfe1ff', ttl: 6000 }
 }
 
-/**
- * 在页面右下角显示一条提示。
- *
- * 设计原则：**状态必须让用户看见**。宿主失败时不静默降级、不假装成功；
- * 需要等待（例如首次下载 Electron）也要说清楚在等什么。
- */
 function showToast(message, kind) {
-  const text = String(message || '未知错误')
+  const text = String(message || t('client.unknownError'))
   const style = TOAST_KINDS[kind] || TOAST_KINDS.error
   try {
     if (!toastEl) {
@@ -111,7 +150,7 @@ function showToast(message, kind) {
         font: '12px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif',
         whiteSpace: 'pre-wrap',
         boxShadow: '0 6px 24px rgba(0, 0, 0, .35)',
-        pointerEvents: 'none',
+        pointerEvents: 'none'
       })
       document.body.appendChild(toastEl)
     }
@@ -125,48 +164,87 @@ function showToast(message, kind) {
       if (toastEl) toastEl.style.display = 'none'
     }, style.ttl)
   } catch (error) {
-    // 连 DOM 都不可用时，至少不要静默吞掉
+    // Even with no DOM the reason must not disappear.
     console.error('[dsh-quickdock] ' + text)
   }
 }
 
-function showError(message) { showToast(message, 'error') }
-function showHint(message) { showToast(message, 'hint') }
+function showError(message) {
+  showToast(message, 'error')
+}
 
-/* ---------------- 会话标题栏「推到 dock」 ---------------- */
+function showHint(message) {
+  showToast(message, 'hint')
+}
+
+/* ---------------- dock start polling ---------------- */
+
+/**
+ * Poll the dock start result.
+ *
+ * Starting is asynchronous (probe Electron, download, spawn, wait for ready),
+ * so the synchronous bind response cannot report the final outcome.
+ * The first start may download ~100MB, hence the generous timeout.
+ */
+async function waitForDockResult(timeoutMs) {
+  const limit = timeoutMs || 180000
+  const started = Date.now()
+  let lastError = ''
+  let announced = false
+  while (Date.now() - started < limit) {
+    await new Promise(function (resolve) { setTimeout(resolve, 400) })
+    try {
+      const state = await bridge('status')
+      if (state && state.error) {
+        lastError = String(state.error)
+        // Give the supervisor a moment to retry before reporting.
+        await new Promise(function (resolve) { setTimeout(resolve, 500) })
+        const again = await bridge('status').catch(function () { return {} })
+        if (again && again.error && !again.starting) {
+          showError(again.error)
+          return
+        }
+        if (!state.starting) {
+          showError(lastError)
+          return
+        }
+        continue
+      }
+      if (state && state.running) return
+      if (state && state.starting && !announced && Date.now() - started > 4000) {
+        announced = true
+        showHint(t('client.preparing'))
+      }
+    } catch (error) {}
+  }
+  if (lastError) showError(lastError)
+  else showError(t('client.startTimeout', { log: '%LOCALAPPDATA%\\dsh-quickdock\\host.log' }))
+}
+
+/* ---------------- header button ---------------- */
 
 function SendToDock(props) {
-  const sessionId = props?.sessionId
+  const sessionId = props && props.sessionId
   if (!sessionId) return null
   const onClick = async (event) => {
     event.stopPropagation()
     try {
-      const res = await fetch('/api/quickdock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'bind', sessionId })
-      })
-      if (!res.ok) {
-        showError('[dsh-quickdock] 请求失败：HTTP ' + res.status)
-        return
-      }
-      const result = await res.json().catch(() => ({}))
-      // 失败必须让用户看见，不做任何兜底
+      const result = await bridge('bind', { sessionId: sessionId })
+      // Bind failures are shown as-is: no silent fallback.
       if (result.error) {
         showError(result.error)
         return
       }
-      // dock 启动是异步的：bind 返回时可能还没失败。
-      // 轮询几次拿到真正的结果 —— 失败必须让用户看见。
       await waitForDockResult()
     } catch (error) {
-      showError('QuickDock 请求失败：' + String(error && error.message || error))
+      showError(t('client.dockFailed', { reason: String(error && error.message || error) }))
     }
   }
   return el('button', {
     type: 'button',
     id: PLUGIN_ID + '-send',
-    title: '在 QuickDock 中打开此会话',
+    title: t('client.sendToDock'),
+    'aria-label': t('client.sendToDock'),
     onClick,
     style: {
       display: 'inline-flex',
@@ -190,17 +268,17 @@ function SendToDock(props) {
   },
   el('rect', { x: 1, y: 1, width: 14, height: 9, rx: 2.5, stroke: 'currentColor', strokeWidth: 1.6 }),
   el('rect', { x: 4, y: 12.4, width: 8, height: 2.6, rx: 1.3, fill: 'currentColor' })),
-  el('span', null, 'Dock'))
+  el('span', null, t('client.label')))
 }
 
-/* ---------------- 主题同步 ---------------- */
+/* ---------------- theme sync ---------------- */
 
 /**
- * dock 用到的 21 个主题 token（DESIGN 7.2）。
+ * The 21 dock theme tokens (DESIGN 7.2).
  *
- * 主题只存在于**浏览器**（dsh-client-ui-theme 在 Web 客户端里跑），
- * dock 是一个独立 Electron 窗口，拿不到这些 CSS 变量。
- * 所以这里把快照推给宿主，宿主再通过 SSE 分发给 dock 页面。
+ * A theme only exists in the browser (dsh-client-ui-theme runs in the web
+ * client), and the dock is a separate Electron window, so the snapshot is
+ * forwarded through the Host and pushed to the page over SSE.
  */
 const THEME_TOKENS = [
   '--dsw-alias-bg-base', '--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2', '--dsw-alias-bg-overlay',
@@ -221,29 +299,26 @@ function themePayload(snapshot) {
     const value = source[name]
     if (typeof value === 'string' && value) tokens[name] = value
   }
+  // Fewer than six tokens is not a real theme; the dock keeps its palette.
   if (Object.keys(tokens).length < 6) return null
   return {
     colorScheme: snapshot.active.colorScheme === 'light' ? 'light' : 'dark',
     tokens,
     fonts: {
-      text: snapshot.fontFamilies?.text ?? '',
-      code: snapshot.fontFamilies?.code ?? '',
-      sizeText: snapshot.fontSizes?.text ?? 12,
-      sizeCode: snapshot.fontSizes?.code ?? 11
+      text: snapshot.fontFamilies && snapshot.fontFamilies.text || '',
+      code: snapshot.fontFamilies && snapshot.fontFamilies.code || '',
+      sizeText: snapshot.fontSizes && snapshot.fontSizes.text || 12,
+      sizeCode: snapshot.fontSizes && snapshot.fontSizes.code || 11
     }
   }
 }
 
 function pushTheme(payload) {
   if (!payload) return
-  fetch('/api/quickdock', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'theme', theme: payload })
-  }).catch(function () {})
+  bridge('theme', { theme: payload }).catch(function () {})
 }
 
-/** 主题变了就同步给 dock（失败静默：主题不该影响任何功能）。 */
+/** Sync on boot and on every theme change (failures are non-fatal). */
 function syncTheme(tctx) {
   try {
     pushTheme(themePayload(tctx.theme.getTheme()))
@@ -259,15 +334,15 @@ function syncTheme(tctx) {
   })
 }
 
-
-/* ---------------- 命令总线：在 DSH 主窗口打开会话 ---------------- */
+/* ---------------- command bus ---------------- */
 
 /**
- * dock 是独立进程，改不了浏览器里的 SPA；这边是浏览器插件，能调
- * ctx.uiWorkspace.openSession()，所以由宿主转发一条命令过来。
+ * "Open session in DSH" command bus.
  *
- * 用 SSE 而不是轮询：这条总线只在"点按钮的那一下"有数据，但没有它
- * 就只能靠定时问，反应会慢半拍。断了自动重连（3s）。
+ * The dock is a separate process and cannot drive the SPA; this plugin runs in
+ * the SPA. The Host forwards the command over a lightweight SSE stream that
+ * only carries occasional events (hence SSE rather than polling). Reconnects
+ * after 3s when the stream drops.
  */
 function connectCommandBus(onCommand) {
   var source = null
@@ -276,36 +351,45 @@ function connectCommandBus(onCommand) {
 
   function schedule() {
     if (stopped || retry) return
-    retry = setTimeout(function () { retry = null; open() }, 3000)
+    retry = setTimeout(function () {
+      retry = null
+      open()
+    }, 3000)
   }
 
   function open() {
     if (stopped) return
-    fetch('/api/quickdock', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'web-url' })
-    }).then(function (res) { return res.json() }).then(function (body) {
+    bridge('web-url').then(function (body) {
       var token = ''
-      try { token = new URL(body && body.url, location.href).searchParams.get('t') || '' } catch (e) {}
+      try {
+        token = new URL(body && body.url, location.href).searchParams.get('t') || ''
+      } catch (error) {}
       if (!token) throw new Error('bus token unavailable')
       if (stopped) return
       source = new EventSource('/quickdock/api/bus?t=' + encodeURIComponent(token))
       source.addEventListener('command', function (event) {
         var command = null
-        try { command = JSON.parse(event.data) } catch (e) {}
+        try {
+          command = JSON.parse(event.data)
+        } catch (error) {}
         if (command && command.type === 'open-session' && command.sessionId) {
-          try { onCommand(command.sessionId) } catch (error) {
+          try {
+            onCommand(command.sessionId)
+          } catch (error) {
             console.error('[dsh-quickdock] open-session failed:', error)
           }
         }
       })
       source.onerror = function () {
-        try { source.close() } catch (e) {}
+        try {
+          source.close()
+        } catch (error) {}
         source = null
         schedule()
       }
-    }).catch(function () { schedule() })
+    }).catch(function () {
+      schedule()
+    })
   }
 
   open()
@@ -313,10 +397,14 @@ function connectCommandBus(onCommand) {
     stopped = true
     if (retry) clearTimeout(retry)
     if (source) {
-      try { source.close() } catch (e) {}
+      try {
+        source.close()
+      } catch (error) {}
     }
   }
 }
+
+/* ---------------- apply ---------------- */
 
 function apply(ctx) {
   try {
@@ -324,31 +412,45 @@ function apply(ctx) {
       name: HEADER_SLOT,
       id: PLUGIN_ID + '-send-to-dock',
       registrant: PLUGIN_ID,
-      // order 才是显示顺序（priority 是插槽内部的重叠优先级，传了也会被覆盖）
+      // order is the display order (priority is the slot's own overlap rule).
       order: 1010
     }, SendToDock))
   } catch (error) {
     console.error('[dsh-quickdock] client apply failed (plugin disabled, web boot continues):', error)
   }
-  // theme 是可选依赖：没有它按钮照样能用，只是 dock 用内置兜底色
+
+  // Push the browser locale even when the locale service is unavailable.
+  applyLocale(detectLocale())
+
+  // Optional dependencies: the button works without theme/locale services.
   try {
     ctx.inject(['theme'], syncTheme)
   } catch (error) {
     console.warn('[dsh-quickdock] theme service unavailable:', error)
   }
-  // 「在 DSH 打开会话」的接收端（可选依赖：没有 uiWorkspace 就只是没这个功能）
+  try {
+    ctx.inject(['locale'], syncLocale)
+  } catch (error) {
+    console.warn('[dsh-quickdock] locale service unavailable:', error)
+  }
+  // Receiver for "open this session in DSH" (absent uiWorkspace = no feature).
   try {
     ctx.inject(['uiWorkspace'], function (uiCtx) {
       var stop = connectCommandBus(function (sessionId) {
         uiCtx.uiWorkspace.openSession(sessionId)
-        try { window.focus() } catch (error) {}
+        try {
+          window.focus()
+        } catch (error) {}
       })
-      uiCtx.effect(function () { return stop }, 'quickdock: command bus')
+      uiCtx.effect(function () {
+        return stop
+      }, 'quickdock: command bus')
     })
   } catch (error) {
     console.warn('[dsh-quickdock] uiWorkspace unavailable:', error)
   }
 }
+
 return {
   name: 'dsh-quickdock',
   inject: ['slots'],

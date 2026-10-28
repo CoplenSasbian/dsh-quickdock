@@ -1,8 +1,21 @@
 'use strict';
 
+/**
+ * Line protocol between the Host half and the dock process.
+ *
+ * Only stdout framing and status writing live here. Unknown command types are
+ * dropped so a Host/newer-dock mismatch cannot crash the renderer.
+ */
+
 const ALLOWED_TYPES = new Set(['show', 'attach', 'quit', 'ping']);
+const MAX_LINE = 1024 * 1024;
 
 class HostProtocol {
+  /**
+   * @param {NodeJS.ReadableStream} stream host stdin (or stdout in tests).
+   * @param {(message: object) => void} onMessage accepted commands.
+   * @param {(error: Error) => void} [onError] malformed frames and stream errors.
+   */
   constructor(stream, onMessage, onError) {
     this.stream = stream;
     this.onMessage = onMessage;
@@ -12,16 +25,17 @@ class HostProtocol {
     if (stream && typeof stream.on === 'function') {
       stream.on('data', this.handler);
       stream.on('error', (error) => {
-        // Piped stdio is not available on every Windows Electron configuration.
+        // Piped stdio is unavailable in some Windows Electron configurations.
         if (error.code !== 'EPIPE' && error.code !== 'EOF') this.onError(error);
       });
     }
   }
 
+  /** Consume a chunk, dispatching every complete `quickdock:` line. */
   accept(chunk) {
     this.buffer += chunk.toString();
-    // Bound memory even if the input is not newline delimited.
-    if (this.buffer.length > 1024 * 1024) {
+    // Bound memory even if the peer never sends a newline.
+    if (this.buffer.length > MAX_LINE) {
       this.buffer = '';
       this.onError(new Error('Host protocol line exceeds 1 MiB'));
       return;
@@ -43,6 +57,7 @@ class HostProtocol {
     }
   }
 
+  /** Detach from the stream. */
   dispose() {
     if (this.stream && typeof this.stream.removeListener === 'function') {
       this.stream.removeListener('data', this.handler);
@@ -51,6 +66,10 @@ class HostProtocol {
   }
 }
 
+/**
+ * Write one status line to the Host.
+ * @returns {boolean} false when the pipe is gone (expected during shutdown).
+ */
 function writeStatus(stream, type, details) {
   if (!stream || stream.destroyed || stream.writable === false) return false;
   try {
