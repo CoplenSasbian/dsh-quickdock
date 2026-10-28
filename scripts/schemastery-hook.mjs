@@ -7,10 +7,13 @@
  * back to Node's default resolver, which is the normal path in this repository.
  */
 import { createRequire } from 'node:module'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+/** Point QD_PROFILE_PACKAGE at another profile when the default one is not installed. */
 const PROFILE = process.env.QD_PROFILE_PACKAGE
-  || 'C:/Users/futurvo/.dsh/profiles/desktop/package.json'
+  || join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'profiles', 'desktop', 'package.json')
 
 let resolved
 let failed = false
