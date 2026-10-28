@@ -26,6 +26,12 @@ export const Config = Schema.object({
    * and exits with the window. True keeps it resident (close hides it).
    */
   autoLaunch: Schema.boolean().default(false),
+  /**
+   * Fetch the desktop runtime as soon as the plugin mounts (~100 MB, once).
+   * On (default) keeps the first Dock click instant; off moves the download to
+   * that click instead.
+   */
+  prefetchElectron: Schema.boolean().default(true),
   /** Content width shared by both windows (input + run). */
   width: Schema.number().default(480),
   /** Fixed height of the input window. */
@@ -61,5 +67,7 @@ export const Config = Schema.object({
  */
 export function apply(ctx, config) {
   if (!config.enabled) return
-  new QuickDockHost(ctx, config).start()
+  const host = new QuickDockHost(ctx, config)
+  host.start()
+  host.prefetchElectron()
 }

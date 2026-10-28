@@ -8,6 +8,9 @@
         # On demand: Electron starts on the first Dock click and exits with the window.
         # Set true to stay resident (close only hides; no start-up latency).
         autoLaunch: false
+        # Fetch Electron in the background when the host mounts, so the first
+        # Dock click opens the window instead of waiting for ~100 MB.
+        prefetchElectron: true
         # Content width shared by both windows.
         width: 480
         # Fixed heights: input window and run window are separate windows.

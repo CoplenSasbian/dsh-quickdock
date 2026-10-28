@@ -205,6 +205,30 @@ export class QuickDockHost {
     this.dsh.logger?.info?.('quickdock: host half loaded')
   }
 
+  /**
+   * Prepare the Electron runtime in the background, right after the host mounts.
+   *
+   * Only the desktop window needs Electron, and fetching it is ~100 MB, so doing
+   * it here keeps the first Dock click instant instead of stalling it behind a
+   * download. Failures stay in the log: the click path retries and reports them
+   * with a localized message, so nothing is silently swallowed.
+   */
+  prefetchElectron() {
+    if (this.config?.prefetchElectron === false) return
+    if (this.prefetchStarted) return
+    this.prefetchStarted = true
+    try {
+      if (this.resolver.executables().length) return
+    } catch (_) {
+      return
+    }
+    const started = Date.now()
+    this.trace('electron prefetch: start')
+    this.resolver.download()
+      .then((exe) => this.trace('electron prefetch: ready at ' + exe + ' (' + (Date.now() - started) + ' ms)'))
+      .catch((error) => this.trace('electron prefetch: failed: ' + String(error?.message || error)))
+  }
+
   #watchEvents() {
     this.ctx.on('theme/change', (snapshot) => {
       this.theme.acceptSnapshot(snapshot)
