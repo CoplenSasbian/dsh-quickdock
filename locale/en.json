@@ -104,6 +104,7 @@
   "host.electronMissing": "No usable Electron runtime found",
   "host.electronUnavailable": "Electron unavailable: {reason}{hint}",
   "host.electronInstallHint": " (run npm install first: Electron is fetched with @electron/get, or set DSH_QUICKDOCK_ELECTRON_PATH to an electron.exe)",
+  "host.electronDownloadHint": " (every mirror failed: set ELECTRON_MIRROR to a reachable mirror, e.g. https://npmmirror.com/mirrors/electron/, or point DSH_QUICKDOCK_ELECTRON_PATH at an existing electron.exe)",
   "host.electronBlocked": "Downloaded but still cannot start (it crashes before running JS, usually blocked by security software): {path}",
   "host.dockSpawnFailed": "Failed to start the dock process: {reason}",
   "host.dockCrashLoop": "The dock keeps exiting (last exit code {code}); retries stopped. See {log}",

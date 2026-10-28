@@ -41,27 +41,43 @@ async function main() {
     console.log('Electron already present: ' + exe)
     return
   }
-  console.log('Downloading Electron ' + VERSION + ' (~100MB via npmmirror)…')
   const { download } = await import('@electron/get')
   const { extract } = await import('@electron-internal/extract-zip')
-  const mirror = process.env.ELECTRON_MIRROR ?? 'https://npmmirror.com/mirrors/electron/'
-  let received = 0
-  let total = 0
-  const zipPath = await download(VERSION, {
-    mirrorOptions: { mirror },
-    progressCallback: (progress) => {
-      received = progress.received ?? received
-      total = progress.total ?? total
-      if (total > 0) {
-        const percent = Math.round((received / total) * 100)
-        const mb = (received / 1048576).toFixed(1)
-        const mbTotal = (total / 1048576).toFixed(1)
-        process.stdout.write('\r  ' + percent + '%  ' + mb + ' / ' + mbTotal + ' MB')
-      }
+  // Same order as the Host: explicit override, the China mirror, then GitHub.
+  const mirrors = []
+  if (process.env.ELECTRON_MIRROR) mirrors.push(process.env.ELECTRON_MIRROR)
+  for (const mirror of ['https://npmmirror.com/mirrors/electron/', null]) {
+    if (!mirrors.includes(mirror)) mirrors.push(mirror)
+  }
+  let lastError = null
+  for (const mirror of mirrors) {
+    try {
+      console.log('Downloading Electron ' + VERSION + ' (~100MB from ' + (mirror ?? 'GitHub') + ')…')
+      let received = 0
+      let total = 0
+      const zipPath = await download(VERSION, {
+        ...(mirror ? { mirrorOptions: { mirror } } : {}),
+        progressCallback: (progress) => {
+          received = progress.received ?? received
+          total = progress.total ?? total
+          if (total > 0) {
+            const percent = Math.round((received / total) * 100)
+            const mb = (received / 1048576).toFixed(1)
+            const mbTotal = (total / 1048576).toFixed(1)
+            process.stdout.write('\r  ' + percent + '%  ' + mb + ' / ' + mbTotal + ' MB')
+          }
+        }
+      })
+      console.log('\nExtracting…')
+      await extract(zipPath, { dir: root })
+      lastError = null
+      break
+    } catch (error) {
+      lastError = error
+      console.log('\n  mirror failed (' + (mirror ?? 'GitHub') + '): ' + String(error?.message || error))
     }
-  })
-  console.log('\nExtracting…')
-  await extract(zipPath, { dir: root })
+  }
+  if (lastError) throw lastError
   console.log('Done: ' + exe)
 }
 

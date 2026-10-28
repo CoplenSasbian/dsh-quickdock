@@ -104,6 +104,7 @@
   "host.electronMissing": "未找到可用的 Electron 运行时",
   "host.electronUnavailable": "Electron 不可用：{reason}{hint}",
   "host.electronInstallHint": "（本插件需要先 npm install：它用 @electron/get 下载 Electron；也可以手动指定 DSH_QUICKDOCK_ELECTRON_PATH 指向一个 electron.exe）",
+  "host.electronDownloadHint": "（所有镜像都失败了：可以用 ELECTRON_MIRROR 指定能访问的镜像，例如 https://npmmirror.com/mirrors/electron/；或用 DSH_QUICKDOCK_ELECTRON_PATH 指向已有的 electron.exe）",
   "host.electronBlocked": "下载完成但仍无法启动（进程在 JS 执行前崩溃，通常是安全软件拦截）：{path}",
   "host.dockSpawnFailed": "dock 进程启动失败：{reason}",
   "host.dockCrashLoop": "dock 进程反复退出（最后一次退出码 {code}），已停止重试。请看日志 {log}",

@@ -53,3 +53,24 @@ test('the version can be overridden through the environment', async () => {
   const resolver = await createResolver({ env: { LOCALAPPDATA: 'C:/Local', DSH_QUICKDOCK_ELECTRON_VERSION: '40.0.0' } });
   assert.ok(resolver.candidates()[0].includes('40.0.0'));
 });
+
+test('downloads fall back from the configured mirror to the upstream default', async () => {
+  const resolver = await createResolver({ env: { LOCALAPPDATA: 'C:/Local', ELECTRON_MIRROR: 'https://example.com/electron/' } });
+  // A blocked mirror must not be the last word: the list ends with @electron/get's
+  // own default (GitHub releases), which is reachable where npmmirror is not.
+  assert.deepStrictEqual(resolver.mirrors(), [
+    'https://example.com/electron/',
+    'https://npmmirror.com/mirrors/electron/',
+    null
+  ]);
+});
+
+test('without an override the list is the China mirror and then the default', async () => {
+  const resolver = await createResolver();
+  assert.deepStrictEqual(resolver.mirrors(), ['https://npmmirror.com/mirrors/electron/', null]);
+});
+
+test('an override equal to the built-in mirror is not tried twice', async () => {
+  const resolver = await createResolver({ env: { LOCALAPPDATA: 'C:/Local', ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/' } });
+  assert.deepStrictEqual(resolver.mirrors(), ['https://npmmirror.com/mirrors/electron/', null]);
+});

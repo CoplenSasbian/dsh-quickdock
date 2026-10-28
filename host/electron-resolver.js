@@ -10,7 +10,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 export const DEFAULT_ELECTRON_VERSION = '44.7.0'
@@ -154,6 +154,24 @@ export class ElectronResolver {
     return usable
   }
 
+  /**
+   * Download mirrors, in the order they are tried.
+   *
+   * `null` stands for @electron/get's own default (GitHub releases). The
+   * fallback matters for machines outside the mirror's region: a blocked or
+   * slow mirror must not fail the very first Dock click.
+   *
+   * @returns {(string|null)[]} mirror roots, `null` meaning the default.
+   */
+  mirrors() {
+    const list = []
+    if (this.env.ELECTRON_MIRROR) list.push(this.env.ELECTRON_MIRROR)
+    for (const mirror of ['https://npmmirror.com/mirrors/electron/', null]) {
+      if (!list.includes(mirror)) list.push(mirror)
+    }
+    return list
+  }
+
   /** Download Electron once (in-process: a spawned helper would inherit the host exe). */
   async download() {
     if (this.downloading) return this.downloading
@@ -164,11 +182,40 @@ export class ElectronResolver {
       const extract = mod.extract ?? mod.default
       if (typeof extract !== 'function') throw new Error('extract-zip: no extract() export available')
       const target = join(this.downloadRoot(), this.version)
-      const mirror = this.env.ELECTRON_MIRROR ?? 'https://npmmirror.com/mirrors/electron/'
-      const zip = await download(this.version, { mirrorOptions: { mirror } })
-      await extract(zip, { dir: target })
-      this.logger?.info?.('quickdock: Electron %s downloaded to %s', this.version, target)
-      return join(target, exeNameFor(this.platform))
+      // @electron/get reads ELECTRON_MIRROR (and npm_config_electron_mirror)
+      // before mirrorOptions, so the per-attempt choice has to be written into
+      // the environment, then restored.
+      const saved = {
+        mirror: process.env.ELECTRON_MIRROR,
+        npm: process.env.npm_config_electron_mirror,
+        npmUpper: process.env.NPM_CONFIG_ELECTRON_MIRROR
+      }
+      let lastError = null
+      try {
+        for (const mirror of this.mirrors()) {
+          delete process.env.npm_config_electron_mirror
+          delete process.env.NPM_CONFIG_ELECTRON_MIRROR
+          if (mirror) process.env.ELECTRON_MIRROR = mirror
+          else delete process.env.ELECTRON_MIRROR
+          try {
+            const zip = await download(this.version, mirror ? { mirrorOptions: { mirror } } : {})
+            // An earlier attempt may have left a half-extracted tree behind.
+            rmSync(target, { recursive: true, force: true })
+            await extract(zip, { dir: target })
+            this.logger?.info?.('quickdock: Electron %s downloaded from %s to %s', this.version, mirror ?? 'default', target)
+            return join(target, exeNameFor(this.platform))
+          } catch (error) {
+            lastError = error
+            this.trace('electron mirror failed (' + (mirror ?? 'default') + '): ' + String(error?.message || error))
+          }
+        }
+      } finally {
+        for (const [key, value] of [['ELECTRON_MIRROR', saved.mirror], ['npm_config_electron_mirror', saved.npm], ['NPM_CONFIG_ELECTRON_MIRROR', saved.npmUpper]]) {
+          if (value === undefined) delete process.env[key]
+          else process.env[key] = value
+        }
+      }
+      throw lastError
     })().finally(() => {
       this.downloading = null
     })
@@ -197,7 +244,9 @@ export class ElectronResolver {
       // A missing dependency message is not actionable on its own.
       const hint = /Cannot find package|ERR_MODULE_NOT_FOUND/i.test(reason)
         ? this.t('host.electronInstallHint')
-        : ''
+        : /Response code|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up/i.test(reason)
+          ? this.t('host.electronDownloadHint')
+          : ''
       const wrapped = new Error(this.t('host.electronUnavailable', { reason, hint }))
       wrapped.electronUnavailable = true
       throw wrapped
