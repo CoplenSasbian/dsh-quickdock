@@ -36,17 +36,6 @@
       .replace(/\n/g, '<br>');
   }
 
-  /** Localized approval text: current locale first, then Chinese, then reason. */
-  function approvalText(interaction) {
-    var localized = interaction && interaction.displayReason;
-    if (localized && typeof localized === 'object') {
-      var picked = localized[window.QD.i18n.locale()] || localized.zh || localized.en;
-      if (typeof picked === 'string' && picked.trim()) return picked.trim();
-    }
-    if (typeof localized === 'string' && localized.trim()) return localized.trim();
-    return String((interaction && (interaction.reason || interaction.callId)) || '');
-  }
-
   /**
    * Create the display view.
    * @param {{root: HTMLElement, api: Function, getState: Function,
@@ -73,8 +62,18 @@
     var cardKey = '';
     var needsRebuild = false;
     var stepsSig = null;
+    /** Follow the newest row. Only a real user gesture may turn this off. */
     var autoScroll = true;
-    var scrollGuard = false;
+    /** A wheel / touch / key / scrollbar gesture that can move the list is live. */
+    var gestureActive = false;
+    var gestureTimer = null;
+    /** Idle time after which a gesture is considered settled (ms). */
+    var GESTURE_IDLE_MS = 240;
+    /** Keys that can scroll the focused list. */
+    var SCROLL_KEYS = {
+      ArrowUp: true, ArrowDown: true, PageUp: true, PageDown: true,
+      Home: true, End: true, ' ': true, Spacebar: true
+    };
 
     function toastError(error) {
       if (options.toastError) options.toastError(error);
@@ -449,12 +448,22 @@
       return rec;
     }
 
+    /**
+     * Upper bound for the one-line summary. The CSS ellipsis draws the "…" at
+     * the right edge of the row; slicing at the visible width (as before) put
+     * the ellipsis in the middle of an otherwise empty row. The cap only keeps
+     * layout work bounded for very long thinking text.
+     */
+    var THINK_PREVIEW_LIMIT = 600;
+
     function updateThink(rec, step) {
       var text = String(step.text || '');
       if (rec.text === text) return;
       rec.text = text;
       var one = text.replace(/\s+/g, ' ').trim();
-      rec.preview.textContent = one.length > 42 ? one.slice(0, 42) + '…' : one;
+      if (one.length > THINK_PREVIEW_LIMIT) one = one.slice(0, THINK_PREVIEW_LIMIT) + '…';
+      rec.preview.textContent = one;
+      if (rec.preview.title !== one) rec.preview.title = one;
       if (rec.textEl.textContent !== text) rec.textEl.textContent = text;
     }
 
@@ -484,37 +493,14 @@
       return head;
     }
 
-    function cardActions(items, id) {
-      var row = U.el('div', 'card-actions');
-      items.forEach(function (item) {
-        var button = U.el('button', 'card-btn ' + (item.cls || ''), item.label);
-        button.type = 'button';
-        button.setAttribute('aria-label', item.aria || item.label);
-        button.addEventListener('click', function () {
-          api('answer', { id: id, outcome: item.value }).catch(toastError);
-          markAnswered();
-        });
-        row.appendChild(button);
-      });
-      return row;
-    }
-
-    /** Approval / question card. Returns null when there is nothing to ask. */
+    /**
+     * Question card. Approvals are intentionally not rendered here: they are
+     * answered in the input window's run panel, and duplicating the Allow/Deny
+     * dialog in the list window made two identical dialogs appear.
+     * Returns null when there is nothing to ask.
+     */
     function buildInteractionCard(interaction) {
       if (!interaction || interaction.status !== 'open') return null;
-      if (interaction.kind === 'approval') {
-        var card = U.el('div', 'card approval');
-        card.appendChild(cardHead(t('card.needConfirm'), interaction.toolName || ''));
-        var body = U.el('div', 'card-body');
-        body.appendChild(U.el('div', 'cmd', approvalText(interaction)));
-        body.appendChild(cardActions([
-          { label: t('card.allow'), cls: 'primary', value: 'allow', aria: t('card.allowLabel') },
-          { label: t('card.deny'), cls: 'danger', value: 'deny', aria: t('card.denyLabel') }
-        ], interaction.id));
-        card.appendChild(body);
-        card.appendChild(U.el('div', 'card-foot', t('card.note')));
-        return card;
-      }
       if (interaction.kind !== 'question') return null;
 
       var questionCard = U.el('div', 'card question');
@@ -627,26 +613,64 @@
 
     /* -------------------------------- scrolling -------------------------------- */
 
+    /** Adopt the position the user left the list at. */
+    function adoptScroll() {
+      var scroller = scrollHost();
+      if (!scroller) return;
+      autoScroll = U.isNearBottom(scroller, 24);
+    }
+
+    /**
+     * Mark a real user gesture.
+     *
+     * Momentum, smooth scrolling and a scrollbar drag keep firing scroll events,
+     * and each one refreshes the window; once it settles, the final position
+     * decides whether following resumes. Nothing else may change `autoScroll`:
+     * content growth, a scrollbar appearing or a programmatic write all produce
+     * scroll events that must not pause follow mode.
+     */
+    function markGesture() {
+      gestureActive = true;
+      clearTimeout(gestureTimer);
+      gestureTimer = setTimeout(function () {
+        gestureActive = false;
+        adoptScroll();
+      }, GESTURE_IDLE_MS);
+    }
+
     function applyAutoScroll(prevTop, wasAuto) {
       var scroller = scrollHost();
       if (!scroller) return;
-      scrollGuard = true;
       if (wasAuto) scroller.scrollTop = scroller.scrollHeight;
       else scroller.scrollTop = prevTop;
-      // Release on the next task so this assignment's scroll event is ignored.
-      setTimeout(function () {
-        scrollGuard = false;
-      }, 0);
     }
 
     function bindAutoScroll() {
       var scroller = scrollHost();
       if (!scroller || scroller.__qdBound) return;
       scroller.__qdBound = true;
+      ['wheel', 'touchstart', 'touchmove'].forEach(function (type) {
+        scroller.addEventListener(type, markGesture, { passive: true });
+      });
+      // A scrollbar press targets the element itself (offsetX beyond clientWidth),
+      // so pointerdown also covers dragging the scrollbar thumb.
+      scroller.addEventListener('pointerdown', markGesture, { passive: true });
+      document.addEventListener('keydown', function (event) {
+        if (!SCROLL_KEYS[event.key]) return;
+        if (event.target === scroller || (event.target && scroller.contains(event.target))) {
+          markGesture();
+        }
+      }, true);
       scroller.addEventListener('scroll', function () {
-        if (scrollGuard) return;
-        // Back at the bottom = follow again; scrolled up = stay put.
-        autoScroll = U.isNearBottom(scroller, 24);
+        if (gestureActive) {
+          // Keep the window alive through momentum / drag events, then adopt.
+          markGesture();
+          adoptScroll();
+          return;
+        }
+        // Not the user: a new row, the scrollbar appearing, our own write. Follow
+        // mode must not change; when following, re-pin so growth is never missed.
+        if (autoScroll) scroller.scrollTop = scroller.scrollHeight;
       }, { passive: true });
     }
 
@@ -679,7 +703,10 @@
     }
 
     function syncCard(interaction, hasInter) {
-      var key = hasInter && interaction ? interaction.kind + ':' + interaction.id : '';
+      // Only questions get a card; approvals live in the input window.
+      var key = hasInter && interaction && interaction.kind !== 'approval'
+        ? interaction.kind + ':' + interaction.id
+        : '';
       if (key === cardKey) return;
       if (cardNode && cardNode.parentNode === host) host.removeChild(cardNode);
       cardNode = null;
@@ -782,7 +809,8 @@
       var hasStream = hasLiveText(state && state.stream);
       var hasContent = Boolean(steps.length || hasInter || hasStream);
 
-      applyVisibility(hasContent, hasInter);
+      // Approvals are answered in the input window, so a hidden list stays hidden.
+      applyVisibility(hasContent);
       if (!hasContent) {
         if (host.firstChild) resetHost();
         else stepsSig = null;

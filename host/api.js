@@ -96,6 +96,34 @@ const ROUTES = [
   },
   {
     method: 'GET',
+    path: 'meta',
+    handle: ({ app }) => app.meta()
+  },
+  {
+    method: 'GET',
+    path: 'workspaces',
+    handle: ({ app }) => app.listWorkspaces()
+  },
+  {
+    method: 'GET',
+    path: 'sessions',
+    handle: ({ app, url }) => app.listSessions(url.searchParams.get('workspaceId') || '')
+  },
+  {
+    method: 'GET',
+    path: 'turns',
+    handle: ({ app, url }) => app.listTurns(url.searchParams.get('sessionId') || '')
+  },
+  {
+    method: 'GET',
+    path: 'turn',
+    handle: ({ app, url }) => app.turnDetail(
+      url.searchParams.get('turn') ?? '',
+      url.searchParams.get('sessionId') || ''
+    )
+  },
+  {
+    method: 'GET',
     path: 'state',
     handle: ({ app }) => app.snapshot()
   },
@@ -110,7 +138,10 @@ const ROUTES = [
   {
     method: 'GET',
     path: 'step-detail',
-    handle: ({ app, url }) => app.stepDetail(url.searchParams.get('id') || '')
+    handle: ({ app, url }) => app.stepDetail(
+      url.searchParams.get('id') || '',
+      url.searchParams.get('sessionId') || ''
+    )
   }
 ]
 

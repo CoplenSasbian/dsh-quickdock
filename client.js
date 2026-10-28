@@ -276,9 +276,11 @@ function SendToDock(props) {
 /**
  * The 21 dock theme tokens (DESIGN 7.2).
  *
- * A theme only exists in the browser (dsh-client-ui-theme runs in the web
- * client), and the dock is a separate Electron window, so the snapshot is
- * forwarded through the Host and pushed to the page over SSE.
+ * Built-in DSH themes publish an empty token map: the palette is declared by
+ * the --dsw-* stylesheets on <body> and selected by the data-ds-dark-theme
+ * attribute. A snapshot therefore only carries the scheme and typography; the
+ * colors are read from the main window's computed styles and pushed to the
+ * Host, which inlines them into the dock page.
  */
 const THEME_TOKENS = [
   '--dsw-alias-bg-base', '--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2', '--dsw-alias-bg-overlay',
@@ -291,18 +293,99 @@ const THEME_TOKENS = [
   '--dsw-alias-separator-primary', '--dsw-alias-tooltip-bg', '--dsw-alias-tooltip-key-bg'
 ]
 
+/** Body attribute selecting the dark base palette (owned by ui-layout). */
+const DARK_ATTRIBUTE = 'data-ds-dark-theme'
+
+/** Retry schedule while DSH has not mounted its token stylesheets yet (ms). */
+const THEME_RETRY_MS = [120, 300, 700, 1500, 3000, 6000]
+
+/** Probe fill for an undefined token; never a real palette value. */
+const THEME_PROBE_MISSING = 'rgb(1, 2, 3)'
+
+/** Read one custom property, tolerating a missing computed-style object. */
+function readProperty(style, name) {
+  if (!style) return ''
+  try {
+    return String(style.getPropertyValue(name) || '').trim()
+  } catch (error) {
+    return ''
+  }
+}
+
+/**
+ * Resolve one alias token to a concrete color through a probe element.
+ *
+ * The palette is declared as var() chains over the static scale, and a
+ * computed custom property may still carry the unresolved chain. The probe
+ * makes the browser resolve it exactly as the page would.
+ */
+function probeToken(probe, name, missing) {
+  try {
+    probe.style.backgroundColor = THEME_PROBE_MISSING
+    probe.style.backgroundColor = 'var(' + name + ', ' + THEME_PROBE_MISSING + ')'
+    const value = String(getComputedStyle(probe).backgroundColor || '').trim()
+    // Undefined keeps the sentinel, a non-color value leaves the initial
+    // transparent fill; anything else is a real token the dock can paint.
+    return value && value !== missing && value !== 'rgba(0, 0, 0, 0)' ? value : ''
+  } catch (error) {
+    return ''
+  }
+}
+
+/** The active palette, read from the main window's resolved computed styles. */
+function readTokens() {
+  const tokens = {}
+  if (typeof document === 'undefined' || !document.body) return tokens
+  let bodyStyle = null
+  let rootStyle = null
+  try { bodyStyle = getComputedStyle(document.body) } catch (error) {}
+  try { rootStyle = getComputedStyle(document.documentElement) } catch (error) {}
+  const unresolved = []
+  for (const name of THEME_TOKENS) {
+    const value = readProperty(bodyStyle, name) || readProperty(rootStyle, name)
+    // A resolved custom property needs no probe; a var() chain does.
+    if (value && value.indexOf('var(') < 0) tokens[name] = value
+    else unresolved.push(name)
+  }
+  if (!unresolved.length) return tokens
+  let probe = null
+  try {
+    probe = document.createElement('div')
+    probe.setAttribute('aria-hidden', 'true')
+    probe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:0;height:0;pointer-events:none'
+    document.body.appendChild(probe)
+    probe.style.backgroundColor = THEME_PROBE_MISSING
+    const missing = String(getComputedStyle(probe).backgroundColor || '').trim()
+    for (const name of unresolved) {
+      const value = probeToken(probe, name, missing)
+      if (value) tokens[name] = value
+    }
+  } catch (error) {
+    // Keep whatever the computed custom properties already provided.
+  } finally {
+    if (probe && probe.parentNode) probe.parentNode.removeChild(probe)
+  }
+  return tokens
+}
+
+/** Resolved scheme: the DOM is authoritative once the presenter applied it. */
+function readScheme(snapshot) {
+  try {
+    if (document.body && typeof document.body.hasAttribute === 'function') {
+      return document.body.hasAttribute(DARK_ATTRIBUTE) ? 'dark' : 'light'
+    }
+  } catch (error) {}
+  return snapshot.active.colorScheme === 'light' ? 'light' : 'dark'
+}
+
+/** The bridge payload for one snapshot; null while the palette is unreadable. */
 function themePayload(snapshot) {
   if (!snapshot || !snapshot.active) return null
-  const source = snapshot.active.tokens || {}
-  const tokens = {}
-  for (const name of THEME_TOKENS) {
-    const value = source[name]
-    if (typeof value === 'string' && value) tokens[name] = value
-  }
+  const tokens = readTokens()
   // Fewer than six tokens is not a real theme; the dock keeps its palette.
   if (Object.keys(tokens).length < 6) return null
   return {
-    colorScheme: snapshot.active.colorScheme === 'light' ? 'light' : 'dark',
+    colorScheme: readScheme(snapshot),
     tokens,
     fonts: {
       text: snapshot.fontFamilies && snapshot.fontFamilies.text || '',
@@ -313,25 +396,84 @@ function themePayload(snapshot) {
   }
 }
 
-function pushTheme(payload) {
-  if (!payload) return
+let themeTimer = null
+let themeAttempt = 0
+let themeSent = ''
+let themeWarned = false
+
+/** Push the palette once; retry while DSH has not injected its stylesheets. */
+function deliverTheme(tctx) {
+  let payload = null
+  try {
+    payload = themePayload(tctx.theme.getTheme())
+  } catch (error) {
+    console.warn('[dsh-quickdock] theme sync failed:', error)
+    return
+  }
+  if (!payload) {
+    if (themeAttempt < THEME_RETRY_MS.length) {
+      scheduleTheme(tctx, THEME_RETRY_MS[themeAttempt])
+      themeAttempt += 1
+    } else if (!themeWarned) {
+      themeWarned = true
+      console.warn('[dsh-quickdock] no DSH theme tokens found; the dock keeps its palette')
+    }
+    return
+  }
+  themeAttempt = 0
+  const json = JSON.stringify(payload)
+  if (json === themeSent) return
+  themeSent = json
   bridge('theme', { theme: payload }).catch(function () {})
 }
 
-/** Sync on boot and on every theme change (failures are non-fatal). */
-function syncTheme(tctx) {
-  try {
-    pushTheme(themePayload(tctx.theme.getTheme()))
-  } catch (error) {
-    console.warn('[dsh-quickdock] theme sync failed:', error)
+function scheduleTheme(tctx, delay) {
+  if (themeTimer) clearTimeout(themeTimer)
+  themeTimer = setTimeout(function () {
+    themeTimer = null
+    deliverTheme(tctx)
+  }, typeof delay === 'number' ? delay : 0)
+}
+
+/**
+ * Read after the next paint: the palette presenter has its own theme/change
+ * listener, so the attribute and font variables are only current afterwards.
+ */
+function scheduleThemeAfterPaint(tctx) {
+  if (typeof requestAnimationFrame !== 'function') {
+    scheduleTheme(tctx, 32)
+    return
   }
-  tctx.on('theme/change', function (snapshot) {
-    try {
-      pushTheme(themePayload(snapshot))
-    } catch (error) {
-      console.warn('[dsh-quickdock] theme sync failed:', error)
-    }
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      scheduleTheme(tctx, 0)
+    })
   })
+}
+
+/** Adopt the main window palette on boot, on theme/change and on scheme flips. */
+function syncTheme(tctx) {
+  scheduleTheme(tctx, 0)
+  tctx.on('theme/change', function () {
+    scheduleThemeAfterPaint(tctx)
+  })
+  // The presenter toggles the palette attribute on <body>; observing it also
+  // catches a boot-time scheme that emitted no theme/change on this context.
+  try {
+    if (typeof MutationObserver === 'function' && document.body) {
+      const observer = new MutationObserver(function () {
+        scheduleThemeAfterPaint(tctx)
+      })
+      observer.observe(document.body, { attributes: true, attributeFilter: [DARK_ATTRIBUTE] })
+      if (typeof tctx.effect === 'function') {
+        tctx.effect(function () {
+          return function () { observer.disconnect() }
+        }, 'quickdock: theme palette observer')
+      }
+    }
+  } catch (error) {
+    console.warn('[dsh-quickdock] theme palette observer unavailable:', error)
+  }
 }
 
 /* ---------------- command bus ---------------- */

@@ -63,6 +63,8 @@ export class DockProcess {
     this.trace = deps.trace
     this.t = deps.t
     this.publish = deps.publish
+    // Called when the dock stops being able to answer (hidden, closed, crashed).
+    this.onInactive = typeof deps.onInactive === 'function' ? deps.onInactive : null
 
     this.child = null
     this.controlPort = 0
@@ -122,11 +124,26 @@ export class DockProcess {
     return controlRequest(this.controlPort, this.controlToken, message, timeoutMs)
   }
 
+  /**
+   * The dock can no longer present an interaction: clear the stale visibility and
+   * let the Host hand a claimed approval back to DSH, so the user is never left
+   * with no dialog to answer (the alternative is a silent 5 minute timeout).
+   */
+  #inactive() {
+    this.state.dock.visible = false
+    try {
+      this.onInactive?.()
+    } catch (error) {
+      this.trace('onInactive failed: ' + error)
+    }
+  }
+
   /** Report a dock failure to the page and the log. */
   reportError(message) {
     const text = String(message || this.t('host.unknownError'))
     this.state.dock.error = text
     this.state.dock.running = false
+    this.#inactive()
     this.logger?.error?.('quickdock: ' + text)
     this.trace('ERROR: ' + text)
     this.publish()
@@ -175,6 +192,7 @@ export class DockProcess {
           this.child = null
           this.controlPort = 0
           this.state.dock.running = false
+          this.#inactive()
           this.publish()
         }
       })
@@ -188,6 +206,7 @@ export class DockProcess {
         this.ready = false
         this.buffer = ''
         this.state.dock.running = false
+        this.#inactive()
         this.publish()
         if (this.stopping) return
 
@@ -287,7 +306,7 @@ export class DockProcess {
       return
     }
     if (type === 'hidden' || type === 'closed') {
-      this.state.dock.visible = false
+      this.#inactive()
       this.publish()
     }
   }
@@ -359,6 +378,7 @@ export class DockProcess {
     this.controlPort = 0
     this.buffer = ''
     this.state.dock.running = false
+    this.#inactive()
     if (!child) return
     if (port) void controlRequest(port, this.controlToken, { type: 'quit' }, 800)
     const killer = setTimeout(() => {

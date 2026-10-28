@@ -14,6 +14,11 @@ export const BRIDGE_PATH = '/api/quickdock'
 /** HTML view names, also used as query values. */
 export const VIEWS = Object.freeze({ input: 'input', display: 'display' })
 
+/** Client protocol version reported by GET /quickdock/api/meta. */
+export const API_VERSION = 1
+/** How many sessions keep a folded turn history in memory (LRU when exceeded). */
+export const MAX_TRACKED_SESSIONS = 8
+
 /** A theme payload below this many tokens is treated as incomplete. */
 export const MIN_THEME_TOKENS = 6
 

@@ -74,6 +74,34 @@ test('rows() returns the latest turn only', () => {
   assert.deepStrictEqual(folder.rows().map((r) => r.id), ['tool-y']);
 });
 
+test('turns are retained: an older turn stays readable after the next starts', () => {
+  const folder = new StepFolder(200);
+  folder.apply(ev('turn/start', 1, { turn: 1 }));
+  folder.apply(toolCall(2, 'a', 'read_file', '{}'));
+  folder.apply(ev('turn/end', 3, { turn: 1 }, '2026-10-28T10:00:05.000Z'));
+  folder.apply(ev('turn/start', 10, { turn: 2 }));
+  folder.apply(toolCall(11, 'b', 'bash', '{}'));
+
+  assert.deepStrictEqual(folder.rows().map((r) => r.id), ['tool-b'], 'default stays the newest turn');
+  assert.deepStrictEqual(folder.rows(1).map((r) => r.id), ['tool-a'], 'the older turn is still there');
+  assert.strictEqual(folder.latestTurn(), 2);
+  assert.strictEqual(folder.turnCount, 2);
+  assert.deepStrictEqual(folder.turnList().map((t) => t.rows), [1, 1]);
+  assert.strictEqual(folder.turnList()[0].endedAt, '2026-10-28T10:00:05.000Z');
+});
+
+test('a replayed or stale turn/start does not reopen a turn', () => {
+  const folder = new StepFolder(200);
+  folder.apply(ev('turn/start', 5, { turn: 3 }));
+  folder.apply(toolCall(6, 'a', 'read_file', '{}'));
+  folder.apply(ev('turn/start', 5, { turn: 3 }));
+  folder.apply(ev('turn/start', 4, { turn: 2 }));
+
+  assert.strictEqual(folder.turnCount, 1);
+  assert.strictEqual(folder.latestTurn(), 3);
+  assert.deepStrictEqual(folder.rows().map((r) => r.id), ['tool-a']);
+});
+
 test('oldest rows are evicted beyond maxSteps', () => {
   const folder = new StepFolder(3);
   for (let i = 1; i <= 6; i++) folder.apply(toolCall(i, 'c' + i, 'read_file', '{}'));

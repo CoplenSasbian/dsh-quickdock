@@ -106,6 +106,52 @@ test('setMenuSpace: persistence uses the original height', () => {
   void win;
 });
 
+test('display size uses one width reference (no enforce/place fight)', () => {
+  // The input window's content size can round 1px above the display's creation
+  // size on scaled displays. When the two corrections used different references,
+  // every state push resized the display window twice and it visibly fluttered.
+  const { mock, runtime } = setup({ x: 1400, y: 400, width: 481, height: 172 });
+  runtime.displayWin = new mock.electron.BrowserWindow({ x: 1400, y: 600, width: 480, height: 520 });
+  runtime.displayWantW = 480;
+  runtime.displayWantH = 520;
+
+  runtime.setDisplayVisible(true);
+  assert.strictEqual(runtime.displayWin.getBounds().width, 480, 'the display keeps its own width');
+
+  runtime.displayWin.calls.length = 0;
+  runtime.setDisplayVisible(true);
+  const resizes = runtime.displayWin.calls.filter((call) => call[0] === 'contentSize' || call[0] === 'bounds');
+  assert.deepStrictEqual(resizes, [], 'a repeated state push must not resize the window');
+});
+
+test('click-through is armed only after a window has painted', async () => {
+  // WS_EX_TRANSPARENT set before the first composite makes Windows paint the
+  // transparent region opaque until the next style toggle (the "move the mouse
+  // and it becomes transparent" bug).
+  const { mock, runtime } = setup({ x: 300, y: 400, width: 480, height: 172 });
+  runtime.displayWin = new mock.electron.BrowserWindow({ x: 300, y: 100, width: 480, height: 520 });
+  runtime.displayWantW = 480;
+  runtime.displayWantH = 520;
+
+  runtime.ensurePainted();
+  assert.deepStrictEqual(
+    runtime.displayWin.calls.filter((call) => call[0] === 'ignoreMouse'),
+    [],
+    'a hidden window must not be click-through'
+  );
+
+  runtime.setDisplayVisible(true);
+  assert.strictEqual(runtime.displayWin.isVisible(), true);
+  const calls = runtime.displayWin.calls;
+  const released = calls.findIndex((call) => call[0] === 'ignoreMouse' && call[1] === false);
+  assert.ok(released >= 0 && released < calls.findIndex((call) => call[0] === 'showInactive'),
+    'the style is cleared before the window is shown');
+
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  const armed = runtime.displayWin.calls.filter((call) => call[0] === 'ignoreMouse' && call[1] === true);
+  assert.ok(armed.length >= 1, 'arming waits until the first frame composited');
+});
+
 test('always-on-top pins both windows', () => {
   const { mock, runtime } = setup({ x: 100, y: 600, width: 480, height: 172 });
   runtime.displayWin = new mock.electron.BrowserWindow({ x: 100, y: 100, width: 480, height: 520 });

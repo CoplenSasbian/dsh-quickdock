@@ -38,6 +38,8 @@ const browserGlobals = {
   sessionStorage: 'readonly',
   EventSource: 'readonly',
   ResizeObserver: 'readonly',
+  MutationObserver: 'readonly',
+  getComputedStyle: 'readonly',
   requestAnimationFrame: 'readonly',
   renderMarkdown: 'readonly'
 }

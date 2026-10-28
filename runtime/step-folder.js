@@ -178,8 +178,30 @@ function resultText(message) {
  */
 const EVENT_HANDLERS = {
   'turn/start'(folder, event) {
-    // A new prompt: only rows from this sequence onwards stay visible.
-    folder.turnStartSeq = event.seq
+    // A new prompt opens a turn. Rows still belong to the previous turns; the
+    // dock renders only the newest one, other clients can read any turn.
+    const last = folder.turns[folder.turns.length - 1]
+    const seq = Number(event.seq) || 0
+    // A replayed/retried boundary must not reopen or reorder the list.
+    if (last && seq <= last.seq) return
+    const turn = Number(event.data && event.data.turn)
+    if (last && Number.isFinite(turn) && turn <= last.turn) return
+    folder.turns.push({
+      turn: Number.isFinite(turn) ? turn : (last ? last.turn + 1 : 1),
+      seq,
+      time: event.time || '',
+      endedAt: ''
+    })
+  },
+
+  'turn/end'(folder, event) {
+    const last = folder.turns[folder.turns.length - 1]
+    if (!last) return
+    const turn = Number(event.data && event.data.turn)
+    const entry = Number.isFinite(turn)
+      ? folder.turns.find((item) => item.turn === turn)
+      : last
+    if (entry) entry.endedAt = event.time || ''
   },
 
   'tool/call'(folder, event) {
@@ -319,15 +341,71 @@ class StepFolder {
      * demand (GET /quickdock/api/step-detail).
      */
     this.details = new Map()
-    /** Sequence the latest turn starts at. */
-    this.turnStartSeq = null
+    /**
+     * Started turns in ascending order: { turn, seq, time, endedAt }.
+     * Rows are attributed to a turn by their event sequence (half-open range
+     * [this turn's seq, next turn's seq)).
+     */
+    this.turns = []
   }
 
-  /** Rows of the latest turn (what the page renders). */
-  rows() {
-    const from = this.turnStartSeq
-    if (from === null) return this.list.slice()
-    return this.list.filter((row) => (this.seqOf.get(row.id) ?? 0) >= from)
+  /** Turn number of the latest started turn, or null. */
+  latestTurn() {
+    return this.turns.length ? this.turns[this.turns.length - 1].turn : null
+  }
+
+  /** Number of started turns (all of them, even when their rows were evicted). */
+  get turnCount() {
+    return this.turns.length
+  }
+
+  /** Whether a turn with this number was recorded. */
+  hasTurn(turn) {
+    const value = Number(turn)
+    return this.turns.some((entry) => entry.turn === value)
+  }
+
+  /**
+   * Rows of one turn, or of the latest turn when omitted (what the dock renders).
+   * @param {number|null} [turn] turn number from the turn/start payload.
+   * @returns {object[]}
+   */
+  rows(turn) {
+    if (!this.turns.length) return this.list.slice()
+    const index = turn === undefined || turn === null
+      ? this.turns.length - 1
+      : this.turns.findIndex((entry) => entry.turn === Number(turn))
+    if (index < 0) return []
+    const from = this.turns[index].seq
+    const to = index + 1 < this.turns.length ? this.turns[index + 1].seq : Infinity
+    return this.list.filter((row) => {
+      const seq = this.seqOf.get(row.id) ?? 0
+      return seq >= from && seq < to
+    })
+  }
+
+  /**
+   * Turn metadata for history clients: number, boundary sequence, timestamps and
+   * how many rows this backend still retains for it (older rows are evicted
+   * beyond maxSteps; the turn stays listed so navigation does not lose turns).
+   */
+  turnList() {
+    return this.turns.map((entry, index) => {
+      const from = entry.seq
+      const to = index + 1 < this.turns.length ? this.turns[index + 1].seq : Infinity
+      let count = 0
+      for (const row of this.list) {
+        const seq = this.seqOf.get(row.id) ?? 0
+        if (seq >= from && seq < to) count += 1
+      }
+      return {
+        turn: entry.turn,
+        seq: entry.seq,
+        startedAt: entry.time,
+        endedAt: entry.endedAt,
+        rows: count
+      }
+    })
   }
 
   /**

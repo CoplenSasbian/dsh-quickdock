@@ -18,6 +18,7 @@ export function createSnapshotBuilder(deps) {
     const liveSession = dsh.session(state.sessionId)
     const meta = index.meta(state.sessionId)
     const folder = state.sessionId ? state.folders.get(state.sessionId) : null
+    const latestTurn = folder ? folder.latestTurn() : null
     const running = dsh.agentStatus(state.sessionId) === 'running'
     const backgroundRunning = dsh
       .runningAgents()
@@ -40,7 +41,10 @@ export function createSnapshotBuilder(deps) {
         : null,
       // 'ask' switches the input window into its waiting form.
       status: state.interaction?.status === 'open' ? 'ask' : (running ? 'running' : 'idle'),
+      // The dock renders the latest turn only; other clients read the retained
+      // turns through GET /quickdock/api/turns and /turn.
       steps: folder ? folder.rows() : [],
+      turn: latestTurn === null ? null : { number: latestTurn, count: folder.turnCount },
       stream: stream.current(),
       interaction: state.interaction,
       settings: Object.assign({}, state.settings),

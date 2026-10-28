@@ -26,7 +26,7 @@ function createChild() {
   return child;
 }
 
-async function createSupervisor(candidates) {
+async function createSupervisor(candidates, extra) {
   const { DockProcess } = await import(DOCK_PROCESS);
   const spawned = [];
   const children = [];
@@ -45,6 +45,7 @@ async function createSupervisor(candidates) {
     trace: () => {},
     t: (key, params) => key + (params ? ' ' + JSON.stringify(params) : ''),
     publish: () => {},
+    ...(extra || {}),
     spawn: (exe) => {
       spawned.push(exe);
       const child = createChild();
@@ -79,6 +80,31 @@ test('exiting before ready moves to the next candidate', async () => {
   assert.strictEqual(dock.alive, false);
   assert.strictEqual(state.dock.error, '');
   assert.strictEqual(spawned.length, 2);
+});
+
+test('losing the visible window hands a claimed approval back to DSH', async () => {
+  let inactive = 0;
+  const { dock, state, children } = await createSupervisor(
+    [{ exe: 'C:/good/electron.exe', args: [] }],
+    { onInactive: () => { inactive += 1; } }
+  );
+  await dock.spawnDock();
+  dock.onStatus({ type: 'ready', controlPort: 5000 });
+  dock.onStatus({ type: 'shown' });
+  assert.strictEqual(state.dock.visible, true);
+
+  // The user closes the input window while an approval is on screen.
+  dock.onStatus({ type: 'hidden' });
+  assert.strictEqual(state.dock.visible, false);
+  assert.strictEqual(inactive, 1, 'the Host is told to delegate the request');
+
+  // A crash must not leave a stale visible flag behind either.
+  dock.onStatus({ type: 'shown' });
+  children[0].emit('exit', 0, null);
+  await settle();
+  assert.strictEqual(state.dock.visible, false);
+  assert.strictEqual(state.dock.running, false);
+  assert.strictEqual(inactive, 2);
 });
 
 test('all candidates failing reports the real stderr reason', async () => {

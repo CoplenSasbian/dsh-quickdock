@@ -45,6 +45,7 @@ export const Config = Schema.object({
   thinkMode: Schema.string().default('fold'),
   showTiming: Schema.boolean().default(true),
   maxSteps: Schema.number().default(200),
+  /** Fallback scheme before the Client half reports the theme: 'auto' | 'light' | 'dark'. */
   theme: Schema.string().default('auto'),
   /** 'auto' follows the DSH/browser language; 'en' and 'zh' force one. */
   locale: Schema.string().default('auto'),

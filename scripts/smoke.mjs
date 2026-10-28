@@ -113,6 +113,35 @@ try {
     streamText.includes(JSON.stringify('status.idle') + ':' + JSON.stringify(ZH['status.idle'])))
   check('locale switch request settled', pushed)
 
+  // The Client half pushes the resolved DSH palette; pages and streams follow it.
+  const switchTheme = async (theme) => request('/test/theme', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(theme)
+  })
+  const lightPalette = {
+    colorScheme: 'light',
+    tokens: {
+      '--dsw-alias-bg-base': '#fbfbfc',
+      '--dsw-alias-bg-layer-1': '#ffffff',
+      '--dsw-alias-bg-layer-2': '#f4f5f6',
+      '--dsw-alias-border-l1': '#e6e7e9',
+      '--dsw-alias-border-l2': '#d5d6d9',
+      '--dsw-alias-label-primary': '#1a1a1c',
+      '--dsw-alias-label-secondary': '#5c5e63',
+      '--dsw-alias-brand-primary': '#101114'
+    },
+    fonts: { text: 'Inter', sizeText: 13 }
+  }
+  check('theme bridge accepts a light palette', JSON.parse((await switchTheme(lightPalette)).text).ok === true)
+  const lightPage = await request('/quickdock?t=' + token)
+  check('page switches to the light scheme', lightPage.text.includes('data-theme="light"'))
+  check('page inlines the pushed palette', lightPage.text.includes('--qd-bg-base: #fbfbfc'))
+  check('first-paint CSS outranks the dock light palette', lightPage.text.includes('html[data-theme]'))
+  check('page derives text on brand from the base surface', lightPage.text.includes('--qd-brand-fg: #fbfbfc'))
+  const themeStream = await readStream(token, () => {})
+  check('stream sends the current palette', themeStream.includes('event: theme') && themeStream.includes('--qd-bg-base'))
+
   check('locale bridge accepts zh', JSON.parse((await switchLocale('zh')).text).ok === true)
   const zhPage = await request('/quickdock?t=' + token)
   check('page switches to Chinese', zhPage.text.includes('<html lang="zh-CN"'))
@@ -128,6 +157,20 @@ try {
   check('bind selects the session', boundState.sessionId === 's-demo')
   check('session title comes from the projection', boundState.session.title === 'Wire QuickDock into DSH')
   check('bound status stays idle', boundState.status === 'idle')
+
+  // Client API: capability manifest and workspace/session/turn reads.
+  const meta = JSON.parse((await request('/quickdock/api/meta?t=' + token)).text)
+  check('meta reports the client API version', meta.apiVersion === 1 && meta.capabilities.includes('turns'))
+  const workspaceList = JSON.parse((await request('/quickdock/api/workspaces?t=' + token)).text)
+  check('workspaces endpoint lists the harness workspaces', workspaceList.workspaces.length >= 1)
+  const sessionList = JSON.parse((await request('/quickdock/api/sessions?t=' + token)).text)
+  check('sessions endpoint includes the bound session',
+    sessionList.sessions.some((row) => row.sessionId === 's-demo'))
+  const turnList = JSON.parse((await request('/quickdock/api/turns?t=' + token)).text)
+  check('turns endpoint answers for the bound session',
+    turnList.sessionId === 's-demo' && Array.isArray(turnList.turns))
+  const turnDetail = JSON.parse((await request('/quickdock/api/turn?t=' + token)).text)
+  check('turn endpoint reports an unobserved turn', turnDetail.observed === false)
 } catch (error) {
   failures.push(String(error && error.stack || error))
   console.error(error)

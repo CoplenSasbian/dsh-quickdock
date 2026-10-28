@@ -16,9 +16,11 @@ import { createBridgeHandler } from './bridge.js'
 import { CatalogService } from './catalogs.js'
 import {
   API_PREFIX,
+  API_VERSION,
   BRIDGE_PATH,
   CATALOG_WARMUP_MS,
   INDEX_TICKER_MS,
+  MAX_TRACKED_SESSIONS,
   PAGE_PATH,
   STREAM_FLUSH_MS,
   VIEWS
@@ -27,7 +29,7 @@ import { DockProcess } from './dock-process.js'
 import { DshFacade } from './dsh.js'
 import { ElectronResolver } from './electron-resolver.js'
 import { EventHub } from './event-hub.js'
-import { InteractionBroker } from './interactions.js'
+import { DELEGATE, InteractionBroker } from './interactions.js'
 import { LocaleController } from './locale.js'
 import { PageRenderer } from './page.js'
 import { SessionIndex } from './session-index.js'
@@ -102,8 +104,13 @@ export class QuickDockHost {
     })
     this.stream = new StreamBuffer()
     this.theme = new ThemeStore({
+      // 'auto' keeps the built-in palette until the Client half reports one.
+      fallback: config.theme,
       getSnapshot: () => this.dsh.theme?.getTheme?.(),
-      onChange: (payload) => this.hub.publishTheme(payload)
+      onChange: (payload) => {
+        this.trace('theme -> dock: ' + payload.colorScheme + ' (' + Object.keys(payload.tokens).length + ' tokens)')
+        this.hub.publishTheme(payload)
+      }
     })
     this.broker = new InteractionBroker({
       state: this.state,
@@ -148,7 +155,10 @@ export class QuickDockHost {
       logger: this.dsh.logger,
       trace: this.trace,
       t: (key, params) => this.locale.t(key, params),
-      publish: () => this.publish()
+      publish: () => this.publish(),
+      // A hidden/closed/crashed dock can no longer answer: hand the pending
+      // approval back to DSH instead of waiting for the timeout.
+      onInactive: () => this.broker.reset()
     })
     this.dock.tracePath = this.tracePath
 
@@ -215,6 +225,12 @@ export class QuickDockHost {
         displayReason: request.displayReason,
         callId: request.callId ?? ''
       }, request.signal)
+      // The dock went away before answering: DSH must take the request over,
+      // otherwise the user has no dialog left to allow it.
+      if (decision === DELEGATE) {
+        this.trace('approval -> DSH: dock is gone')
+        return next()
+      }
       if (decision === null) return 'cancelled'
       return decision ? 'allowed-once' : 'rejected'
     }, { prepend: true })
@@ -225,6 +241,7 @@ export class QuickDockHost {
         kind: 'question',
         questions: request.questions ?? []
       }, request.signal)
+      if (answer === DELEGATE) return next()
       // No answer (timeout / aborted): leave the request pending for DSH.
       if (answer === null) return { pending: true }
       return answer
@@ -356,6 +373,13 @@ export class QuickDockHost {
 
   #ensureFolder(sessionId) {
     if (this.state.folders.has(sessionId)) return this.state.folders.get(sessionId)
+    // Switching sessions is a client capability, so several sessions can keep
+    // folded turns; bound the memory by evicting the oldest tracked one.
+    while (this.state.folders.size >= MAX_TRACKED_SESSIONS) {
+      const oldest = this.state.folders.keys().next().value
+      if (oldest === undefined || oldest === sessionId) break
+      this.state.folders.delete(oldest)
+    }
     const folder = new StepFolder(this.config.maxSteps, (id) => this.trace('fold: merged duplicate row ' + id))
     this.state.folders.set(sessionId, folder)
     return folder
@@ -399,9 +423,149 @@ export class QuickDockHost {
     return this.catalogService.refreshModels()
   }
 
-  stepDetail(id) {
-    const folder = this.state.sessionId ? this.state.folders.get(this.state.sessionId) : null
+  stepDetail(id, sessionId) {
+    const target = sessionId || this.state.sessionId
+    const folder = target ? this.state.folders.get(target) : null
     return folder?.detailOf?.(id) || { args: '', result: '' }
+  }
+
+  /* --------------------------- client capabilities --------------------------- */
+
+  /**
+   * Capability manifest for non-dock clients (IDE plugins, editors).
+   *
+   * The dock is one client of this API. It does not expose switching or history,
+   * but the Host supports both: clients may select any workspace/session and
+   * read every turn. `state.steps` always carries the latest turn (what the dock
+   * renders); older turns come from /turns and /turn.
+   */
+  meta() {
+    return {
+      name: 'dsh-quickdock',
+      apiVersion: API_VERSION,
+      capabilities: [
+        'state', 'stream', 'workspaces', 'sessions', 'select', 'bind', 'task',
+        'stop', 'turns', 'turn', 'step-detail', 'catalogs', 'settings', 'answer',
+        'theme', 'locale'
+      ],
+      // The dock UI binds the latest turn only; that is a client choice, not an
+      // API limit. Turn history is read through the two endpoints below.
+      turns: { latestInState: true, history: 'turns+turn', retention: 'maxSteps' },
+      interactions: { approvals: 'claim-and-delegate', questions: 'claim-and-delegate' }
+    }
+  }
+
+  /** Workspaces a client can switch to (sessions are listed separately). */
+  listWorkspaces() {
+    const workspaces = this.dsh.workspaces().map((workspace) => ({
+      id: workspace.id,
+      name: workspace.name,
+      path: workspace.path,
+      sessionCount: workspace.sessionIds.length
+    }))
+    return { workspaceId: this.state.workspaceId, workspaces }
+  }
+
+  /**
+   * Sessions of one workspace (or every indexed session).
+   * @param {string} [workspaceId] undefined/empty = all workspaces.
+   */
+  listSessions(workspaceId) {
+    // Pickers deserve a fresh list; the refresh itself stays async/non-blocking.
+    this.index.maybeRefresh()
+    const workspaces = this.dsh.workspaces()
+    const workspace = workspaceId ? workspaces.find((row) => row.id === workspaceId) : null
+    if (workspaceId && !workspace) return { workspaceId, sessions: [] }
+    const allowed = workspace ? new Set(workspace.sessionIds) : null
+    const sessions = this.index.list().filter((row) => !allowed || allowed.has(row.sessionId))
+    if (allowed) {
+      const seen = new Set(sessions.map((row) => row.sessionId))
+      // A workspace can list a session the index has not seen yet (cold/blank).
+      for (const sessionId of allowed) {
+        if (seen.has(sessionId)) continue
+        sessions.push({
+          sessionId,
+          title: this.index.title(sessionId),
+          cwd: '',
+          updatedAt: 0,
+          running: false,
+          blank: true
+        })
+      }
+      sessions.sort((a, b) => b.updatedAt - a.updatedAt)
+    }
+    return {
+      workspaceId: workspace ? workspace.id : (workspaceId || null),
+      sessions: sessions.map((row) => ({
+        sessionId: row.sessionId,
+        title: row.title || this.index.title(row.sessionId),
+        cwd: row.cwd,
+        updatedAt: row.updatedAt,
+        running: row.running,
+        blank: row.blank
+      }))
+    }
+  }
+
+  /**
+   * Every turn of a session, newest last.
+   *
+   * Rows are only folded for sessions the Host attached to (the bound session);
+   * the previews come from DSH's `turnOutline` projection, which covers the whole
+   * log. A turn with `rows > 0` can be read with /turn.
+   * @param {string} [sessionId] defaults to the bound session.
+   */
+  listTurns(sessionId) {
+    const id = String(sessionId || this.state.sessionId || '')
+    if (!id) return { sessionId: null, outline: false, turns: [] }
+    const live = this.dsh.session(id)
+    const values = live ? this.dsh.projectionValues(live, ['turnOutline']) : {}
+    const outline = Array.isArray(values.turnOutline) ? values.turnOutline : null
+    const folder = this.state.folders.get(id) || null
+    const observed = new Map(folder ? folder.turnList().map((entry) => [entry.turn, entry]) : [])
+    const turns = []
+    const listed = new Set()
+    if (outline) {
+      for (const entry of outline) {
+        if (!entry || typeof entry.turn !== 'number') continue
+        const local = observed.get(entry.turn)
+        listed.add(entry.turn)
+        turns.push({
+          turn: entry.turn,
+          seq: Number(entry.seq) || 0,
+          prompt: typeof entry.prompt === 'string' ? entry.prompt : '',
+          response: typeof entry.response === 'string' ? entry.response : '',
+          rows: local ? local.rows : 0,
+          startedAt: local ? local.startedAt : '',
+          endedAt: local ? local.endedAt : ''
+        })
+      }
+    }
+    if (folder) {
+      for (const entry of folder.turnList()) {
+        if (listed.has(entry.turn)) continue
+        turns.push(Object.assign({ prompt: '', response: '' }, entry))
+      }
+    }
+    turns.sort((a, b) => a.turn - b.turn)
+    return { sessionId: id, outline: Boolean(outline), turns }
+  }
+
+  /**
+   * Rows of one turn of the bound session (all turns are retained backend-side;
+   * the dock simply renders the latest).
+   * @param {string|number} value turn number; empty = latest.
+   */
+  turnDetail(value, sessionId) {
+    const target = sessionId || this.state.sessionId
+    const folder = target ? this.state.folders.get(target) : null
+    if (!folder) return { sessionId: target || null, turn: null, observed: false, steps: [] }
+    const wantsTurn = value !== '' && value !== undefined && value !== null
+    const turn = wantsTurn ? Number(value) : folder.latestTurn()
+    if (!Number.isFinite(turn) || (wantsTurn && !folder.hasTurn(turn))) {
+      return { sessionId: target, turn: Number.isFinite(turn) ? turn : null, observed: false, steps: [] }
+    }
+    return { sessionId: target, turn, observed: true, steps: folder.rows(turn) }
   }
 
   openStateStream(req, res) {
@@ -450,20 +614,29 @@ export class QuickDockHost {
       sessionId = created.sessionId
       this.state.sessionId = sessionId
       this.state.newSession = false
-      if (!this.state.workspaceId) {
-        this.state.workspaceId = this.dsh.workspaceIdOf(sessionId) ?? workspaceId ?? null
-      }
+      this.state.workspaceId = this.dsh.workspaceIdOf(sessionId) ?? workspaceId ?? this.state.workspaceId
       // create() does not accept a permission preset.
       this.catalogService.applyPermissionPreset(sessionId)
     } else {
+      // A client may name a session it has not bound yet: follow it, so its
+      // events reach the folder and the newly opened turn becomes visible.
+      if (body?.sessionId && sessionId !== this.state.sessionId) {
+        this.state.sessionId = sessionId
+        this.state.newSession = false
+        this.state.workspaceId = this.dsh.workspaceIdOf(sessionId) ?? this.state.workspaceId
+        this.stream.clear()
+        this.catalogService.syncSettingsFromSession(sessionId)
+        this.broker.reset()
+      }
       this.catalogService.applyPermissionPreset(sessionId)
     }
 
     // A model failure must not block the prompt (it is logged by the service).
     await this.catalogService.applyModelSelection(sessionId)
 
-    const folder = this.#ensureFolder(sessionId)
-    folder.reset()
+    // Keep the folded history: every prompt opens a new turn (turn/start), and
+    // the dock simply renders the newest one while other clients read the rest.
+    this.#ensureFolder(sessionId)
 
     // prompt() calls signal.throwIfAborted() immediately: the signal is required.
     const abort = new AbortController()
@@ -506,7 +679,12 @@ export class QuickDockHost {
       this.broker.reset()
     }
     this.publish()
-    return { ok: true }
+    return {
+      ok: true,
+      workspaceId: this.state.workspaceId,
+      sessionId: this.state.sessionId,
+      newSession: this.state.newSession
+    }
   }
 
   /** Update a function key; bound sessions receive the change immediately. */

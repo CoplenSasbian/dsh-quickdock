@@ -45,6 +45,8 @@ test('normalizeTheme accepts both DSH and dock token names', async () => {
   assert.strictEqual(fromDsh.colorScheme, 'light');
   assert.strictEqual(fromDsh.tokens['--qd-bg-base'], '#101010');
   assert.strictEqual(fromDsh.tokens['--qd-label-primary'], '#eeeeee');
+  assert.strictEqual(fromDsh.tokens['--qd-brand-fg'], '#101010',
+    'text on brand follows the base surface (DSH accents are monochrome)');
   assert.strictEqual(fromDsh.fonts.sizeText, 12);
   assert.strictEqual(fromDsh.fonts.sizeCode, 11);
 
@@ -74,8 +76,28 @@ test('themeCss renders first-paint variables and fonts', async () => {
   const { themeCss, normalizeTheme } = await themeModule();
   assert.strictEqual(themeCss(null), '');
   const css = themeCss(normalizeTheme({ tokens: FULL_TOKENS, fonts: { text: 'Inter', sizeText: 13 } }));
-  assert.match(css, /^<style>:root\{/);
+  // Specificity must beat the dock's own html[data-theme="light"] palette.
+  assert.match(css, /^<style>html\[data-theme\]\{/);
   assert.match(css, /--qd-bg-base: #101010;/);
   assert.match(css, /--qd-font-text: Inter;/);
   assert.match(css, /--qd-font-size-text: 13px;/);
+});
+
+test('the fallback scheme only applies until DSH reports a theme', async () => {
+  const { ThemeStore, normalizeTheme } = await themeModule();
+  assert.strictEqual(new ThemeStore({ fallback: 'auto' }).colorScheme(), 'dark');
+  assert.strictEqual(new ThemeStore({ fallback: 'light' }).colorScheme(), 'light');
+  const store = new ThemeStore({ fallback: 'light' });
+  store.accept(normalizeTheme({ colorScheme: 'dark', tokens: FULL_TOKENS }));
+  assert.strictEqual(store.colorScheme(), 'dark', 'the pushed theme wins over the fallback');
+});
+
+test('an identical palette is adopted without notifying twice', async () => {
+  const { ThemeStore } = await themeModule();
+  let pushes = 0;
+  const store = new ThemeStore({ onChange: () => { pushes += 1; } });
+  const payload = { colorScheme: 'dark', tokens: FULL_TOKENS };
+  assert.strictEqual(store.accept(payload), true);
+  assert.strictEqual(store.accept(payload), true);
+  assert.strictEqual(pushes, 1);
 });

@@ -55,6 +55,9 @@ Register the plugin in the DSH profile (see `cordis.patch.yml`):
   bus -> Client half -> `ctx.uiWorkspace.openSession`).
 - **▤** shows/hides the run window. Hiding is temporary (restored after two hours).
 - **⤒** pins both windows together; the run window is never left behind.
+- **The dock follows the DSH theme live**: light/dark switches and every
+  `--dsw-*` palette change are read from the main window's computed styles and
+  pushed over SSE, so both windows repaint without a reload.
 - **＋** unbinds and starts a blank conversation; **Shift/Alt + ＋** forks the current
   session (DESIGN D2).
 - The function keys are dropdown menus. Long lists (models) get a search field, arrow
@@ -62,6 +65,26 @@ Register the plugin in the DSH profile (see `cordis.patch.yml`):
 - While the agent runs, the input window switches to a run panel: elapsed time,
   current action, live text and a **Stop** button. Approvals appear there too, with
   **Allow / Deny**.
+
+## Client API
+
+The Host half is a client-agnostic service; the dock UI is only one client.
+IDE plugins can use the same API to **switch workspace/session** and read
+**every turn**, which the dock UI intentionally does not expose:
+
+```http
+GET  /quickdock/api/meta          # capability manifest + apiVersion
+GET  /quickdock/api/workspaces
+GET  /quickdock/api/sessions?workspaceId=<id>
+POST /quickdock/api/select        # { workspaceId?, sessionId?, newSession? }
+GET  /quickdock/api/turns?sessionId=<id>   # whole-log turn outline
+GET  /quickdock/api/turn?turn=<n>          # folded rows of one turn
+GET  /quickdock/api/state         # steps = newest turn (what the dock renders)
+```
+
+All routes take `Authorization: Bearer <token>` (or `?t=<token>` for SSE). The
+full contract — state snapshot, multi-turn retention, interaction rules, errors —
+lives in [API.md](API.md).
 
 ## Internationalization
 
@@ -98,11 +121,11 @@ host/                  Host half (one responsibility per module)
   dock-process.js      Electron supervisor: spawn, control channel, backoff restart
   electron-resolver.js Electron discovery, probing and download
   event-hub.js         SSE hub (page state stream + browser command bus)
-  interactions.js      approval / question broker
+  interactions.js      approval / question broker (delegates when the dock is gone)
   locale.js            locale controller and page catalog
   page.js              inlines assets, theme, catalog into one HTML document
   session-index.js     session title repository (cold sessions included)
-  snapshot.js          the single state snapshot definition
+  snapshot.js          the single state snapshot definition (newest turn)
   stream-buffer.js     live assistant stream folding
   theme.js             DSH alias tokens -> dock CSS variables
   trace.js             host.log writer
@@ -163,7 +186,7 @@ approvals, push theme/locale).
 
 | Log | Contents |
 | --- | --- |
-| `%LOCALAPPDATA%\dsh-quickdock\host.log` | Electron candidates and probes, spawn arguments, ready/exit codes, API failures |
+| `%LOCALAPPDATA%\dsh-quickdock\host.log` | Electron candidates and probes, spawn arguments, ready/exit codes, API failures, accepted theme palettes |
 | `%LOCALAPPDATA%\dsh-quickdock\dock.log` | window creation, geometry, control channel, received commands |
 
 The Host half never fails silently: the page shows the reason as a toast.

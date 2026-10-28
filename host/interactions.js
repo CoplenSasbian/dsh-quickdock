@@ -8,8 +8,12 @@
 
 import { randomUUID } from 'node:crypto'
 
-/** Result returned to `approval/request` when nobody answered in time. */
-const NO_ANSWER = null
+/**
+ * Result when the dock can no longer answer (hidden, closed, crashed, session
+ * switched): the caller must delegate to the next listener so DSH's own UI takes
+ * the request over. Cancelling instead would leave the user no way to allow it.
+ */
+export const DELEGATE = Symbol('quickdock.delegate')
 
 export class InteractionBroker {
   /**
@@ -79,12 +83,22 @@ export class InteractionBroker {
     return true
   }
 
-  /** Drop any pending interaction (window hidden, session switched, dispose). */
+  /**
+   * Hand a pending interaction back to DSH (window hidden, closed, crashed,
+   * session switched, dispose). Resolves with {@link DELEGATE} so the caller
+   * calls next() and DSH's own dialog appears instead of waiting for a dock that
+   * is gone (its 5 minute timeout used to be the only escape).
+   */
   reset() {
-    if (!this.state.interaction && !this.pending) return
-    this.state.interaction = null
     const pending = this.pending
+    if (!pending) {
+      if (this.state.interaction) {
+        this.state.interaction = null
+        this.publish()
+      }
+      return
+    }
     this.pending = null
-    pending?.(NO_ANSWER)
+    pending(DELEGATE)
   }
 }

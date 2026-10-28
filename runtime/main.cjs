@@ -404,12 +404,17 @@ class DockRuntime {
   }
 
   /**
-   * Stick the display window to the top or bottom edge of the input window.
+   * Content width both windows are created with.
    *
-   * Rule: default is BELOW; if there is not enough space below (would leave the
-   * screen), flip to ABOVE. If neither fits, pick the side with more space and clamp
-   * into the screen.
+   * Every size correction must use this one reference: enforceDisplaySize used
+   * to read the input window's content size while placeDisplayWindow used
+   * displayWantW, so a 1px DPI rounding difference made the two disagree and
+   * the display window fluttered between the two widths on every state push.
    */
+  displayWidth() {
+    return this.displayWantW || this.config.width;
+  }
+
   /**
    * Correct the display window content size back to the target value.
    *
@@ -423,7 +428,7 @@ class DockRuntime {
   enforceDisplaySize() {
     const win = this.displayWin;
     if (!win || win.isDestroyed()) return;
-    const wantW = (this.win && this.win.getContentSize()[0]) || this.displayWantW || this.config.width;
+    const wantW = this.displayWidth();
     const wantH = this.displayWantH || this.config.displayHeight || 520;
     const cur = win.getContentSize();
     if (cur[0] === wantW && cur[1] === wantH) return;
@@ -439,14 +444,20 @@ class DockRuntime {
     } catch (_) {}
   }
 
+  /**
+   * Stick the display window to the top or bottom edge of the input window.
+   *
+   * Rule: default is BELOW; if there is not enough space below (would leave the
+   * screen), flip to ABOVE. If neither fits, pick the side with more space and clamp
+   * into the screen.
+   */
   placeDisplayWindow(fixSize) {
     if (!this.win || !this.displayWin) return;
     const input = this.win.getBounds();
     // Correct size only when not dragging; during a drag the system owns the size, fix it on release.
     if (fixSize === true) this.enforceDisplaySize();
-    const inputContent = this.win.getContentSize();
     const content = this.displayWin.getContentSize();
-    const width = inputContent[0] || this.config.width;
+    const width = this.displayWidth();
     // Position with the reference height, not the measured value: drift would make the position jitter.
     const height = this.displayWantH || content[1] || (this.config.displayHeight || 520);
     const display = currentDisplay(this.electron.screen, { x: input.x + input.width / 2, y: input.y + input.height / 2 });
@@ -479,7 +490,7 @@ class DockRuntime {
     const wasAbove = this.displayAbove;
     this.displayAbove = y < input.y;
     const current = this.displayWin.getBounds();
-    const wantW = this.displayWantW || width;
+    const wantW = width;
     const wantH = this.displayWantH || height;
     const sizeDrift = content[0] !== wantW || content[1] !== wantH;
     if (current.x !== x || current.y !== y || sizeDrift) {
@@ -498,17 +509,20 @@ class DockRuntime {
   }
 
   /**
-   * Force both windows to repaint.
+   * Force both windows to repaint and (re-)arm click-through.
    *
    * Why: on Windows the transparent region of a transparent window is sometimes not
    * applied on the first composite and only repaints once "something happens" (mouse
    * enters, a drag) - the symptom is "the background turns transparent only when the
    * mouse moves over the window".
    *
-   * Approach:
-   *   1. webContents.invalidate() makes Chromium repaint the whole page
-   *   2. grow size by 1px and restore, forcing DWM to recomposite the layer (position
-   *      unchanged, invisible to the eye)
+   * Order matters: WS_EX_TRANSPARENT (click-through) must not be set before the
+   * window's first composite. If it is - armed while the window was hidden, or
+   * before its first visible frame - Windows paints the transparent region opaque
+   * until the next style toggle (exactly the "move the mouse to fix it" symptom).
+   * Callers therefore clear the style before showing, and arming happens here only
+   * after a frame or two has composited; the second arm re-toggles the style as a
+   * self-heal for a stale DWM layer.
    */
   ensurePainted() {
     const invalidate = (win) => {
@@ -519,14 +533,37 @@ class DockRuntime {
       for (const win of [this.win, this.displayWin]) invalidate(win);
     };
     both();
-    // Enable click-through only after the first frame is painted (transparency is composited correctly by then).
-    const arm = () => {
-      if (this.win && !this.win.isDestroyed()) this.applyClickThrough(this.win, !this.interactive);
-      if (this.displayWin && !this.displayWin.isDestroyed()) this.applyClickThrough(this.displayWin, !this.displayInteractive);
+    const arm = (bounce) => {
+      const apply = (win, interactive) => {
+        // A hidden window must stay armless: its first composite must be clean.
+        if (!win || win.isDestroyed() || !win.isVisible()) return;
+        const ignore = !interactive;
+        if (bounce && !this.noClickThrough) {
+          // A stale layer only rebuilds on an actual style change, not on setting
+          // the same value again: flip it once, then apply the wanted state.
+          try { win.setIgnoreMouseEvents(!ignore); } catch (_) {}
+        }
+        this.applyClickThrough(win, ignore);
+      };
+      apply(this.win, this.interactive);
+      apply(this.displayWin, this.displayInteractive);
     };
-    this.later(arm, 0);
-    // First-frame compositing can lag the load event; repeat once a frame later.
-    this.later(both, 90);
+    // Give the first visible frame time to composite before toggling the style.
+    this.later(() => arm(false), 90);
+    this.later(both, 160);
+    // Self-heal: force a real style change once the repaint had a chance to land.
+    this.later(() => arm(true), 220);
+  }
+
+  /**
+   * Clear the click-through style before a window becomes visible.
+   *
+   * Re-showing a window that was armed while visible would otherwise composite its
+   * first frame with WS_EX_TRANSPARENT and render the transparent region opaque.
+   */
+  releaseClickThrough(win) {
+    if (this.noClickThrough || !win || win.isDestroyed()) return;
+    try { win.setIgnoreMouseEvents(false); } catch (_) {}
   }
 
   /** Show/hide the display window (hidden when there is no execution content). */
@@ -535,6 +572,8 @@ class DockRuntime {
     if (visible) {
       this.placeDisplayWindow(true);
       if (!this.displayWin.isVisible()) {
+        // First composite must not be click-through: clear, show, then re-arm.
+        this.releaseClickThrough(this.displayWin);
         this.displayWin.showInactive();
         this.ensurePainted();
         trace('display shown');
@@ -763,6 +802,9 @@ class DockRuntime {
     if (!this.win || this.destroyed) return;
     this.clearTimer(this.showFallback);
     this.reinforceSkipTaskbar();
+    // Same rule as the display window: never show while click-through is armed
+    // (only when it is actually being shown; a re-summon keeps its state).
+    if (!this.win.isVisible()) this.releaseClickThrough(this.win);
     if (this.config.focusOnSummon) this.win.show();
     else this.win.showInactive();
     this.placeDisplayWindow(true);

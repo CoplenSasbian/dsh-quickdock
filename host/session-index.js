@@ -34,6 +34,20 @@ export class SessionIndex {
     return sessionId ? this.entries.get(sessionId) : undefined
   }
 
+  /** Every indexed session, newest first (for other clients' pickers). */
+  list() {
+    return Array.from(this.entries.entries())
+      .map(([sessionId, meta]) => ({
+        sessionId,
+        title: meta.title || '',
+        cwd: meta.cwd || '',
+        updatedAt: meta.updatedAt || 0,
+        running: meta.running === true,
+        blank: meta.blank === true
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+  }
+
   /** When the index was last refreshed. */
   get updatedAt() {
     return this.refreshedAt

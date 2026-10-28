@@ -104,8 +104,12 @@
     }
   };
 
+  var appliedTokenKeys = [];
+
   function applyTheme(payload) {
-    if (!payload) return;
+    // The Host sends an empty frame until the Client half reports a palette;
+    // keep the first-paint scheme instead of forcing the fallback one.
+    if (!payload || !payload.tokens) return;
     var scheme = payload.colorScheme === 'light' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', scheme);
     var root = document.documentElement.style;
@@ -113,9 +117,16 @@
     // A partial theme would look broken: fall back to the built-in palette.
     var incomplete = !tokens['--qd-bg-base'] || !tokens['--qd-label-primary'];
     var source = incomplete ? FALLBACK[scheme] : tokens;
-    Object.keys(source).forEach(function (key) {
+    var next = Object.keys(source);
+    // Drop variables only the previous palette supplied, so the stylesheet's
+    // own light/dark values take over again instead of going stale.
+    appliedTokenKeys.forEach(function (key) {
+      if (next.indexOf(key) < 0) root.removeProperty(key);
+    });
+    next.forEach(function (key) {
       root.setProperty(key, source[key]);
     });
+    appliedTokenKeys = next;
     if (payload.fonts) {
       if (payload.fonts.text) root.setProperty('--qd-font-text', payload.fonts.text);
       if (payload.fonts.code) root.setProperty('--qd-font-code', payload.fonts.code);
@@ -274,8 +285,8 @@
     var quickDock = window.quickDock;
     if (!quickDock || !quickDock.setDisplayEmpty) return;
     try {
-      // Approvals must be visible even when the user hid the list.
-      quickDock.setDisplayEmpty(hasInter ? false : (listHidden || !hasContent));
+      // Approvals are answered in this window's run panel; a hidden list stays hidden.
+      quickDock.setDisplayEmpty(listHidden || !hasContent);
     } catch (error) {
       /* IPC is optional outside Electron */
     }
