@@ -261,7 +261,11 @@ export class QuickDockHost {
     this.trace('electron prefetch: start')
     this.resolver.download()
       .then((exe) => this.trace('electron prefetch: ready at ' + exe + ' (' + (Date.now() - started) + ' ms)'))
-      .catch((error) => this.trace('electron prefetch: failed: ' + String(error?.message || error)))
+      .catch((error) => {
+        this.trace('electron prefetch: failed: ' + String(error?.message || error))
+        // The first frame usually names the loader or module that broke.
+        this.trace('electron prefetch stack: ' + String(error?.stack || '').split('\n').slice(0, 4).join(' | '))
+      })
   }
 
   #watchEvents() {

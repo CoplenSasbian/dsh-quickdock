@@ -176,6 +176,56 @@ export class ElectronResolver {
   }
 
   /**
+   * Resolve @electron/get and extract-zip to callable functions.
+   *
+   * Both are CommonJS. A plain ESM `import()` returns them as a namespace on
+   * Node, but a Host with its own module loader has been seen handing back
+   * something whose documented export is not callable ("require(...) is not a
+   * function"). Trying require() as well keeps one loader quirk from breaking
+   * the download entirely.
+   *
+   * @returns {Promise<{download: Function, extract: Function}>}
+   */
+  async #loadDownloaders() {
+    const pick = (mod, name) => {
+      if (!mod) return null
+      const candidates = [mod[name], mod.default?.[name], mod.default]
+      for (const value of candidates) {
+        if (typeof value === 'function') return value
+      }
+      return null
+    }
+    let get = null
+    let zip = null
+    let importError = null
+    try {
+      get = await import('@electron/get')
+      zip = await import('@electron-internal/extract-zip')
+    } catch (error) {
+      importError = error
+      this.trace('download deps: import failed: ' + String(error?.message || error))
+    }
+    let download = pick(get, 'download')
+    let extract = pick(zip, 'extract')
+    if (!download || !extract) {
+      // Fallback: a real require(), independent of the ESM loader in use.
+      const { createRequire } = await import('node:module')
+      const loader = createRequire(import.meta.url)
+      get = get ?? loader('@electron/get')
+      zip = zip ?? loader('@electron-internal/extract-zip')
+      download = download ?? pick(get, 'download')
+      extract = extract ?? pick(zip, 'extract')
+    }
+    if (typeof download !== 'function') {
+      throw new Error('@electron/get: download() is not callable' + (importError ? ' (' + importError.message + ')' : ''))
+    }
+    if (typeof extract !== 'function') {
+      throw new Error('extract-zip: extract() is not callable')
+    }
+    return { download, extract }
+  }
+
+  /**
    * Download Electron once (in-process: a spawned helper would inherit the host exe).
    *
    * `onProgress` receives `{received, total}` while bytes arrive and a final
@@ -185,11 +235,7 @@ export class ElectronResolver {
   async download() {
     if (this.downloading) return this.downloading
     this.downloading = (async () => {
-      const { download } = await import('@electron/get')
-      // extract-zip only exports extract (plus a default), not extractZip.
-      const mod = await import('@electron-internal/extract-zip')
-      const extract = mod.extract ?? mod.default
-      if (typeof extract !== 'function') throw new Error('extract-zip: no extract() export available')
+      const { download, extract } = await this.#loadDownloaders()
       const target = join(this.downloadRoot(), this.version)
       // @electron/get reads ELECTRON_MIRROR (and npm_config_electron_mirror)
       // before mirrorOptions, so the per-attempt choice has to be written into
