@@ -67,8 +67,25 @@ export class ElectronResolver {
     } catch (_) {
       /* the electron package is optional */
     }
-    if (this.homeDir) list.push(join(String(this.homeDir), 'electron'))
+    if (this.homeDir) {
+      const shared = join(String(this.homeDir), 'electron')
+      // DSH keeps its own Electron under ~/.dsh/electron for ELECTRON_RUN_AS_NODE
+      // use. An older build there starts (--version answers) but cannot host a
+      // window: the child dies before 'ready' with crashpad "not connected". So
+      // only the exact version we target is offered, plus the versioned subdir.
+      list.push(join(shared, this.version))
+      if (ElectronResolver.readSharedVersion(shared) === this.version) list.push(shared)
+    }
     return list.filter(Boolean)
+  }
+
+  /** Version recorded in a shared Electron directory's `version` file ('' when absent). */
+  static readSharedVersion(dir) {
+    try {
+      return readFileSync(join(dir, 'version'), 'utf8').trim()
+    } catch (_) {
+      return ''
+    }
   }
 
   /** Resolve a candidate path (file, directory or nested platform folder). */

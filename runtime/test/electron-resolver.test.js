@@ -10,6 +10,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
@@ -33,7 +35,10 @@ test('the self-managed download is preferred over the npm package', async () => 
   // Candidate entries are paths (a directory is resolved to its executable later).
   assert.strictEqual(candidates[0], path.join('C:/Local', 'dsh-quickdock', 'electron', resolver.version));
   assert.strictEqual(candidates[1], path.join('C:/app/node_modules/electron/dist', 'electron.exe'));
-  assert.strictEqual(candidates[2], path.join('C:/Users/test/.dsh/electron'));
+  // The shared DSH runtime is offered only through its versioned subdirectory and
+  // only for the exact version we target: ~/.dsh/electron itself holds a
+  // node-only build that starts but cannot host a window.
+  assert.strictEqual(candidates[2], path.join('C:/Users/test/.dsh/electron', resolver.version));
   assert.strictEqual(candidates.length, 3);
 });
 
@@ -63,6 +68,28 @@ test('downloads fall back from the configured mirror to the upstream default', a
     'https://npmmirror.com/mirrors/electron/',
     null
   ]);
+});
+
+/** A throwaway DSH home whose electron/ directory records 'version'. */
+function sharedRuntime(version) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'qd-dsh-'));
+  fs.mkdirSync(path.join(home, 'electron'));
+  fs.writeFileSync(path.join(home, 'electron', 'version'), version + '\n');
+  return home;
+}
+
+test('an older shared DSH runtime is skipped: it starts but cannot host a window', async () => {
+  const home = sharedRuntime('30.5.1');
+  const resolver = await createResolver({ homeDir: home });
+  const candidates = resolver.candidates();
+  assert.ok(!candidates.includes(path.join(home, 'electron')));
+  assert.ok(candidates.includes(path.join(home, 'electron', resolver.version)));
+});
+
+test('a shared runtime matching the target version stays as a fallback', async () => {
+  const home = sharedRuntime('44.7.0');
+  const resolver = await createResolver({ homeDir: home });
+  assert.ok(resolver.candidates().includes(path.join(home, 'electron')));
 });
 
 test('without an override the list is the China mirror and then the default', async () => {
