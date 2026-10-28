@@ -67,25 +67,11 @@ export class ElectronResolver {
     } catch (_) {
       /* the electron package is optional */
     }
-    if (this.homeDir) {
-      const shared = join(String(this.homeDir), 'electron')
-      // DSH keeps its own Electron under ~/.dsh/electron for ELECTRON_RUN_AS_NODE
-      // use. An older build there starts (--version answers) but cannot host a
-      // window: the child dies before 'ready' with crashpad "not connected". So
-      // only the exact version we target is offered, plus the versioned subdir.
-      list.push(join(shared, this.version))
-      if (ElectronResolver.readSharedVersion(shared) === this.version) list.push(shared)
-    }
+    // Deliberately no ~/.dsh/electron candidate: DSH keeps its own Electron there
+    // for ELECTRON_RUN_AS_NODE use. Those builds answer --version but die before
+    // 'ready' when hosting a window (crashpad "not connected", exit 0xFFFF7003),
+    // even for a matching version. Only our own download is verified to host.
     return list.filter(Boolean)
-  }
-
-  /** Version recorded in a shared Electron directory's `version` file ('' when absent). */
-  static readSharedVersion(dir) {
-    try {
-      return readFileSync(join(dir, 'version'), 'utf8').trim()
-    } catch (_) {
-      return ''
-    }
   }
 
   /** Resolve a candidate path (file, directory or nested platform folder). */
@@ -189,7 +175,13 @@ export class ElectronResolver {
     return list
   }
 
-  /** Download Electron once (in-process: a spawned helper would inherit the host exe). */
+  /**
+   * Download Electron once (in-process: a spawned helper would inherit the host exe).
+   *
+   * `onProgress` receives `{received, total}` while bytes arrive and a final
+   * `{done: true, ok, error}`, so the Host can show a real progress bar instead
+   * of a spinner that says nothing.
+   */
   async download() {
     if (this.downloading) return this.downloading
     this.downloading = (async () => {
@@ -215,11 +207,18 @@ export class ElectronResolver {
           if (mirror) process.env.ELECTRON_MIRROR = mirror
           else delete process.env.ELECTRON_MIRROR
           try {
-            const zip = await download(this.version, mirror ? { mirrorOptions: { mirror } } : {})
+            const zip = await download(this.version, {
+              ...(mirror ? { mirrorOptions: { mirror } } : {}),
+              progressCallback: (progress) => this.onProgress?.({
+                received: Number(progress?.received) || 0,
+                total: Number(progress?.total) || 0
+              })
+            })
             // An earlier attempt may have left a half-extracted tree behind.
             rmSync(target, { recursive: true, force: true })
             await extract(zip, { dir: target })
             this.logger?.info?.('quickdock: Electron %s downloaded from %s to %s', this.version, mirror ?? 'default', target)
+            this.onProgress?.({ received: 0, total: 0, done: true, ok: true })
             return join(target, exeNameFor(this.platform))
           } catch (error) {
             lastError = error
@@ -232,6 +231,7 @@ export class ElectronResolver {
           else process.env[key] = value
         }
       }
+      this.onProgress?.({ done: true, ok: false, error: String(lastError?.message || lastError) })
       throw lastError
     })().finally(() => {
       this.downloading = null

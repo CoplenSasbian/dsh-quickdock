@@ -84,7 +84,9 @@ export class QuickDockHost {
       catalogs: { permissions: [], models: [], reasoning: [], agents: [] },
       locale: 'en',
       // running: process alive; visible: a window is actually on screen.
-      dock: { running: false, visible: false, alwaysOnTop: config.alwaysOnTop, error: '' }
+      dock: { running: false, visible: false, alwaysOnTop: config.alwaysOnTop, error: '' },
+      // Desktop runtime download, surfaced in the DSH sidebar footer while active.
+      download: { active: false, received: 0, total: 0, ok: false, error: '' }
     }
 
     this.publish = () => this.hub.publishState(this.snapshot())
@@ -145,6 +147,8 @@ export class QuickDockHost {
       t: (key, params) => this.locale.t(key, params),
       requireResolve: (specifier) => require.resolve(specifier)
     })
+    this.lastDownloadPublishAt = 0
+    this.resolver.onProgress = (event) => this.#onDownloadProgress(event)
     this.dock = new DockProcess({
       state: this.state,
       config,
@@ -203,6 +207,37 @@ export class QuickDockHost {
     void this.index.refresh()
     this.#startTimers()
     this.dsh.logger?.info?.('quickdock: host half loaded')
+  }
+
+  /** Snapshot of the runtime download, polled by the Client footer badge. */
+  downloadProgress() {
+    return Object.assign({}, this.state.download)
+  }
+
+  /**
+   * Track the runtime download for the UI.
+   *
+   * Progress is throttled: the footer only needs a few updates per second, and
+   * publishing per chunk would flood every connected page.
+   */
+  #onDownloadProgress(event) {
+    const download = this.state.download
+    if (event?.done) {
+      download.active = false
+      download.ok = Boolean(event.ok)
+      download.error = event.error ? String(event.error) : ''
+      this.publish()
+      return
+    }
+    if (!event) return
+    download.active = true
+    download.received = Number(event.received) || 0
+    download.total = Number(event.total) || 0
+    const now = Date.now()
+    if (now - this.lastDownloadPublishAt >= 400) {
+      this.lastDownloadPublishAt = now
+      this.publish()
+    }
   }
 
   /**

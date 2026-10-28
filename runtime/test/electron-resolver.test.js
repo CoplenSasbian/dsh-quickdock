@@ -35,11 +35,9 @@ test('the self-managed download is preferred over the npm package', async () => 
   // Candidate entries are paths (a directory is resolved to its executable later).
   assert.strictEqual(candidates[0], path.join('C:/Local', 'dsh-quickdock', 'electron', resolver.version));
   assert.strictEqual(candidates[1], path.join('C:/app/node_modules/electron/dist', 'electron.exe'));
-  // The shared DSH runtime is offered only through its versioned subdirectory and
-  // only for the exact version we target: ~/.dsh/electron itself holds a
-  // node-only build that starts but cannot host a window.
-  assert.strictEqual(candidates[2], path.join('C:/Users/test/.dsh/electron', resolver.version));
-  assert.strictEqual(candidates.length, 3);
+  // No ~/.dsh/electron entry: DSH's own runtime answers --version but dies before
+  // 'ready' when hosting a window, so only our download may be offered.
+  assert.strictEqual(candidates.length, 2);
 });
 
 test('an explicit binary always wins', async () => {
@@ -51,7 +49,7 @@ test('a missing npm package does not break the list', async () => {
   const resolver = await createResolver({ requireResolve: () => { throw new Error('not installed') } });
   const candidates = resolver.candidates();
   assert.ok(!candidates.some((entry) => entry.includes('node_modules')));
-  assert.strictEqual(candidates.length, 2);
+  assert.strictEqual(candidates.length, 1);
 });
 
 test('the version can be overridden through the environment', async () => {
@@ -70,26 +68,12 @@ test('downloads fall back from the configured mirror to the upstream default', a
   ]);
 });
 
-/** A throwaway DSH home whose electron/ directory records 'version'. */
-function sharedRuntime(version) {
+test('a DSH-managed ~/.dsh/electron is never offered, even at the same version', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'qd-dsh-'));
   fs.mkdirSync(path.join(home, 'electron'));
-  fs.writeFileSync(path.join(home, 'electron', 'version'), version + '\n');
-  return home;
-}
-
-test('an older shared DSH runtime is skipped: it starts but cannot host a window', async () => {
-  const home = sharedRuntime('30.5.1');
+  fs.writeFileSync(path.join(home, 'electron', 'version'), '44.7.0\n');
   const resolver = await createResolver({ homeDir: home });
-  const candidates = resolver.candidates();
-  assert.ok(!candidates.includes(path.join(home, 'electron')));
-  assert.ok(candidates.includes(path.join(home, 'electron', resolver.version)));
-});
-
-test('a shared runtime matching the target version stays as a fallback', async () => {
-  const home = sharedRuntime('44.7.0');
-  const resolver = await createResolver({ homeDir: home });
-  assert.ok(resolver.candidates().includes(path.join(home, 'electron')));
+  assert.ok(!resolver.candidates().some((entry) => entry.includes('.dsh')));
 });
 
 test('without an override the list is the China mirror and then the default', async () => {

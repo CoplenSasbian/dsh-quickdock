@@ -17,6 +17,7 @@ var React = require('react');
  */
 const PLUGIN_ID = 'dsh-quickdock'
 const HEADER_SLOT = 'conversation.session.header.actions'
+const FOOTER_SLOT = 'sidebar.footer.action'
 const BRIDGE = '/api/quickdock'
 
 function el(tag, props) {
@@ -32,7 +33,8 @@ var MESSAGES = {
     'client.startTimeout': 'QuickDock did not start in time. See {log}',
     'client.preparing': 'QuickDock is preparing its desktop window (the first run downloads Electron, ~1–2 minutes, once)…',
     'client.requestFailed': 'Request failed: HTTP {status}',
-    'client.dockFailed': 'QuickDock request failed: {reason}'
+    'client.dockFailed': 'QuickDock request failed: {reason}',
+    'client.downloading': 'QuickDock is downloading its desktop runtime {percent}% ({mb}/{total} MB)'
   },
   zh: {
     'client.sendToDock': '在 QuickDock 中打开此会话',
@@ -41,7 +43,8 @@ var MESSAGES = {
     'client.startTimeout': 'QuickDock 启动超时。请看 {log}',
     'client.preparing': 'QuickDock 正在准备桌面窗口（首次需要下载 Electron，约 1–2 分钟，只需一次）…',
     'client.requestFailed': '请求失败：HTTP {status}',
-    'client.dockFailed': 'QuickDock 请求失败：{reason}'
+    'client.dockFailed': 'QuickDock 请求失败：{reason}',
+    'client.downloading': 'QuickDock 正在下载桌面运行时 {percent}%（{mb}/{total} MB）'
   }
 };
 /* i18n-catalog:end */
@@ -546,6 +549,62 @@ function connectCommandBus(onCommand) {
   }
 }
 
+/* ---------------- download badge (sidebar footer) ---------------- */
+
+/**
+ * Shows the desktop runtime download in the sidebar footer.
+ *
+ * The Host fetches ~100 MB once (on mount, or on the first Dock click). Without
+ * a visible indicator that click looks like it did nothing, so the badge polls
+ * the same bridge the header button already uses; no extra channel is needed.
+ */
+function DownloadBadge() {
+  const [download, setDownload] = React.useState(null)
+  React.useEffect(function () {
+    let alive = true
+    let timer = 0
+    async function tick() {
+      try {
+        const status = await bridge('status')
+        if (alive) setDownload(status && status.download ? status.download : null)
+      } catch (error) {
+        /* the host is restarting: keep the last value and retry */
+      }
+      if (alive) timer = setTimeout(tick, 1200)
+    }
+    tick()
+    return function () {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [])
+  if (!download || !download.active) return null
+  const total = Number(download.total) || 0
+  const received = Number(download.received) || 0
+  const percent = total > 0 ? Math.min(99, Math.round((received / total) * 100)) : 0
+  const label = total > 0
+    ? t('client.downloading', {
+      percent: String(percent),
+      mb: (received / 1048576).toFixed(1),
+      total: (total / 1048576).toFixed(0)
+    })
+    : t('client.preparing')
+  return el('span', {
+    id: PLUGIN_ID + '-download',
+    title: label,
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px',
+      padding: '0 6px',
+      fontSize: '11px',
+      lineHeight: '18px',
+      color: 'var(--dsw-alias-brand-primary, #4d8eff)',
+      flex: 'none'
+    }
+  }, total > 0 ? percent + '%' : '…')
+}
+
 /* ---------------- apply ---------------- */
 
 function apply(ctx) {
@@ -559,6 +618,18 @@ function apply(ctx) {
     }, SendToDock))
   } catch (error) {
     console.error('[dsh-quickdock] client apply failed (plugin disabled, web boot continues):', error)
+  }
+
+  // Sidebar footer: the runtime download must be visible, not a silent wait.
+  try {
+    ctx.slots.inject(FOOTER_SLOT, () => ctx.slots.register({
+      name: FOOTER_SLOT,
+      id: PLUGIN_ID + '-download',
+      registrant: PLUGIN_ID,
+      order: 1010
+    }, DownloadBadge))
+  } catch (error) {
+    console.warn('[dsh-quickdock] footer slot unavailable:', error)
   }
 
   // Push the browser locale even when the locale service is unavailable.

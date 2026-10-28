@@ -30,7 +30,9 @@ export function createBridgeHandler(deps) {
           ok: true,
           running: app.dock.alive,
           starting: app.dock.starting,
-          error: app.state.dock.error || ''
+          error: app.state.dock.error || '',
+          // Non-blocking: the footer badge polls this while Electron downloads.
+          download: typeof app.downloadProgress === 'function' ? app.downloadProgress() : undefined
         }
       }
     },
