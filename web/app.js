@@ -237,6 +237,38 @@
     render();
   }
 
+  /* ------------------------------ window height ------------------------------ */
+
+  var reportedHeight = 0;
+
+  /**
+   * Keep the window exactly as tall as the panel.
+   *
+   * The composer grows with the text and the detail line appears with a call, so
+   * a fixed height either clips the composer or leaves a band of nothing. The
+   * panel is therefore sized by its content and this reports that height to the
+   * runtime, which keeps the bottom edge fixed.
+   */
+  function syncWindowHeight() {
+    var panel = els.panelA;
+    var quickDock = window.quickDock;
+    if (!panel || !quickDock || !quickDock.setContentHeight) return;
+    // .stack pads 10px top and bottom around the panel.
+    var height = Math.ceil(panel.getBoundingClientRect().height) + 20;
+    if (height <= 20 || Math.abs(height - reportedHeight) < 2) return;
+    reportedHeight = height;
+    try {
+      var pending = quickDock.setContentHeight(height);
+      if (pending && typeof pending.catch === 'function') pending.catch(function () {});
+    } catch (error) {
+      /* the bridge is optional outside Electron */
+    }
+  }
+
+  if (window.ResizeObserver && els.panelA) {
+    new window.ResizeObserver(function () { syncWindowHeight(); }).observe(els.panelA);
+  }
+
   /* ------------------------------ detail mode ------------------------------ */
 
   /**

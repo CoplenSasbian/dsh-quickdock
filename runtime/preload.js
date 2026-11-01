@@ -17,6 +17,7 @@ const outbound = Object.freeze({
   setAlwaysOnTop: 'dock:set-always-on-top',
   setDisplayEmpty: 'dock:set-display-empty',
   setMenuSpace: 'dock:set-menu-space',
+  setContentHeight: 'dock:content-height',
   hide: 'dock:hide',
   getState: 'dock:get-state',
 });
@@ -74,6 +75,17 @@ const api = Object.freeze({
       return Promise.reject(new TypeError('extra must be a non-negative number'));
     }
     return ipcRenderer.invoke(outbound.setMenuSpace, extra);
+  },
+  /**
+   * Ask the window to size itself to the content it is about to show. The bottom
+   * edge stays put, so a growing composer grows upwards instead of clipping.
+   * Returns the height the window actually took.
+   */
+  setContentHeight(height) {
+    if (typeof height !== 'number' || !Number.isFinite(height) || height <= 0) {
+      return Promise.reject(new TypeError('height must be a positive number'));
+    }
+    return ipcRenderer.invoke(outbound.setContentHeight, Math.round(height));
   },
   hide() {
     ipcRenderer.send(outbound.hide);

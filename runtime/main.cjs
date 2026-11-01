@@ -309,6 +309,16 @@ class DockRuntime {
       if (!sendAllowed(event) || typeof empty !== 'boolean') return;
       this.setDisplayVisible(!empty);
     });
+    /**
+     * Size the input window to the content it reports. The bottom edge stays
+     * fixed so the composer grows upwards, and the result is clamped into the
+     * work area and remembered like any other geometry change.
+     */
+    ipcMain.handle('dock:content-height', (event, height) => {
+      if (this.quitting) return 0;
+      return this.setContentHeight(height);
+    });
+
     ipcMain.handle('dock:set-menu-space', (event, extra) => {
       if (!sendAllowed(event)) throw new Error('Untrusted IPC sender');
       if (typeof extra !== 'number' || !Number.isFinite(extra) || extra < 0) {
@@ -594,6 +604,28 @@ class DockRuntime {
    *
    * Returns the pixels actually added (truncated when there is not enough room above, may be 0).
    */
+  /**
+   * Resize to the content height the page reports.
+   * @param {number} height requested content height in DIP.
+   * @returns {number} the height the window actually took.
+   */
+  setContentHeight(height) {
+    const win = this.win;
+    if (!win || win.isDestroyed()) return 0;
+    const wanted = Number.isFinite(height) ? Math.round(height) : 0;
+    if (wanted <= 0) return 0;
+    const bounds = win.getBounds();
+    const area = currentDisplay(this.electron.screen, bounds).workArea;
+    const target = Math.max(120, Math.min(wanted, Math.floor(area.height * 0.8)));
+    if (Math.abs(target - bounds.height) < 2) return bounds.height;
+    const bottom = bounds.y + bounds.height;
+    const y = Math.max(area.y + 4, bottom - target);
+    win.setBounds({ x: bounds.x, y: y, width: bounds.width, height: target });
+    this.remember();
+    trace('content height: ' + bounds.height + ' -> ' + target);
+    return target;
+  }
+
   setMenuSpace(extra) {
     const win = this.win;
     if (!win || win.isDestroyed()) return 0;
