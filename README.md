@@ -118,6 +118,14 @@ All UI strings live in `locale/en.json` and `locale/zh.json` (flat dotted keys,
 Adding a language: add `locale/<id>.json`, extend `SUPPORTED_LOCALES` in
 `runtime/i18n.js` (and the client catalog), then run `npm run check`.
 
+## The docked window is a conversation
+
+The execution window renders the whole session, not the newest turn: one fold
+per turn (DSH's shape), oldest at the top, replies outside their turn's fold,
+live rows only under the running one. Older turns are read through
+`/turns` + `/turn?turn=N` the first time a session is opened and then kept, so
+nothing is cleared when a turn ends.
+
 ## Composer rendering
 
 The dock is a single window: a title bar and the composer. While the agent works the bar

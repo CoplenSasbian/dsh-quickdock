@@ -46,6 +46,11 @@
 
   function create(options) {
     var latestState = null;
+    /** Turns shown in the column, oldest first: { number, turn, steps }. */
+    var turnList = [];
+    var loadingHistory = false;
+    var loadedFor = 0;
+    var loadedSession = null;
     var host = options.root;
     var api = options.api;
     var getState = options.getState;
@@ -136,8 +141,71 @@
     });
 
     /** Create the island once and hand it the newest state. */
+    /**
+     * Keep the column in step with the newest turn and pull older ones once, so
+     * the window shows the conversation instead of only the turn being written.
+     * @param {object} state snapshot.
+     */
+    function absorbHistory(state) {
+      var meta = state && state.turn;
+      if (!meta || typeof meta.number !== 'number') return;
+      // A different session starts a new column.
+      var sessionId = (state && state.sessionId) || null;
+      if (sessionId !== loadedSession) {
+        loadedSession = sessionId;
+        turnList = [];
+        loadedFor = 0;
+      }
+      var entry = { number: meta.number, turn: meta, steps: (state && state.steps) || [] };
+      var found = false;
+      for (var index = 0; index < turnList.length; index += 1) {
+        if (turnList[index].number !== meta.number) continue;
+        turnList[index] = entry;
+        found = true;
+        break;
+      }
+      if (!found) {
+        turnList.push(entry);
+        turnList.sort(function (a, b) { return a.number - b.number; });
+      }
+      if (loadedFor !== meta.number) {
+        loadedFor = meta.number;
+        void loadOlderTurns(meta.number);
+      }
+    }
+
+    /** Fetch the rows of the turns already on disk, newest of them first. */
+    function loadOlderTurns(latest) {
+      if (loadingHistory) return;
+      loadingHistory = true;
+      api('turns').then(function (list) {
+        var known = {};
+        turnList.forEach(function (row) { known[row.number] = true; });
+        var rows = ((list && list.turns) || [])
+          .filter(function (row) { return typeof row.turn === 'number' && row.turn < latest && !known[row.turn]; })
+          .slice(-12);
+        var next = function (index) {
+          if (index >= rows.length) {
+            loadingHistory = false;
+            if (latestState) renderRows(latestState);
+            return;
+          }
+          var number = rows[index].turn;
+          var meta = { number: number, startedAt: rows[index].startedAt, endedAt: rows[index].endedAt };
+          api('turn?turn=' + number).then(function (detail) {
+            if (detail && detail.observed && detail.steps && detail.steps.length) {
+              turnList.push({ number: number, turn: meta, steps: detail.steps });
+              turnList.sort(function (a, b) { return a.number - b.number; });
+            }
+          }).catch(function () {}).then(function () { next(index + 1); });
+        };
+        next(0);
+      }).catch(function () { loadingHistory = false; });
+    }
+
     function renderRows(state) {
       latestState = state;
+      absorbHistory(state);
       var rows = rowsHost()
       if (!island) {
         island = window.QD.render.create({
@@ -154,6 +222,7 @@
       }
       island.render({
         detail: readDetailMode(),
+        turns: turnList,
         steps: (state && state.steps) || [],
         stream: state && state.stream,
         turn: state && state.turn,

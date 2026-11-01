@@ -374,7 +374,8 @@ function TurnHeader({ turn, title, open, running, onToggle, t }) {
     return () => clearInterval(timer)
   }, [running, number])
 
-  const duration = formatDuration(elapsedOf(turn, running, now))
+  // Old turns may come from the outline without times: show nothing rather than 0s.
+  const duration = turn && turn.startedAt ? formatDuration(elapsedOf(turn, running, now)) : ''
 
   return h('button', {
     type: 'button',
@@ -434,21 +435,18 @@ function LiveRows({ stream, t, labels }) {
   return h('div', { className: 'qd-live' }, rows)
 }
 
-function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth, detailMode }) {
+function RowList({ turns, stream, turn, running, t, loadDetail, onGrowth, detailMode }) {
   const [openIds, setOpenIds] = useState(() => new Set())
   const [details, setDetails] = useState({})
-  const [turnChoice, setTurnChoice] = useState(null)
-  const seenTurn = useRef(null)
-  const live = runningId(steps)
-
-  if (seenTurn.current !== (turn ? turn.number : null)) {
-    seenTurn.current = turn ? turn.number : null
-    if (turnChoice !== null) setTurnChoice(null)
-  }
-
+  const [turnOpenMap, setTurnOpenMap] = useState({})
   const requested = useRef(new Map())
 
-  /** Load one row's detail once per (row, status): a result only exists after it settles. */
+  const list = turns && turns.length
+    ? turns
+    : turn ? [{ number: turn.number, turn: turn, steps: turns === undefined ? [] : [] }] : []
+  const latestNumber = list.length ? list[list.length - 1].number : null
+
+  /** Load one row's detail once per (row, status): a result exists after it settles. */
   const request = useCallback((id, status) => {
     const key = id + '@' + (status || '')
     if (requested.current.get(id) === key) return
@@ -471,54 +469,70 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth, detail
     if (onGrowth) onGrowth()
   }, [onGrowth])
 
-  // Every open row (auto-opened running rows included) loads its detail, and a
-  // settled row refetches once so its result replaces the running view.
-  /**
-   * Whether a row is open right now.
-   *  auto   - only the running row
-   *  open   - every row
-   *  closed - none
-   * A manual toggle still wins inside auto for the row it touched.
-   */
-  const rowOpen = useCallback((step) => {
-    const id = String(step.id)
-    if (detailMode === 'open') return true
-    if (detailMode === 'closed') return false
-    return openIds.has(id) || step.status === 'run'
-  }, [detailMode, openIds])
+  const toggleTurn = useCallback((number, next) => {
+    setTurnOpenMap((prev) => ({ ...prev, [number]: next }))
+    if (onGrowth) onGrowth()
+  }, [onGrowth])
 
+  // Every open row loads its detail, and a settled row refetches once so its
+  // result replaces the running view.
   const openSignature = useMemo(() => {
     const ids = [...openIds]
-    steps.forEach((step) => {
-      if (step.status === 'run' || detailMode === 'open') ids.push(String(step.id))
+    list.forEach((entry) => {
+      (entry.steps || []).forEach((step) => {
+        if (step.status === 'run' || detailMode === 'open') ids.push(String(step.id))
+      })
     })
-    return ids.sort().join(',') + '|' + detailMode
-  }, [openIds, steps, detailMode])
+    return ids.sort().join(',') + '|' + detailMode + '|' + list.length
+  }, [openIds, list, detailMode])
 
   useEffect(() => {
-    const wanted = new Set(openIds)
-    steps.forEach((step) => {
-      if (step.status === 'run' || detailMode === 'open') wanted.add(String(step.id))
+    list.forEach((entry) => {
+      (entry.steps || []).forEach((step) => {
+        const id = String(step.id)
+        const wanted = detailMode === 'open' || step.status === 'run' || openIds.has(id)
+        if (wanted) request(id, step.status)
+      })
     })
-    steps.forEach((step) => {
-      const id = String(step.id)
-      if (wanted.has(id)) request(id, step.status)
-    })
-  }, [openSignature, steps, openIds, request, detailMode])
+  }, [openSignature, list, openIds, request, detailMode])
 
   const labels = useMemo(() => makeLabels(t), [t])
   const markdownLabels = useMemo(() => ({
     code: { copyLabel: t('display.copy'), copiedLabel: t('display.copied') },
     footnotes: t('display.footnotes')
   }), [t])
-  // Folded only stops rows from opening by themselves; the group still lists
-  // them (opening it would leave an empty box otherwise).
-  const turnOpen = detailMode === 'open' ? true
-    : turnChoice === null ? Boolean(running) : turnChoice
-  const toggleTurn = useCallback(() => {
-    setTurnChoice((prev) => !(prev === null ? Boolean(running) : prev))
-    if (onGrowth) onGrowth()
-  }, [running, onGrowth])
+
+  return h('div', { className: 'qd-flow' },
+    list.map((entry) => h(TurnGroup, {
+      key: 'turn-' + entry.number,
+      entry: entry,
+      isLatest: entry.number === latestNumber,
+      running: Boolean(running),
+      stream: entry.number === latestNumber ? stream : null,
+      detailMode: detailMode,
+      openIds: openIds,
+      details: details,
+      onToggleRow: toggle,
+      onToggleTurn: toggleTurn,
+      openChoice: turnOpenMap[entry.number],
+      t: t,
+      labels: labels,
+      markdownLabels: markdownLabels
+    }))
+  )
+}
+
+/**
+ * One turn of the column: its fold header, the rows the fold contains and the
+ * replies that stay outside it - DSH's shape for a finished or running turn.
+ */
+function TurnGroup({
+  entry, isLatest, running, stream, detailMode, openIds, details,
+  onToggleRow, onToggleTurn, openChoice, t, labels, markdownLabels
+}) {
+  const turn = entry.turn || { number: entry.number }
+  const steps = entry.steps || []
+  const live = runningId(steps)
 
   // Sub-calls name their parent call id; nest them the way the main window's
   // call tree does instead of leaving them as siblings.
@@ -533,6 +547,13 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth, detail
     else childrenOf.set(parentId, [step])
   })
 
+  const rowOpen = (step) => {
+    const id = String(step.id)
+    if (detailMode === 'open') return true
+    if (detailMode === 'closed') return false
+    return openIds.has(id) || step.status === 'run'
+  }
+
   const renderRow = (step, depth) => {
     const id = String(step.id)
     const subRows = depth < 4 && childrenOf.has(id)
@@ -545,7 +566,7 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth, detail
       running: id === live,
       labels: labels,
       detail: details[id],
-      onToggle: () => toggle(id),
+      onToggle: () => onToggleRow(id),
       t: t,
       subRows: subRows
     })
@@ -561,9 +582,10 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth, detail
       return
     }
     if (step.kind === 'think') {
+      const open = detailMode === 'open' ? true : detailMode === 'closed' ? false : openIds.has(id)
       process.push(h(ThinkRow, {
-        key: id, text: step.text, open: openIds.has(id), streaming: id === live,
-        onToggle: () => toggle(id), t: t
+        key: id, text: step.text, open: open, streaming: isLatest && id === live,
+        onToggle: () => onToggleRow(id), t: t
       }))
       return
     }
@@ -572,17 +594,20 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth, detail
     process.push(renderRow(step, 0))
   })
 
-  const summary = summarize(toolRows, t)
-
+  const open = detailMode === 'open' ? true
+    : openChoice !== undefined ? openChoice
+      : isLatest && Boolean(running)
   const hasProcess = process.length > 0
-  return h('div', { className: 'qd-flow' },
+
+  return h('div', { className: 'qd-turn-block' },
     hasProcess ? h(TurnHeader, {
-      turn: turn, title: summary, open: turnOpen,
-      running: Boolean(running), onToggle: toggleTurn, t: t
+      turn: turn, title: summarize(toolRows, t), open: open,
+      running: isLatest && Boolean(running),
+      onToggle: () => onToggleTurn(entry.number, !open), t: t
     }) : null,
-    hasProcess && turnOpen ? h('div', { className: 'qd-process' }, process) : null,
+    hasProcess && open ? h('div', { className: 'qd-process' }, process) : null,
     replies,
-    h(LiveRows, { stream: stream, t: t, labels: markdownLabels })
+    isLatest ? h(LiveRows, { stream: stream, t: t, labels: markdownLabels }) : null
   )
 }
 
@@ -592,6 +617,7 @@ function create(options) {
   return {
     render(state) {
       root.render(h(RowList, {
+        turns: (state && state.turns) || [],
         steps: (state && state.steps) || [],
         stream: state && state.stream,
         turn: state && state.turn,
