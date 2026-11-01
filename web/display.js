@@ -51,11 +51,9 @@
     var isListHidden = options.isListHidden || function () { return false; };
     var scheduleHitReport = options.scheduleHitReport || function () {};
 
-    var liveRow = null;
     var cardNode = null;
     var cardKey = '';
     var needsRebuild = false;
-    var stepsSig = null;
     /** Follow the newest row. Only a real user gesture may turn this off. */
     var autoScroll = true;
     /** A wheel / touch / key / scrollbar gesture that can move the list is live. */
@@ -129,8 +127,8 @@
       return rows
     }
 
-    /** Create the island once and hand it the newest step list. */
-    function renderRows(steps) {
+    /** Create the island once and hand it the newest state. */
+    function renderRows(state) {
       var rows = rowsHost()
       if (!island) {
         island = window.QD.render.create({
@@ -146,7 +144,12 @@
           }
         })
       }
-      island.render(steps)
+      island.render({
+        steps: (state && state.steps) || [],
+        stream: state && state.stream,
+        turn: state && state.turn,
+        running: Boolean(state && state.status === 'running')
+      })
     }
 
     /** Drop the island (locale change rebuilds every label). */
@@ -224,67 +227,6 @@
       onAnswered();
     }
 
-    /* ------------------------------- live row ------------------------------- */
-
-    /**
-     * Update the live block in place. Rebuilding it on every token would replay
-     * the row animation and make the whole window flicker.
-     */
-    function updateLiveRow() {
-      var row = liveRow || document.getElementById('liveRow');
-      if (!row) return;
-      var state = getState();
-      var stream = state && state.stream;
-      if (!hasLiveText(stream)) {
-        row.hidden = true;
-        row.textContent = '';
-        return;
-      }
-      row.hidden = false;
-      var box = row.firstElementChild;
-      if (!box || box.className !== 'live') {
-        row.textContent = '';
-        box = U.el('div', 'live');
-        box.appendChild(U.el('div', 'live-think'));
-        box.appendChild(U.el('div', 'live-tools'));
-        box.appendChild(U.el('div', 'live-say'));
-        row.appendChild(box);
-      }
-      box.setAttribute('data-idle', t('display.thinkingIdle'));
-      var thinkEl = box.children[0];
-      var toolsEl = box.children[1];
-      var sayEl = box.children[2];
-
-      // Thinking is never sliced: mixed CJK/Latin wrapping makes a sliced
-      // block jump in height. CSS caps the height and scrolls instead.
-      var thinking = stream.thinking ? String(stream.thinking) : '';
-      var followThink = U.isNearBottom(thinkEl, 4);
-      if (thinkEl.textContent !== thinking) thinkEl.textContent = thinking;
-      thinkEl.hidden = !thinking;
-      if (thinking && followThink) thinkEl.scrollTop = thinkEl.scrollHeight;
-
-      var list = stream.tools || [];
-      var tools = list.length
-        ? list.slice(-2).map(function (tool) {
-          var arg = U.shortText(U.compactArgs(tool.args), 110);
-          return (tool.name || t('display.toolFallback')) + (arg ? '  ' + arg : '');
-        }).join('    ')
-        : '';
-      tools = tools ? U.shortText(tools, 220) : '';
-      if (toolsEl.textContent !== tools) toolsEl.textContent = tools;
-      toolsEl.hidden = !tools;
-
-      var say = stream.text ? String(stream.text) : '';
-      var followSay = U.isNearBottom(sayEl, 4);
-      if (sayEl.textContent !== say) sayEl.textContent = say;
-      sayEl.hidden = !say;
-      if (say && followSay) sayEl.scrollTop = sayEl.scrollHeight;
-
-      box.classList.toggle('idle', !thinking && !say && !tools);
-      // The caret is drawn on the last content line (CSS keys off data-tail).
-      box.setAttribute('data-tail', say ? 'say' : (tools ? 'tools' : (thinking ? 'think' : '')));
-    }
-
     /* -------------------------------- scrolling -------------------------------- */
 
     /** Adopt the position the user left the list at. */
@@ -355,15 +297,6 @@
 
     /* -------------------------------- reconcile -------------------------------- */
 
-    function ensureLiveRow() {
-      if (!liveRow) {
-        liveRow = U.el('div', 'drow');
-        liveRow.id = 'liveRow';
-        liveRow.hidden = true;
-      }
-      if (host.lastElementChild !== liveRow) host.appendChild(liveRow);
-    }
-
     function syncCard(interaction, hasInter) {
       // Only questions get a card; approvals live in the input window.
       var key = hasInter && interaction && interaction.kind !== 'approval'
@@ -379,39 +312,20 @@
       cardNode = U.el('div', 'drow');
       cardNode.appendChild(card);
       cardKey = key;
-      host.insertBefore(cardNode, liveRow);
+      host.appendChild(cardNode);
     }
 
     function resetHost() {
       destroyIsland();
       host.textContent = '';
-      liveRow = null;
       cardNode = null;
       cardKey = '';
-      stepsSig = null;
     }
 
-    /**
-     * Cheap row fingerprint used to skip reconciliation when only the live
-     * stream changed. Lengths match the old rebuild trigger; full text would
-     * allocate the whole transcript on every token.
-     */
-    function rowsSignature(steps, interaction, hasInter) {
-      var parts = [];
-      for (var i = 0; i < steps.length; i += 1) {
-        var step = steps[i];
-        if (!step) continue;
-        parts.push(step.id + ':' + step.status + ':' + ((step.text || step.command || '').length));
-      }
-      parts.push(hasInter ? interaction.id + ':' + interaction.status : '');
-      return parts.join('|');
-    }
-
-    /** Hand the newest step list to the island; card and live row stay here. */
-    function syncRows(steps, interaction, hasInter) {
-      renderRows(steps);
+    /** Hand the newest state to the island; the question card stays here. */
+    function syncRows(state, interaction, hasInter) {
+      renderRows(state);
       syncCard(interaction, hasInter);
-      ensureLiveRow();
     }
 
     /* --------------------------------- render --------------------------------- */
@@ -437,19 +351,13 @@
       applyVisibility(hasContent);
       if (!hasContent) {
         if (host.firstChild) resetHost();
-        else stepsSig = null;
         return;
       }
 
       var scroller = scrollHost();
       var prevTop = scroller ? scroller.scrollTop : 0;
       var wasAuto = autoScroll;
-      var sig = rowsSignature(steps, interaction, hasInter);
-      if (sig !== stepsSig) {
-        stepsSig = sig;
-        syncRows(steps, interaction, hasInter);
-      }
-      updateLiveRow();
+      syncRows(state, interaction, hasInter);
       applyAutoScroll(prevTop, wasAuto);
       scheduleHitReport();
     }

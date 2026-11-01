@@ -32,7 +32,7 @@ const stubSimpleIcons = {
  * markdown/math stack is replaced by the empty module because the island
  * renders no prose math.
  */
-const STUBBED = new Set(['shiki', 'katex'])
+const STUBBED = new Set(['shiki'])
 const stubMarkdownStack = {
   name: 'stub-markdown-stack',
   resolveId(source) {

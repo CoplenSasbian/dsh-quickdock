@@ -44,7 +44,15 @@ export function createSnapshotBuilder(deps) {
       // The dock renders the latest turn only; other clients read the retained
       // turns through GET /quickdock/api/turns and /turn.
       steps: folder ? folder.rows() : [],
-      turn: latestTurn === null ? null : { number: latestTurn, count: folder.turnCount },
+      // The run window renders the turn as a DSH process block: the header shows
+      // how many steps it holds and how long it took, so the timing travels with it.
+      turn: latestTurn === null ? null : {
+        number: latestTurn,
+        count: folder.turnCount,
+        steps: folder.rows().length,
+        startedAt: folder.turns[folder.turns.length - 1].time || '',
+        endedAt: folder.turns[folder.turns.length - 1].endedAt || ''
+      },
       stream: stream.current(),
       interaction: state.interaction,
       settings: Object.assign({}, state.settings),

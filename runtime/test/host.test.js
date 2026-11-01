@@ -212,7 +212,13 @@ test('client API: switching is backend-only and every turn stays readable', asyn
   assert.ok(sessions.sessions[0].title, 'a session entry always carries a title');
 
   const state = await get('state');
-  assert.deepStrictEqual(state.turn, { number: 2, count: 2 }, 'the dock still receives the newest turn');
+  assert.deepStrictEqual(
+    { number: state.turn.number, count: state.turn.count, steps: state.turn.steps },
+    { number: 2, count: 2, steps: 1 },
+    'the dock still receives the newest turn'
+  );
+  // The run window's turn header shows how long the turn took.
+  assert.ok(state.turn.startedAt, 'the turn carries its start time');
   assert.deepStrictEqual(state.steps.map((row) => row.id), ['tool-c2']);
 
   const turns = await get('turns?sessionId=s-demo');

@@ -115,9 +115,12 @@ The run window draws its rows with the **DSH web UI primitives**
 `DisclosureRow` / `TextShimmer` / `TerminalBlock` / `DiffBlock` components the main window
 uses, so typography, spacing, dots, chevrons and expanded cards match by construction.
 
-The island is a small React app in `web/render/src`; `display.js` keeps everything that is
-not a row (live stream block, question card, scroll following, hit regions) and hands the
-step list over. Artifacts are committed, so installing the plugin needs no build:
+The island is a small React app in `web/render/src`. It owns the turn: a foldable process
+header (`N steps` + elapsed time, closed once the turn ends, exactly like DSH), its rows,
+the assistant replies that stay outside the fold, and the live stream rows (streaming
+reasoning, tool drafts, prose with a caret). `display.js` keeps what is not a row: the
+question card, scroll following and hit regions. Artifacts are committed, so installing
+the plugin needs no build:
 
 ```bash
 npm run build:render   # rebuild web/render/bundle.js + bundle.css after editing src/

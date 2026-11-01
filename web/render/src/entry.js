@@ -5,18 +5,19 @@
  * dots, chevrons and the expanded cards match the main window instead of being
  * re-implemented here.
  *
- * The island owns rows only: the live stream block, the interaction card and
- * the scroll/follow behaviour stay in display.js.
+ * The island owns the turn: a foldable process block (header with step count and
+ * duration), its rows, the assistant replies that stay outside the fold, and the
+ * live stream rows. Scrolling and hit regions stay in display.js.
  */
 import {
   createElement as h, Fragment, useCallback, useEffect, useMemo, useRef, useState
 } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-  DisclosureRow, TerminalBlock, DiffBlock,
-  IconAgentPresetOutlineRegular, IconBrowseOutlineRegular, IconCodeOutlineRegular,
-  IconEditOutlineRegular, IconGlobeOutlineRegular, IconSearchOutlineRegular,
-  IconThinkOutlineRegular
+  DisclosureRow, TerminalBlock, DiffBlock, MarkdownText,
+  IconAgentPresetOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
+  IconCodeOutlineRegular, IconEditOutlineRegular, IconGlobeOutlineRegular,
+  IconSearchOutlineRegular, IconThinkOutlineRegular
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import rowCss from './tool-row.module.css'
 import './page.css'
@@ -66,25 +67,9 @@ function parseArgs(raw) {
   }
 }
 
-/** Labels the DSH primitives need; all of them come from the dock catalogs. */
+/** Labels the DSH primitives need; every string comes from the dock catalogs. */
 function makeLabels(t) {
-  const terminal = {
-    commandLine: (line) => t('display.commandLine', { line: line }),
-    signal: (signal) => t('display.signal', { signal: signal }),
-    exitCode: (code) => t('display.exitCode', { code: code }),
-    noExitCode: t('display.noExitCode'),
-    running: t('display.running'),
-    failed: t('display.failed'),
-    done: t('display.done'),
-    copy: t('display.copy'),
-    copied: t('display.copied'),
-    noOutput: t('display.noOutput'),
-    collapseAria: t('display.collapse'),
-    collapse: t('display.collapse'),
-    expandAria: (hidden) => t('display.expandLines', { count: hidden }),
-    expand: (hidden) => t('display.expandLines', { count: hidden })
-  }
-  const diff = {
+  const shared = {
     copy: t('display.copy'),
     copied: t('display.copied'),
     collapseAria: t('display.collapse'),
@@ -92,7 +77,41 @@ function makeLabels(t) {
     expandAria: (hidden) => t('display.expandLines', { count: hidden }),
     expand: (hidden) => t('display.expandLines', { count: hidden })
   }
-  return { terminal, diff }
+  return {
+    terminal: {
+      ...shared,
+      commandLine: (line) => t('display.commandLine', { line: line }),
+      signal: (signal) => t('display.signal', { signal: signal }),
+      exitCode: (code) => t('display.exitCode', { code: code }),
+      noExitCode: t('display.noExitCode'),
+      running: t('display.running'),
+      failed: t('display.failed'),
+      done: t('display.done'),
+      noOutput: t('display.noOutput')
+    },
+    diff: shared
+  }
+}
+
+/** "8s", "1m 20s", "1h 04m" — a short elapsed value, like DSH's turn header. */
+function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return ''
+  const total = Math.round(ms / 1000)
+  if (total < 60) return total + 's'
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  if (minutes < 60) return seconds ? minutes + 'm ' + String(seconds).padStart(2, '0') + 's' : minutes + 'm'
+  const hours = Math.floor(minutes / 60)
+  return hours + 'h ' + String(minutes % 60).padStart(2, '0') + 'm'
+}
+
+/** Milliseconds between the turn's start and its end (or now while running). */
+function elapsedOf(turn, running, now) {
+  if (!turn || !turn.startedAt) return 0
+  const start = Date.parse(turn.startedAt)
+  if (!Number.isFinite(start)) return 0
+  const end = running || !turn.endedAt ? now : Date.parse(turn.endedAt)
+  return Number.isFinite(end) ? Math.max(0, end - start) : 0
 }
 
 /** One tool call: title, one-line summary, optional metadata, expandable body. */
@@ -135,12 +154,9 @@ function ToolRow({ step, open, running, labels, detail, onToggle, t }) {
 
 /** Expanded body: the card DSH renders for this kind of tool. */
 function ToolBody({ step, detail, labels, t }) {
-  if (!detail) {
-    return h('div', { className: 'qd-status' }, t('display.loading'))
-  }
-  if (detail.error) {
-    return h('div', { className: 'qd-status qd-error' }, detail.error)
-  }
+  if (!detail) return h('div', { className: 'qd-status' }, t('display.loading'))
+  if (detail.error) return h('div', { className: 'qd-status qd-error' }, detail.error)
+
   const tool = String(step.tool || '')
   const args = parseArgs(detail.args)
   const result = String(detail.result || '')
@@ -148,7 +164,9 @@ function ToolBody({ step, detail, labels, t }) {
 
   if (EDIT_TOOLS.test(tool) && args) {
     const oldText = typeof args.old_string === 'string' ? args.old_string : null
-    const newText = typeof args.new_string === 'string' ? args.new_string : typeof args.content === 'string' ? args.content : ''
+    const newText = typeof args.new_string === 'string'
+      ? args.new_string
+      : typeof args.content === 'string' ? args.content : ''
     if (oldText !== null || newText) {
       return h('div', { className: 'qd-body' },
         h(DiffBlock, {
@@ -172,21 +190,20 @@ function ToolBody({ step, detail, labels, t }) {
     )
   }
 
-  const text = result || (detail.args ? detail.args : '')
   return h('div', { className: 'qd-body' },
-    h('pre', { className: 'qd-pre' }, text)
+    h('pre', { className: 'qd-pre' }, result || (detail.args ? detail.args : ''))
   )
 }
 
 /** Reasoning row: one 24px line that expands to the full text. */
-function ThinkRow({ step, open, onToggle, t }) {
-  const text = String(step.text || '')
-  const oneLine = text.replace(/\s+/g, ' ').trim()
+function ThinkRow({ text, open, streaming, onToggle, t }) {
+  const oneLine = String(text || '').replace(/\s+/g, ' ').trim()
   return h('div', { className: 'qd-row' },
     h(DisclosureRow, {
       icon: h(IconThinkOutlineRegular, null),
       title: t('display.thinking'),
       open: open,
+      running: streaming,
       expandable: true,
       expandOnRowClick: true,
       onToggle: onToggle,
@@ -198,16 +215,98 @@ function ThinkRow({ step, open, onToggle, t }) {
   )
 }
 
-/** Assistant prose: rendered Markdown, no card. */
-function SayRow({ html }) {
-  return h('div', { className: 'qd-prose', dangerouslySetInnerHTML: { __html: html } })
+/** Assistant prose: DSH's own Markdown renderer, no card. */
+function ProseRow({ text, streaming, labels }) {
+  return h('div', { className: streaming ? 'qd-prose qd-prose-streaming' : 'qd-prose' },
+    h(MarkdownText, { text: text, streaming: streaming, labels: labels })
+  )
 }
 
-function RowList({ steps, t, markdown, loadDetail, onGrowth }) {
+/** The turn control: DSH's process header with a step count and a duration. */
+function TurnHeader({ turn, count, open, running, onToggle, t }) {
+  const [now, setNow] = useState(() => Date.now())
+  const number = turn ? turn.number : null
+  useEffect(() => {
+    if (!running) return undefined
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [running, number])
+
+  const label = running
+    ? t('display.turnRunning', { count: count })
+    : t('display.turnDone', { count: count })
+  const duration = formatDuration(elapsedOf(turn, running, now))
+
+  return h('button', {
+    type: 'button',
+    className: 'qd-turn',
+    'data-open': open || undefined,
+    'aria-expanded': open,
+    onClick: onToggle
+  },
+    h(IconChevronDownOutlineRegular, { className: 'qd-turn-chevron' }),
+    h('span', { className: 'qd-turn-label' }, label),
+    duration ? h('span', { className: 'qd-turn-meta' }, duration) : null
+  )
+}
+
+/** Live stream: the assistant's unflushed thinking, tool drafts and prose. */
+function LiveRows({ stream, t, labels }) {
+  const thinking = stream && stream.thinking ? String(stream.thinking) : ''
+  const text = stream && stream.text ? String(stream.text) : ''
+  const tools = stream && Array.isArray(stream.tools) ? stream.tools : []
+  if (!thinking && !text && !tools.length) return null
+
+  const rows = []
+  if (thinking) {
+    rows.push(h(ThinkRow, {
+      key: 'live-think', text: thinking, open: true, streaming: true,
+      onToggle: () => {}, t: t
+    }))
+  }
+  tools.forEach((tool, index) => {
+    const name = String((tool && tool.name) || '') || t('display.toolFallback')
+    const raw = tool && tool.args ? String(tool.args) : ''
+    let summary = ''
+    try {
+      const parsed = JSON.parse(raw)
+      summary = String((parsed && (parsed.command || parsed.file_path || parsed.path || parsed.pattern)) || '')
+    } catch (error) {
+      summary = raw.slice(0, 80)
+    }
+    const Icon = TOOL_ICONS[name.toLowerCase()] || IconAgentPresetOutlineRegular
+    rows.push(h('div', { className: 'qd-row', key: 'live-tool-' + index },
+      h(DisclosureRow, {
+        icon: h(Icon, null),
+        title: name,
+        open: false,
+        running: true,
+        expandable: false,
+        onToggle: () => {},
+        collapsedContent: summary
+          ? h(Fragment, null,
+            h('span', { className: rowCss.sep }),
+            h('span', { className: rowCss.summary }, summary))
+          : null
+      })
+    ))
+  })
+  if (text) rows.push(h(ProseRow, { key: 'live-say', text: text, streaming: true, labels: labels }))
+  return h('div', { className: 'qd-live' }, rows)
+}
+
+function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth }) {
   const [openIds, setOpenIds] = useState(() => new Set())
   const [details, setDetails] = useState({})
   const pending = useRef(new Set())
+  const [turnChoice, setTurnChoice] = useState(null)
+  const seenTurn = useRef(null)
   const live = runningId(steps)
+
+  if (seenTurn.current !== (turn ? turn.number : null)) {
+    seenTurn.current = turn ? turn.number : null
+    if (turnChoice !== null) setTurnChoice(null)
+  }
 
   const request = useCallback((id) => {
     if (pending.current.has(id)) return
@@ -234,36 +333,59 @@ function RowList({ steps, t, markdown, loadDetail, onGrowth }) {
     if (onGrowth) onGrowth()
   }, [request, onGrowth])
 
-  // A running tool opens itself once its detail is requested, like the old dock.
   useEffect(() => {
     if (!live) return
     request(live)
   }, [live, request])
 
   const labels = useMemo(() => makeLabels(t), [t])
+  const markdownLabels = useMemo(() => ({
+    code: { copyLabel: t('display.copy'), copiedLabel: t('display.copied') },
+    footnotes: t('display.footnotes')
+  }), [t])
+  const turnOpen = turnChoice === null ? Boolean(running) : turnChoice
+  const toggleTurn = useCallback(() => {
+    setTurnChoice((prev) => !(prev === null ? Boolean(running) : prev))
+    if (onGrowth) onGrowth()
+  }, [running, onGrowth])
 
+  const process = []
+  const replies = []
+  steps.forEach((step) => {
+    const id = String(step.id)
+    if (step.kind === 'say') {
+      replies.push(h(ProseRow, { key: id, text: String(step.text || ''), labels: markdownLabels }))
+      return
+    }
+    if (step.kind === 'think') {
+      process.push(h(ThinkRow, {
+        key: id, text: step.text, open: openIds.has(id), streaming: id === live,
+        onToggle: () => toggle(id), t: t
+      }))
+      return
+    }
+    const autoOpen = step.status === 'run'
+    process.push(h(ToolRow, {
+      key: id,
+      step: step,
+      open: openIds.has(id) || autoOpen,
+      running: id === live,
+      labels: labels,
+      detail: details[id],
+      onToggle: () => toggle(id),
+      t: t
+    }))
+  })
+
+  const hasProcess = process.length > 0
   return h('div', { className: 'qd-flow' },
-    steps.map((step) => {
-      const id = String(step.id)
-      if (step.kind === 'think') {
-        return h(ThinkRow, { key: id, step: step, open: openIds.has(id), onToggle: () => toggle(id), t: t })
-      }
-      if (step.kind === 'say') {
-        return h(SayRow, { key: id, html: markdown(String(step.text || '')) })
-      }
-      const autoOpen = step.status === 'run'
-      const open = openIds.has(id) || autoOpen
-      return h(ToolRow, {
-        key: id,
-        step: step,
-        open: open,
-        running: id === live,
-        labels: labels,
-        detail: details[id],
-        onToggle: () => toggle(id),
-        t: t
-      })
-    })
+    hasProcess ? h(TurnHeader, {
+      turn: turn, count: process.length, open: turnOpen,
+      running: Boolean(running), onToggle: toggleTurn, t: t
+    }) : null,
+    hasProcess && turnOpen ? h('div', { className: 'qd-process' }, process) : null,
+    replies,
+    h(LiveRows, { stream: stream, t: t, labels: markdownLabels })
   )
 }
 
@@ -271,11 +393,13 @@ function RowList({ steps, t, markdown, loadDetail, onGrowth }) {
 function create(options) {
   const root = createRoot(options.root)
   return {
-    render(steps, context) {
+    render(state) {
       root.render(h(RowList, {
-        steps: steps || [],
+        steps: (state && state.steps) || [],
+        stream: state && state.stream,
+        turn: state && state.turn,
+        running: Boolean(state && state.running),
         t: options.t || IDENTITY,
-        markdown: options.markdown || IDENTITY,
         loadDetail: options.loadDetail,
         onGrowth: options.onGrowth
       }))

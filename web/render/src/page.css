@@ -1,4 +1,31 @@
-/* Dock render island: page-level spacing that DSH's own stylesheets expect. */
+/* Shiki token palette: the values DSH's CSS-variables theme ships. */
+:root {
+  --shiki-foreground: var(--dsw-alias-label-primary, #e9e9ea);
+  --shiki-background: var(--dsw-alias-markdown-code-block, rgba(255, 255, 255, 0.04));
+  --shiki-token-constant: #4dabf7;
+  --shiki-token-string: #69db7c;
+  --shiki-token-comment: #adb5bd;
+  --shiki-token-keyword: #faa2c1;
+  --shiki-token-parameter: #ffa94d;
+  --shiki-token-function: #b197fc;
+  --shiki-token-string-expression: #8ce99a;
+  --shiki-token-punctuation: #ced4da;
+  --shiki-token-link: #74c0fc;
+}
+
+html[data-theme="light"] {
+  --shiki-token-constant: #1c7ed6;
+  --shiki-token-string: #2f9e44;
+  --shiki-token-comment: #868e96;
+  --shiki-token-keyword: #d6336c;
+  --shiki-token-parameter: #e8590c;
+  --shiki-token-function: #6741d9;
+  --shiki-token-string-expression: #2b8a3e;
+  --shiki-token-punctuation: #495057;
+  --shiki-token-link: #0b7285;
+}
+
+/* Dock render island: layout the DSH stylesheets assume but do not own. */
 .qd-flow {
   display: flex;
   flex-direction: column;
@@ -10,14 +37,78 @@
   min-width: 0;
 }
 
-/* Reasoning row: the collapsed summary beside the title, as in DSH. */
+/* The turn control: DSH's process header (33px, hairline, tabular duration). */
+.qd-turn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 33px;
+  padding: 0 0 8px;
+  border: 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.08));
+  background: none;
+  color: var(--dsw-alias-label-tertiary, #83838a);
+  font: inherit;
+  font-size: var(--dsh-content-font-size, 14px);
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.1s;
+}
+
+.qd-turn:hover {
+  color: var(--dsw-alias-label-secondary, #9a9a9d);
+}
+
+.qd-turn-chevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  transition: transform 0.1s;
+}
+
+.qd-turn[data-open] .qd-turn-chevron {
+  transform: rotate(180deg);
+}
+
+.qd-turn-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+}
+
+.qd-turn-meta {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--ds-font-family-code, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Process rows of the open turn, and the live stream under them. */
+.qd-process,
+.qd-live {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.qd-live {
+  padding-top: 2px;
+}
+
+/* Reasoning summary beside the title, as in DSH. */
 .qd-dot {
   flex: none;
   width: 2px;
   height: 2px;
   margin: 0 8px;
   border-radius: 1px;
-  background: var(--dsw-alias-label-caption);
+  background: var(--dsw-alias-label-caption, #6b6b6e);
 }
 
 .qd-summary {
@@ -28,7 +119,7 @@
   white-space: nowrap;
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-tertiary, #83838a);
 }
 
 .qd-think-body {
@@ -37,7 +128,7 @@
   overflow-y: auto;
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: 1.65;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-label-secondary, #9a9a9d);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -47,7 +138,7 @@
   margin: 6px 0;
   font-size: var(--dsh-content-font-size, 14px);
   line-height: 1.7;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-label-primary, #e9e9ea);
   overflow-wrap: anywhere;
 }
 
@@ -55,7 +146,24 @@
 .qd-prose > :last-child { margin-bottom: 0; }
 .qd-prose p { margin: 0 0 0.6em; }
 .qd-prose pre { margin: 0.5em 0; }
-.qd-prose code { font-family: var(--ds-font-family-code); font-size: 12.5px; }
+.qd-prose code { font-family: var(--ds-font-family-code, monospace); font-size: 12.5px; }
+
+/* Streaming prose keeps the caret on the last line. */
+.qd-prose-streaming::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 12px;
+  margin-left: 2px;
+  vertical-align: -1px;
+  background: var(--dsw-alias-label-secondary, #9a9a9d);
+  animation: qd-caret 1s steps(2) infinite;
+}
+
+@keyframes qd-caret {
+  0%, 50% { opacity: 1; }
+  50.1%, 100% { opacity: 0.2; }
+}
 
 .qd-body {
   padding: 4px 0 2px 22px;
@@ -69,7 +177,7 @@
   overflow: auto;
   border-radius: var(--dsw-radius-md, 8px);
   background: var(--dsw-alias-markdown-code-block, rgba(255, 255, 255, 0.04));
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-tertiary, #83838a);
   font: 400 11px/16px var(--ds-font-family-code, monospace);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -78,9 +186,9 @@
 .qd-status {
   padding: 2px 0 2px 22px;
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-tertiary, #83838a);
 }
 
 .qd-error {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-state-error-primary, #f05252);
 }

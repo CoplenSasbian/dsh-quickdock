@@ -73,7 +73,7 @@ it; the rest of the history is read through `turns`/`turn`.
   "session": { "id": "s-1", "title": "...", "cwd": "...", "updatedAt": 0, "running": true },
   "status": "running",
   "steps": [ ... rows of the newest turn ... ],
-  "turn": { "number": 4, "count": 4 },
+  "turn": { "number": 4, "count": 4, "steps": 6, "startedAt": "...", "endedAt": "" },
   "stream": { "thinking": "...", "text": "...", "tools": [] },
   "interaction": null,
   "settings": { "permission": "workspace-write", "model": "", "reasoning": "", "agentPreset": "" },
