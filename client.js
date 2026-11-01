@@ -34,7 +34,10 @@ var MESSAGES = {
     'client.preparing': 'QuickDock is preparing its desktop window (the first run downloads Electron, ~1–2 minutes, once)…',
     'client.requestFailed': 'Request failed: HTTP {status}',
     'client.dockFailed': 'QuickDock request failed: {reason}',
-    'client.downloading': 'QuickDock is downloading its desktop runtime {percent}% ({mb}/{total} MB)'
+    'client.downloading': 'QuickDock is downloading its desktop runtime {percent}% ({mb}/{total} MB)',
+    'client.more': 'More dock actions',
+    'client.restartDock': 'Restart the dock window',
+    'client.restartFailed': 'Restart failed: {reason}'
   },
   zh: {
     'client.sendToDock': '在 QuickDock 中打开此会话',
@@ -44,7 +47,10 @@ var MESSAGES = {
     'client.preparing': 'QuickDock 正在准备桌面窗口（首次需要下载 Electron，约 1–2 分钟，只需一次）…',
     'client.requestFailed': '请求失败：HTTP {status}',
     'client.dockFailed': 'QuickDock 请求失败：{reason}',
-    'client.downloading': 'QuickDock 正在下载桌面运行时 {percent}%（{mb}/{total} MB）'
+    'client.downloading': 'QuickDock 正在下载桌面运行时 {percent}%（{mb}/{total} MB）',
+    'client.more': '更多 Dock 操作',
+    'client.restartDock': '重启 Dock 窗口',
+    'client.restartFailed': '重启失败：{reason}'
   }
 };
 /* i18n-catalog:end */
@@ -229,6 +235,29 @@ async function waitForDockResult(timeoutMs) {
 function SendToDock(props) {
   const sessionId = props && props.sessionId
   if (!sessionId) return null
+  const suffix = React.useRef(null)
+  const [menu, setMenu] = React.useState(null)
+
+  // The header row may clip its children, so the menu is positioned from the
+  // suffix' own rectangle with position:fixed and closed on any outside click.
+  React.useEffect(() => {
+    if (!menu) return undefined
+    const close = (event) => {
+      if (suffix.current && suffix.current.contains(event.target)) return
+      if (event.target && event.target.closest && event.target.closest('.' + PLUGIN_ID + '-menu')) return
+      setMenu(null)
+    }
+    const onKey = (event) => { if (event.key === 'Escape') setMenu(null) }
+    document.addEventListener('mousedown', close, true)
+    document.addEventListener('keydown', onKey, true)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('mousedown', close, true)
+      document.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [menu])
+
   const onClick = async (event) => {
     event.stopPropagation()
     try {
@@ -243,35 +272,126 @@ function SendToDock(props) {
       showError(t('client.dockFailed', { reason: String(error && error.message || error) }))
     }
   }
-  return el('button', {
-    type: 'button',
-    id: PLUGIN_ID + '-send',
-    title: t('client.sendToDock'),
-    'aria-label': t('client.sendToDock'),
-    onClick,
-    style: {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '4px',
-      height: '22px',
-      padding: '0 8px',
-      border: '1px solid rgba(77,142,255,.55)',
-      background: 'rgba(77,142,255,.16)',
-      color: 'var(--dsw-alias-brand-primary, #4d8eff)',
-      cursor: 'pointer',
-      borderRadius: '11px',
-      fontSize: '11px',
-      fontWeight: 500,
-      lineHeight: '20px',
-      flex: 'none'
+
+  const openMenu = (event) => {
+    event.stopPropagation()
+    if (menu) {
+      setMenu(null)
+      return
     }
-  },
-  el('svg', {
-    width: 11, height: 11, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true, style: { flex: 'none' }
-  },
-  el('rect', { x: 1, y: 1, width: 14, height: 9, rx: 2.5, stroke: 'currentColor', strokeWidth: 1.6 }),
-  el('rect', { x: 4, y: 12.4, width: 8, height: 2.6, rx: 1.3, fill: 'currentColor' })),
-  el('span', null, t('client.label')))
+    const box = suffix.current ? suffix.current.getBoundingClientRect() : null
+    setMenu(box ? { top: Math.round(box.bottom + 4), right: Math.round(window.innerWidth - box.right) } : { top: 0, right: 0 })
+  }
+
+  const restart = async (event) => {
+    event.stopPropagation()
+    setMenu(null)
+    try {
+      const result = await bridge('restart', {})
+      if (result && result.error) showError(t('client.restartFailed', { reason: result.error }))
+    } catch (error) {
+      showError(t('client.restartFailed', { reason: String(error && error.message || error) }))
+    }
+  }
+
+  const pill = {
+    height: '22px',
+    border: '1px solid rgba(77,142,255,.55)',
+    background: 'rgba(77,142,255,.16)',
+    color: 'var(--dsw-alias-brand-primary, #4d8eff)',
+    cursor: 'pointer',
+    fontSize: '11px',
+    fontWeight: 500,
+    lineHeight: '20px',
+    flex: 'none'
+  }
+
+  return el('div', { style: { display: 'inline-flex', alignItems: 'center', flex: 'none' } },
+    el('button', {
+      type: 'button',
+      id: PLUGIN_ID + '-send',
+      title: t('client.sendToDock'),
+      'aria-label': t('client.sendToDock'),
+      onClick,
+      style: Object.assign({}, pill, {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        padding: '0 8px',
+        borderTopLeftRadius: '11px',
+        borderBottomLeftRadius: '11px',
+        borderRight: 'none'
+      })
+    },
+    el('svg', {
+      width: 11, height: 11, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true, style: { flex: 'none' }
+    },
+    el('rect', { x: 1, y: 1, width: 14, height: 9, rx: 2.5, stroke: 'currentColor', strokeWidth: 1.6 }),
+    el('rect', { x: 4, y: 12.4, width: 8, height: 2.6, rx: 1.3, fill: 'currentColor' })),
+    el('span', null, t('client.label'))),
+
+    el('button', {
+      type: 'button',
+      ref: suffix,
+      id: PLUGIN_ID + '-more',
+      title: t('client.more'),
+      'aria-label': t('client.more'),
+      'aria-haspopup': 'menu',
+      'aria-expanded': menu ? 'true' : 'false',
+      onClick: openMenu,
+      style: Object.assign({}, pill, {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '18px',
+        padding: 0,
+        marginLeft: '-1px',
+        borderTopRightRadius: '11px',
+        borderBottomRightRadius: '11px',
+        fontSize: '8px'
+      })
+    }, '\u25be'),
+
+    menu ? el('div', {
+      className: PLUGIN_ID + '-menu',
+      role: 'menu',
+      style: {
+        position: 'fixed',
+        top: menu.top + 'px',
+        right: menu.right + 'px',
+        minWidth: '168px',
+        padding: '4px',
+        borderRadius: 'var(--dsw-radius-md, 8px)',
+        background: 'var(--dsw-alias-bg-overlay, #232324)',
+        border: '0.5px solid var(--dsw-alias-border-l2, rgba(255,255,255,.12))',
+        boxShadow: 'var(--dsw-elevation-panel, 0 12px 32px -8px rgba(0,0,0,.55))',
+        zIndex: 3000
+      }
+    },
+    el('button', {
+      type: 'button',
+      role: 'menuitem',
+      onClick: restart,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        width: '100%',
+        height: '28px',
+        padding: '0 8px',
+        border: 'none',
+        borderRadius: 'var(--dsw-radius-sm, 6px)',
+        background: 'transparent',
+        color: 'var(--dsw-alias-label-primary, inherit)',
+        font: 'inherit',
+        fontSize: '12px',
+        cursor: 'pointer',
+        textAlign: 'left'
+      },
+      onMouseEnter: (event) => { event.currentTarget.style.background = 'var(--dsw-alias-interactive-bg-hover, rgba(255,255,255,.07))' },
+      onMouseLeave: (event) => { event.currentTarget.style.background = 'transparent' }
+    }, t('client.restartDock'))) : null
+  )
 }
 
 /* ---------------- theme sync ---------------- */

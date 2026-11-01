@@ -23,6 +23,12 @@ export function createBridgeHandler(deps) {
       app.dock.summon()
       return { body: { ok: true, error: app.state.dock.error || undefined } }
     },
+    restart() {
+      // A stuck window (stale page, wedged renderer) is best fixed by a fresh
+      // process: stop kills it and summon brings a new one up.
+      app.restartDock()
+      return { body: { ok: true } }
+    },
     status() {
       // The Client polls this because dock start-up is asynchronous.
       return {

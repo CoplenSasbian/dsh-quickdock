@@ -669,6 +669,17 @@ export class QuickDockHost {
     })
   }
 
+  /**
+   * Restart the dock process: the window is torn down and a fresh one is
+   * summoned, which re-reads the page assets and the runtime.
+   */
+  restartDock() {
+    this.trace('restart requested from the main window')
+    this.dock.stop()
+    const timer = setTimeout(() => { void this.dock.summon() }, 500)
+    this.#disposeOn(() => clearTimeout(timer), 'quickdock: restart timer')
+  }
+
   openBusStream(req, res) {
     this.hub.openBusStream(req, res)
   }
