@@ -698,9 +698,18 @@ export class QuickDockHost {
 
   turnDetail(value, sessionId) {
     const target = sessionId || this.state.sessionId
-    const folder = target ? this.state.folders.get(target) : null
-    if (!folder) return { sessionId: target || null, turn: null, observed: false, steps: [] }
+    if (!target) return { sessionId: null, turn: null, observed: false, steps: [] }
+    const folder = this.state.folders.get(target) || null
     const wantsTurn = value !== '' && value !== undefined && value !== null
+    // A session that was just attached has no folder yet (it is created by the
+    // first event), so history reads used to answer "nothing" until the next
+    // turn started. Fall back to the session snapshot instead.
+    if (!folder) {
+      const only = wantsTurn ? Number(value) : null
+      if (!Number.isFinite(only)) return { sessionId: target, turn: null, observed: false, steps: [] }
+      const rows = this.#foldTurnFromSnapshot(target, only)
+      return { sessionId: target, turn: only, observed: Boolean(rows), steps: rows || [] }
+    }
     const turn = wantsTurn ? Number(value) : folder.latestTurn()
     if (!Number.isFinite(turn)) {
       return { sessionId: target, turn: null, observed: false, steps: [] }
