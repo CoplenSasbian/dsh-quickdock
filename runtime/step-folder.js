@@ -185,6 +185,19 @@ function resultText(message) {
  * @param {object} folder owning folder.
  * @param {object} data tool/result payload.
  */
+/**
+ * Recognise a goal-shaped object: an objective plus a phase.
+ * @param {*} value candidate.
+ * @returns {{objective: string, phase: string}|null} normalized goal or null.
+ */
+function readGoalObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const objective = typeof value.objective === 'string' ? value.objective.trim() : ''
+  if (!objective) return null
+  const phase = typeof value.phase === 'string' ? value.phase : 'active'
+  return { objective: objective.slice(0, 240), phase }
+}
+
 function captureGoal(folder, data) {
   const text = resultText(data.message)
   if (!text) return
@@ -199,9 +212,9 @@ function captureGoal(folder, data) {
     folder.goal = null
     return
   }
-  const objective = goal && typeof goal.objective === 'string' ? goal.objective.trim() : ''
-  if (!objective) return
-  folder.goal = { objective: objective.slice(0, 240), phase: String(goal.phase || 'active') }
+  const normalized = readGoalObject(goal)
+  if (!normalized) return
+  folder.goal = normalized
 }
 
 function settleTool(folder, row, result) {
@@ -669,6 +682,32 @@ class StepFolder {
       }
     }
     return found
+  }
+
+  /**
+   * Take the goal from whatever the session calls it.
+   *
+   * DSH has no goal service to ask, and the tools are not the only place the
+   * goal can appear: a goal event, a header update or a projection snapshot may
+   * carry it. This looks at every event for an object shaped like a goal.
+   * @param {object[]} events session events, oldest first.
+   * @returns {boolean} whether a goal was found.
+   */
+  harvestGoal(events) {
+    if (!Array.isArray(events)) return false
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index]
+      if (!event || typeof event !== 'object') continue
+      const payloads = [event.data, event.data && event.data.goal, event.payload]
+      for (const payload of payloads) {
+        const goal = readGoalObject(payload)
+        if (goal) {
+          this.goal = goal
+          return true
+        }
+      }
+    }
+    return false
   }
 
   /** Full detail of one row (fetched on demand); null when unknown. */

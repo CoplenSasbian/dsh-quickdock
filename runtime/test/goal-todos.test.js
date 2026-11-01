@@ -87,3 +87,20 @@ test('seed: the goal is found when history used a PTC dispatch', () => {
   folder.seedFromHistory(events);
   assert.strictEqual(folder.goal && folder.goal.objective, 'history ptc');
 });
+
+test('goal: harvested from any event shape that carries an objective', () => {
+  const folder = new StepFolder(200);
+  const events = [
+    { type: 'turn/start', seq: 1, data: { turn: 1 }, time: '2026-11-01T00:00:00Z' },
+    { type: 'goal/created', seq: 2, data: { goal: { objective: 'harvested goal', phase: 'active' } } }
+  ];
+  assert.strictEqual(folder.harvestGoal(events), true);
+  assert.deepStrictEqual(folder.goal, { objective: 'harvested goal', phase: 'active' });
+});
+
+test('goal: harvesting leaves a goal alone when nothing carries one', () => {
+  const folder = new StepFolder(200);
+  folder.goal = { objective: 'keep me', phase: 'active' };
+  assert.strictEqual(folder.harvestGoal([{ type: 'turn/start', data: { turn: 1 } }]), false);
+  assert.strictEqual(folder.goal.objective, 'keep me');
+});

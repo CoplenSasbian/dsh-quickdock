@@ -1061,6 +1061,21 @@ export class QuickDockHost {
   }
 
   /** Bind the dock to an existing session (the header button path). */
+  /** Log which event types a session actually has (one line, top dozen). */
+  #inventory(events) {
+    if (this.state.inventoried === events.length) return
+    this.state.inventoried = events.length
+    const counts = new Map()
+    for (const event of events) {
+      const type = event && typeof event.type === 'string' ? event.type : '?'
+      counts.set(type, (counts.get(type) || 0) + 1)
+    }
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 24)
+    this.trace('event types: ' + top.map(([type, count]) => type + '(' + count + ')').join(' '))
+    const goalish = [...counts.keys()].filter((type) => /goal/i.test(type))
+    if (goalish.length) this.trace('goal-ish event types: ' + goalish.join(' '))
+  }
+
   /** Seed goal + plan from the events a freshly attached session already has. */
   #seedHistory(sessionId) {
     const live = this.dsh.session(sessionId)
@@ -1072,6 +1087,9 @@ export class QuickDockHost {
     // turn is already readable through /turn.
     const folded = folder.adoptHistory(events)
     const found = folder.seedFromHistory(events)
+    // Whatever the goal is called in this build, one of these finds it.
+    if (!folder.goal) folder.harvestGoal(events)
+    this.#inventory(events)
     this.trace('seed history(' + sessionId + '): events=' + events.length
       + ' folded=' + folded + ' rows=' + folder.rows().length + ' found=' + found)
   }
