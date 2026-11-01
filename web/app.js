@@ -15,7 +15,14 @@
   var t = i18n.t;
 
   /** Whether the task list is expanded; it starts collapsed to keep the window short. */
-  var todoOpen = true;
+  // Open by default; the choice is remembered across windows.
+  var todoOpen = (function () {
+    try {
+      return window.localStorage.getItem('qd.todoOpen') !== '0';
+    } catch (error) {
+      return true;
+    }
+  })();
   /** Whether the task window was asked to show; the host owns the window. */
   var todoReported = null;
 
@@ -71,6 +78,8 @@
     }
     els.todoCard.hidden = false;
     els.todoCard.classList.toggle('open', todoOpen);
+    if (els.todoChevron) els.todoChevron.textContent = todoOpen ? '▾' : '▸';
+    if (els.todoHead) els.todoHead.setAttribute('aria-expanded', todoOpen ? 'true' : 'false');
     syncTodoHeight();
     watchPlan();
     els.todoCount.textContent = todos.length ? progressLabel(todos) : '';
@@ -282,7 +291,7 @@
     runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny'),
     todoCard: U.$('todoCard'), todoHead: U.$('todoHead'), todoCount: U.$('todoCount'),
     todoList: U.$('todoList'), todoGoal: U.$('todoGoal'), todoGoalText: U.$('todoGoalText'),
-    todoBuild: U.$('todoBuild'),
+    todoBuild: U.$('todoBuild'), todoChevron: U.$('todoChevron'),
     displayPane: U.$('displayPane'),
     displayFrame: U.$('displayFrame'),
     reloadBtn: U.$('reloadBtn'),
@@ -297,7 +306,7 @@
       'confirm', 'confirmOk', 'confirmCancel', 'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn',
       'stopBtnRun', 'runApproval',
       'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny',
-      'todoCard', 'todoHead', 'todoCount', 'todoList', 'todoGoal', 'todoGoalText', 'todoBuild', 'reloadBtn',
+      'todoCard', 'todoHead', 'todoCount', 'todoList', 'todoGoal', 'todoGoalText', 'todoBuild', 'todoChevron', 'reloadBtn',
       'displayPane', 'displayFrame',
       'askCard', 'askTitle', 'askStep', 'askQuestionText', 'askOptions',
       'askInput', 'askBack', 'askNext'].forEach(function (key) {
@@ -1215,17 +1224,17 @@
     });
 
     if (els.todoHead) {
-      var toggleTodos = function () {
+      // It is a <button>: Enter and Space come for free, so only the click is
+      // wired (a second keydown handler would toggle twice).
+      U.on(els.todoHead, 'click', function (event) {
+        event.preventDefault();
         todoOpen = !todoOpen;
+        try {
+          window.localStorage.setItem('qd.todoOpen', todoOpen ? '1' : '0');
+        } catch (error) { /* private mode */ }
         renderTodos();
         syncWindowHeight();
         scheduleHitReport();
-      };
-      els.todoHead.addEventListener('click', toggleTodos);
-      els.todoHead.addEventListener('keydown', function (event) {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        toggleTodos();
       });
     }
 
