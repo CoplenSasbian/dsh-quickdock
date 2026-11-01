@@ -8,7 +8,6 @@
     "locale.js",
     "util.js",
     "render/bundle.js",
-    "display.js",
     "menu.js",
     "app.js"
   ]

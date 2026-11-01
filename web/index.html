@@ -38,37 +38,20 @@
         Composer mount: the island draws the text box, the function pills and the
         send button with the DSH primitives, so it matches the main window.
       -->
-      <div class="composer-wrap">
-        <div id="composerHost"></div>
-      </div>
-    </section>
-
-    <!--
-      Run panel: replaces the composer while the agent is busy.
-      It is a detail view (current action + live text), not a copy of the
-      step list shown in the display window.
-    -->
-    <section id="runPanel" class="panel hidden" data-i18n-aria-label="run.label">
-      <div class="run-head">
+      <!--
+        Run strip: one line while the agent works. The composer below stays
+        usable, so the window never turns into a progress panel.
+      -->
+      <div id="runPanel" class="run-strip hidden">
         <span class="status-dot" id="runDot" data-i18n-title="bar.statusTitle" data-i18n-aria-label="bar.statusTitle"></span>
         <span class="run-title" id="runTitle" data-i18n="run.title">Running</span>
         <span class="run-elapsed" id="runElapsed"></span>
-        <!-- Same actions as the composer bar, minus "new conversation". -->
-        <div class="run-actions">
-          <button class="icon-btn" id="openBtnR" data-i18n-title="bar.openInDsh" data-i18n-aria-label="bar.openInDsh">↗</button>
-          <button class="icon-btn" id="listBtnR" data-i18n-title="bar.toggleList" data-i18n-aria-label="bar.toggleListLabel" aria-pressed="true">▤</button>
-          <button class="icon-btn" id="pinBtnR" data-i18n-title="bar.pin" data-i18n-aria-label="bar.pin" aria-pressed="false">⤒</button>
-          <button class="icon-btn" id="hideBtnR" data-i18n-title="bar.close" data-i18n-aria-label="bar.close">✕</button>
-        </div>
+        <span class="run-action" id="runAction" hidden></span>
+        <span class="run-sub" id="runSub"></span>
+        <span class="strip-spacer"></span>
+        <button class="stop-btn" id="stopBtnRun"><span class="sq"></span><span data-i18n="run.stop">Stop</span></button>
       </div>
-      <div class="run-body">
-        <div class="run-action" id="runAction" hidden></div>
-        <div class="run-now" id="runNow" data-i18n="run.starting">Starting…</div>
-      </div>
-      <!--
-        In-place approval. It must live in this window: if the run-log window is
-        hidden there would otherwise be nothing to click, and DSH would wait.
-      -->
+      <!-- In-place approval: answering never leaves the window. -->
       <div class="run-approval" id="runApproval" hidden>
         <div class="ra-head"><span class="ra-icon">⚠</span><span data-i18n="card.needConfirm">Needs confirmation</span><span class="ra-tool" id="runApprovalTool"></span></div>
         <div class="ra-reason" id="runApprovalReason"></div>
@@ -77,11 +60,11 @@
           <button class="card-btn danger" id="runDeny" data-i18n="card.deny">Deny</button>
         </div>
       </div>
-      <div class="run-foot">
-        <span class="run-sub" id="runSub"></span>
-        <button class="stop-btn" id="stopBtnRun"><span class="sq"></span><span data-i18n="run.stop">Stop</span></button>
+      <div class="composer-wrap">
+        <div id="composerHost"></div>
       </div>
     </section>
+
   </main>
   <div class="menu" id="menu" role="menu" data-i18n-aria-label="menu.menuLabel"></div>
   <div class="toast" id="toast" role="status" hidden></div>

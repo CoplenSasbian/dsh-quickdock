@@ -78,7 +78,7 @@ function parseConfig(argv, env) {
     statePath: first(args, environment, ['quickdock-state', 'state'], ['DSH_QUICKDOCK_STATE']) || inline.statePath,
     width: positiveInteger(inline.width, 480),
     // Input window: fixed height, input UI only.
-    inputHeight: positiveInteger(inline.inputHeight, 172),
+    inputHeight: positiveInteger(inline.inputHeight, 200),
     // Run window: fixed height, attached above or below the input window.
     displayHeight: positiveInteger(inline.displayHeight, 520),
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,

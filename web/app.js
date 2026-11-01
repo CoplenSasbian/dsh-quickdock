@@ -58,8 +58,7 @@
     drows: U.$('drows'),
     runPanel: U.$('runPanel'), runDot: U.$('runDot'), runTitle: U.$('runTitle'),
     runElapsed: U.$('runElapsed'), runAction: U.$('runAction'), runNow: U.$('runNow'), runSub: U.$('runSub'),
-    stopBtnRun: U.$('stopBtnRun'), hideBtnR: U.$('hideBtnR'),
-    openBtnR: U.$('openBtnR'), listBtnR: U.$('listBtnR'), pinBtnR: U.$('pinBtnR'),
+    stopBtnRun: U.$('stopBtnRun'),
     runApproval: U.$('runApproval'), runApprovalTool: U.$('runApprovalTool'),
     runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny')
   };
@@ -69,7 +68,7 @@
       'statusDot', 'menu',
       'confirm', 'confirmOk', 'confirmCancel', 'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn',
       'runPanel', 'runDot', 'runTitle', 'runElapsed', 'runAction', 'runNow', 'runSub',
-      'stopBtnRun', 'hideBtnR', 'openBtnR', 'listBtnR', 'pinBtnR', 'runApproval',
+      'stopBtnRun', 'runApproval',
       'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny'].forEach(function (key) {
       els[key] = null;
     });
@@ -274,7 +273,7 @@
   }
 
   function syncListButton() {
-    [els.listBtn, els.listBtnR].forEach(function (button) {
+    [els.listBtn].forEach(function (button) {
       if (!button) return;
       button.classList.toggle('off', listHidden);
       button.setAttribute('aria-pressed', listHidden ? 'false' : 'true');
@@ -404,7 +403,7 @@
   function applyRunMode(status) {
     if (!els.runPanel) return;
     var busy = isBusy(status);
-    els.panelA.classList.toggle('hidden', busy);
+    // The composer stays: the strip only reports, it never takes the window.
     els.runPanel.classList.toggle('hidden', !busy);
     // The panel decides dragging/hit regions: re-report after switching.
     scheduleHitReport();
@@ -550,7 +549,7 @@
 
   function updatePin() {
     var pinned = Boolean(state && state.runtime && state.runtime.alwaysOnTop);
-    [els.pinBtnA, els.pinBtnR].forEach(function (button) {
+    [els.pinBtnA].forEach(function (button) {
       if (!button) return;
       button.classList.toggle('on', pinned);
       button.setAttribute('aria-pressed', pinned ? 'true' : 'false');
@@ -814,15 +813,7 @@
     event.stopPropagation();
     openInDsh();
   });
-  U.on(els.openBtnR, 'click', function (event) {
-    event.stopPropagation();
-    openInDsh();
-  });
   U.on(els.pinBtnA, 'click', function (event) {
-    event.stopPropagation();
-    togglePin();
-  });
-  U.on(els.pinBtnR, 'click', function (event) {
     event.stopPropagation();
     togglePin();
   });
@@ -832,14 +823,7 @@
     syncListButton();
     refreshDisplayVisibility();
   });
-  U.on(els.listBtnR, 'click', function (event) {
-    event.stopPropagation();
-    writeListHidden(!listHidden);
-    syncListButton();
-    refreshDisplayVisibility();
-  });
   U.on(els.hideBtnA, 'click', hideWindow);
-  U.on(els.hideBtnR, 'click', hideWindow);
 
   /* -------------------------------- confirm -------------------------------- */
 

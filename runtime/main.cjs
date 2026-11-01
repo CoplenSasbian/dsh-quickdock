@@ -181,15 +181,8 @@ class DockRuntime {
       + ' content=' + JSON.stringify(this.win.getContentBounds())
       + ' contentSize=' + JSON.stringify(this.win.getContentSize()));
 
-    // Display window: separate from the input window, sticks to its top or bottom edge.
-    this.displayWin = this.createDisplayWindow(restored.display);
-    trace('display window created: bounds=' + JSON.stringify(this.displayWin.getBounds()));
-    // Keep the creation-time content size as the reference: moving drifts the client area, use it to correct.
-    const initialSize = this.displayWin.getContentSize();
-    this.displayWantW = initialSize[0];
-    this.displayWantH = initialSize[1];
-    trace('display want size = ' + initialSize);
-    this.placeDisplayWindow(true);
+    // The dock is one window: the composer lives here, so no run window is created.
+    this.displayWin = null;
 
     /**
      * The two windows must stay **stacked together**.
@@ -200,11 +193,6 @@ class DockRuntime {
      * moveTop() only changes z-order without stealing focus, so this is safe.
      */
     this.win.on('focus', () => this.raiseDisplay());
-    this.displayWin.on('focus', () => {
-      if (this.win && !this.win.isDestroyed()) {
-        try { this.win.moveTop(); } catch (_) {}
-      }
-    });
 
     // Click-through is enabled only after show() and the first painted frame
     // (see ensurePainted): being click-through before showing makes the first frame
@@ -364,8 +352,7 @@ class DockRuntime {
     await this.win.loadURL(this.config.url);
     trace('loadURL done: ' + this.config.url);
     if (this.displayWin) {
-      await this.displayWin.loadURL(this.config.url + (this.config.url.indexOf('?') >= 0 ? '&' : '?') + 'view=display');
-      trace('display loadURL done');
+      // No run window is created any more (see ready()).
     }
     this.status('ready', { pid: this.process.pid, bounds: this.win.getBounds(), controlPort: this.controlPort });
     trace('status(ready) written to stdout, controlPort=' + this.controlPort);
@@ -412,6 +399,7 @@ class DockRuntime {
    * the display window fluttered between the two widths on every state push.
    */
   displayWidth() {
+    if (!this.displayWin) return this.config.width;
     return this.displayWantW || this.config.width;
   }
 
@@ -426,6 +414,7 @@ class DockRuntime {
    * Therefore: only move while dragging, then call this once on release.
    */
   enforceDisplaySize() {
+    if (!this.displayWin || this.displayWin.isDestroyed()) return;
     const win = this.displayWin;
     if (!win || win.isDestroyed()) return;
     const wantW = this.displayWidth();
@@ -452,6 +441,7 @@ class DockRuntime {
    * into the screen.
    */
   placeDisplayWindow(fixSize) {
+    if (!this.displayWin || this.displayWin.isDestroyed()) return;
     if (!this.win || !this.displayWin) return;
     const input = this.win.getBounds();
     // Correct size only when not dragging; during a drag the system owns the size, fix it on release.
@@ -568,6 +558,7 @@ class DockRuntime {
 
   /** Show/hide the display window (hidden when there is no execution content). */
   setDisplayVisible(visible) {
+    if (!this.displayWin || this.displayWin.isDestroyed()) return;
     if (!this.displayWin) return;
     if (visible) {
       this.placeDisplayWindow(true);
@@ -585,6 +576,7 @@ class DockRuntime {
   }
 
   hideDisplay() {
+    if (!this.displayWin || this.displayWin.isDestroyed()) return;
     if (this.displayWin && this.displayWin.isVisible()) this.displayWin.hide();
   }
 

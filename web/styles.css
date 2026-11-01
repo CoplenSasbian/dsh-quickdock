@@ -136,6 +136,16 @@ html[data-theme="light"] .panel{
 .picker:hover .pk-caret{opacity:.75}
 .new-btn{border-radius:8px}
 
+
+/* Run strip: one line above the composer, never a separate panel. */
+.run-strip{display:flex;align-items:center;gap:7px;height:30px;padding:0 8px 0 12px;border-bottom:1px solid var(--border-1);flex:none;font-size:11px;color:var(--text-2);-webkit-app-region:drag}
+.run-strip.hidden{display:none}
+.strip-spacer{flex:1}
+.run-strip .run-title{flex:0 1 auto;font-size:11.5px;font-weight:500;color:var(--text-1)}
+.run-strip .run-action{flex:1 1 auto;min-width:0;font-family:var(--qd-font-code);font-size:10.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.run-strip .run-sub{flex:none;font-size:10px;color:var(--text-3);font-variant-numeric:tabular-nums}
+.run-strip .stop-btn{-webkit-app-region:no-drag}
+
 /* ---------- Composer ---------- */
 /* The composer is a render island (web/render/src/composer.js): only its host
    is sized here, the box itself is drawn with the DSH primitives. */
