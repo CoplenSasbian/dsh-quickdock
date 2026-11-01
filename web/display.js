@@ -194,6 +194,10 @@
         outline = [];
         outlineRequested = false;
         loadedFor = 0;
+        // A switch behaves like a first open: no history, follow the newest
+        // turn, and drop to the bottom once the new column is painted.
+        didInitialScroll = false;
+        autoScroll = true;
         // The window is up from the moment a session is bound: an old session
         // binds with no live rows, and the column has to be on screen for its
         // "load earlier turns" pill to be reachable.
@@ -240,7 +244,10 @@
           return typeof row.turn === 'number' && row.turn < latest;
         });
         loadingHistory = false;
-        loadMoreTurns(FIRST_BATCH);
+        // Nothing live (a session attached after its turn ended): show its newest
+        // turn so the window is not empty, but stop there and let the reader ask
+        // for the rest.
+        loadMoreTurns(Math.max(FIRST_BATCH, turnList.length ? 0 : 1));
       }).catch(function () { loadingHistory = false; });
     }
 
