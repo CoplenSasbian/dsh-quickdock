@@ -13,6 +13,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const outbound = Object.freeze({
   setInteractive: 'dock:set-interactive',
   setHitRegions: 'dock:set-hit-regions',
+  debug: 'dock:debug',
   setDragZones: 'dock:set-drag-zones',
   setAlwaysOnTop: 'dock:set-always-on-top',
   setDisplayEmpty: 'dock:set-display-empty',
@@ -41,6 +42,11 @@ const api = Object.freeze({
     ipcRenderer.send(outbound.setInteractive, interactive);
   },
   /** Report rectangles that should receive mouse events. */
+  /** Diagnostic line in dock.log (the page has no console of its own). */
+  debug(message) {
+    ipcRenderer.send(outbound.debug, String(message));
+  },
+
   setHitRegions(rectangles) {
     if (!Array.isArray(rectangles) || rectangles.length > 1000 || !rectangles.every(validRect)) {
       throw new TypeError('hit regions must be an array of valid rectangles');

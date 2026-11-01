@@ -322,6 +322,10 @@ class DockRuntime {
         if (which === 'display') trace('display hit regions: ' + value.length);
       }
     });
+    ipcMain.on('dock:debug', (event, message) => {
+      if (!sendAllowed(event)) return;
+      trace('page: ' + String(message).slice(0, 300));
+    });
     ipcMain.on('dock:set-drag-zones', (event, value) => {
       if (sendAllowed(event) && this.validHitRegions(value)) {
         this.regions[this.whichWindow(event)].drag = value;

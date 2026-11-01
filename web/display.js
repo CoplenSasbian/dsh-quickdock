@@ -243,6 +243,7 @@
         return;
       }
       loadingHistory = true;
+      report('load more: batch=' + batch.length + ' have=' + turnList.length + ' pending=' + pendingTurns().length)
       var next = function (index) {
         if (index >= batch.length) {
           loadingHistory = false;
@@ -405,15 +406,31 @@
      * @param {boolean} wasAuto whether the list was following the bottom.
      * @param {number} prevHeight scrollHeight before the render.
      */
+    /** Diagnostic line in dock.log; silent outside Electron. */
+    function report(message) {
+      var bridge = window.quickDock;
+      if (bridge && bridge.debug) {
+        try { bridge.debug(message); } catch (error) { /* ignore */ }
+      }
+    }
+
     function applyAutoScroll(prevTop, wasAuto, prevHeight) {
       var scroller = scrollHost();
-      if (!scroller) return;
+      if (!scroller) {
+        report('restore skipped: no scroll host');
+        return;
+      }
       if (wasAuto) {
         scroller.scrollTop = scroller.scrollHeight;
         return;
       }
       var grown = Math.max(0, scroller.scrollHeight - (prevHeight || 0));
       scroller.scrollTop = anchorAbove ? prevTop + grown : prevTop;
+      report('restore prevTop=' + Math.round(prevTop) + ' prevHeight=' + Math.round(prevHeight || 0)
+        + ' grown=' + Math.round(grown) + ' anchor=' + anchorAbove
+        + ' -> top=' + Math.round(scroller.scrollTop)
+        + ' height=' + Math.round(scroller.scrollHeight)
+        + ' client=' + Math.round(scroller.clientHeight));
       anchorAbove = false;
     }
 
