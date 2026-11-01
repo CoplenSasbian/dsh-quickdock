@@ -72,7 +72,10 @@
     runLine: U.$('runLine'), runDot: U.$('runDot'), runLineLabel: U.$('runLineLabel'),
     runLineName: U.$('runLineName'), runLineArgs: U.$('runLineArgs'),
     runApproval: U.$('runApproval'), runApprovalTool: U.$('runApprovalTool'),
-    runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny')
+    runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny'),
+    askCard: U.$('askCard'), askTitle: U.$('askTitle'), askStep: U.$('askStep'),
+    askQuestionText: U.$('askQuestionText'), askOptions: U.$('askOptions'),
+    askInput: U.$('askInput'), askBack: U.$('askBack'), askNext: U.$('askNext')
   };
   if (isDisplay) {
     // The display window only has the row container and the toast.
@@ -80,7 +83,9 @@
       'statusDot', 'menu',
       'confirm', 'confirmOk', 'confirmCancel', 'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn',
       'stopBtnRun', 'runApproval',
-      'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny'].forEach(function (key) {
+      'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny',
+      'askCard', 'askTitle', 'askStep', 'askQuestionText', 'askOptions',
+      'askInput', 'askBack', 'askNext'].forEach(function (key) {
       els[key] = null;
     });
   } else {
@@ -619,9 +624,13 @@
     var questions = (asking && interaction.questions) || [];
     if (!asking || !questions.length) {
       els.askCard.hidden = true;
+      if (els.panelA) els.panelA.classList.remove('asking');
       ask = { id: '', index: 0, answers: {} };
       return;
     }
+    // The card takes the composer's place: while a question is open there is
+    // nothing to type into, and the window keeps one block instead of two.
+    if (els.panelA) els.panelA.classList.add('asking');
     if (ask.id !== interaction.id) ask = { id: interaction.id, index: 0, answers: {} };
     if (ask.index >= questions.length) ask.index = questions.length - 1;
 
@@ -630,7 +639,7 @@
     var last = ask.index === questions.length - 1;
 
     els.askCard.hidden = false;
-    els.askTitle.textContent = t('card.question');
+    els.askTitle.textContent = String(t('card.question')).replace(/^[?\uFF1F\s]+/, '');
     els.askStep.textContent = questions.length > 1
       ? (ask.index + 1) + ' / ' + questions.length
       : '';
@@ -947,11 +956,17 @@
 
     U.on(els.runAllow, 'click', function (event) {
       event.stopPropagation();
-      els.askNext.addEventListener('click', function () {
+      answerApproval('allow');
+    });
+
+    // Question stepper: Next/Back move between questions, and the last one
+    // submits every answer at once.
+    U.on(els.askNext, 'click', function (event) {
+      event.stopPropagation();
       var questions = (state && state.interaction && state.interaction.questions) || [];
       var question = questions[ask.index];
       if (!question) return;
-      if (els.askInput.hidden === false) {
+      if (!els.askInput.hidden) {
         var value = els.askInput.value.trim();
         if (!value) return;
         ask.answers[question.id] = [value];
@@ -964,12 +979,13 @@
       }
       submitAsk();
     });
-    els.askBack.addEventListener('click', function () {
+    U.on(els.askBack, 'click', function (event) {
+      event.stopPropagation();
       if (ask.index === 0) return;
       ask.index -= 1;
       renderAsk();
     });
-    els.askInput.addEventListener('input', function () {
+    U.on(els.askInput, 'input', function () {
       var questions = (state && state.interaction && state.interaction.questions) || [];
       var question = questions[ask.index];
       if (!question) return;
@@ -978,8 +994,7 @@
       else delete ask.answers[question.id];
       els.askNext.disabled = !value;
     });
-    answerApproval('allow');
-    });
+
     U.on(els.runDeny, 'click', function (event) {
       event.stopPropagation();
       answerApproval('deny');

@@ -260,6 +260,8 @@ async function bridge(action, payload) {
   return response.json()
 }
 
+let hostApp = null
+
 async function testRoutes(req, res, url) {
   const send = (status, body) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -320,6 +322,21 @@ async function testRoutes(req, res, url) {
     }
     return send(200, { result })
   }
+  if (url.pathname === '/test/interaction') {
+    // Publish a question straight into the state: the question broker only runs
+    // with a real dock, and the card's rendering is what needs exercising.
+    const body = await readJson(req)
+    if (hostApp) {
+      hostApp.state.interaction = body.interaction === null ? null : {
+        kind: 'question',
+        id: body.id || 'q-test',
+        status: 'open',
+        questions: body.questions || [{ id: 'q1', question: 'Which option?', options: [{ label: 'A' }, { label: 'B' }] }]
+      }
+      hostApp.publish()
+    }
+    return send(200, { ok: true })
+  }
   if (url.pathname === '/test/question') {
     const body = await readJson(req)
     const request = {
@@ -364,7 +381,7 @@ server.listen(listenPort, '127.0.0.1', () => {
     approvalTimeoutMs: 300000
   }
   if (process.env.QD_NO_ELECTRON === '1') process.env.DSH_QUICKDOCK_ELECTRON_PATH = 'Z:\\__missing__'
-  const hostApp = apply(ctx, config)
+  hostApp = apply(ctx, config)
   // The dock process does not exist here, but the Host only delegates questions
   // and approvals while a dock is up: fake it so those flows can be exercised.
   if (hostApp && hostApp.state) {

@@ -450,6 +450,9 @@ html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
 
 
 /* ---------- Question card: one question at a time ---------- */
+/* While a question is open the card replaces the composer. */
+.panel.asking .composer-wrap{display:none}
+
 .ask-card{
   flex:none;
   margin:0 10px 7px;
@@ -513,9 +516,14 @@ html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
 }
 .ask-input[hidden]{display:none}
 .ask-input:focus{border-color:var(--brand,#4d8eff)}
-.ask-actions{display:flex;gap:6px;margin-top:7px}
+.ask-actions{display:flex;gap:6px;margin-top:7px;justify-content:flex-end}
 .ask-actions .card-btn{
-  flex:1;min-height:24px;padding:2px 8px;font-size:11px;border-radius:6px;
+  min-width:64px;min-height:24px;padding:2px 10px;font-size:11px;border-radius:6px;
+}
+.ask-actions .card-btn.primary{
+  border-color:var(--brand,#4d8eff);
+  background:var(--brand,#4d8eff);
+  color:#fff;
 }
 .ask-actions .card-btn[disabled]{opacity:.45;cursor:default}
 
