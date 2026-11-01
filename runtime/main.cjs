@@ -738,15 +738,18 @@ class DockRuntime {
       this.placeDisplayWindow(true);
       return;
     }
-    if (win.isVisible()) {
-      win.hide();
-      trace('todo hidden');
-      this.placeDisplayWindow(true);
-    }
+    // Never taken off screen while the dock is up: a finished plan still shows
+    // its placeholder, and a window that disappears "when the turn ends" is
+    // indistinguishable from a broken one.
+    trace('todo hide requested, ignored (the dock hides it, not the page)');
   }
 
   hideTodo() {
-    if (this.todoWin && !this.todoWin.isDestroyed() && this.todoWin.isVisible()) this.todoWin.hide();
+    if (!this.todoWin || this.todoWin.isDestroyed()) return;
+    if (this.todoWin.isVisible()) {
+      this.todoWin.hide();
+      trace('todo hidden with the dock');
+    }
   }
 
   /**
