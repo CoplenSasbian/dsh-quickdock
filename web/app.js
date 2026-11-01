@@ -14,6 +14,54 @@
   var i18n = window.QD.i18n;
   var t = i18n.t;
 
+  /** Whether the task list is collapsed (remembered per render). */
+  var todoOpen = true;
+
+  /**
+   * The agent's task list: a small card at the top of the input window, between
+   * the run window and the composer.
+   */
+  function renderTodos() {
+    if (!els.todoCard || !state) return;
+    var todos = Array.isArray(state.todos) ? state.todos : [];
+    if (!todos.length) {
+      els.todoCard.hidden = true;
+      els.todoCard.classList.remove('open');
+      renderTodoList(null);
+      return;
+    }
+    var done = 0;
+    todos.forEach(function (row) { if (row.status === 'completed') done += 1; });
+    els.todoCard.hidden = false;
+    els.todoCard.classList.toggle('open', todoOpen);
+    els.todoCount.textContent = done + '/' + todos.length;
+    if (renderTodoList.lastTodos !== todos || renderTodoList.lastOpen !== todoOpen) {
+      renderTodoList(todos);
+      renderTodoList.lastTodos = todos;
+      renderTodoList.lastOpen = todoOpen;
+    }
+  }
+
+  /** Rebuild the rows (cheap: a handful of items). */
+  function renderTodoList(todos) {
+    if (!els.todoList) return;
+    els.todoList.textContent = '';
+    (todos || []).forEach(function (row) {
+      var status = String(row.status || 'pending');
+      var item = document.createElement('div');
+      item.className = 'todo-item ' + status;
+      var mark = document.createElement('span');
+      mark.className = 'todo-mark';
+      mark.textContent = status === 'completed' ? '✓' : status === 'in_progress' ? '●' : '○';
+      var text = document.createElement('span');
+      text.className = 'todo-text';
+      text.textContent = String(row.content || '');
+      item.appendChild(mark);
+      item.appendChild(text);
+      els.todoList.appendChild(item);
+    });
+  }
+
   /** Question stepper state: which interaction, which question, answers so far. */
   var ask = { id: '', index: 0, answers: {} };
 
@@ -73,6 +121,8 @@
     runLineName: U.$('runLineName'), runLineArgs: U.$('runLineArgs'),
     runApproval: U.$('runApproval'), runApprovalTool: U.$('runApprovalTool'),
     runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny'),
+    todoCard: U.$('todoCard'), todoHead: U.$('todoHead'), todoCount: U.$('todoCount'),
+    todoList: U.$('todoList'),
     askCard: U.$('askCard'), askTitle: U.$('askTitle'), askStep: U.$('askStep'),
     askQuestionText: U.$('askQuestionText'), askOptions: U.$('askOptions'),
     askInput: U.$('askInput'), askBack: U.$('askBack'), askNext: U.$('askNext')
@@ -84,6 +134,7 @@
       'confirm', 'confirmOk', 'confirmCancel', 'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn',
       'stopBtnRun', 'runApproval',
       'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny',
+      'todoCard', 'todoHead', 'todoCount', 'todoList',
       'askCard', 'askTitle', 'askStep', 'askQuestionText', 'askOptions',
       'askInput', 'askBack', 'askNext'].forEach(function (key) {
       els[key] = null;
@@ -462,6 +513,7 @@
     var busy = isBusy(status);
     if (els.stopBtnRun) els.stopBtnRun.classList.toggle('hidden', !busy);
     renderRunLine();
+    renderTodos();
     renderApproval();
     try {
       renderAsk();
@@ -957,6 +1009,20 @@
     U.on(els.stopBtnRun, 'click', function () {
       api('stop', {}).catch(toastError);
     });
+
+    if (els.todoHead) {
+      var toggleTodos = function () {
+        todoOpen = !todoOpen;
+        renderTodos();
+        scheduleHitReport();
+      };
+      els.todoHead.addEventListener('click', toggleTodos);
+      els.todoHead.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        toggleTodos();
+      });
+    }
 
     U.on(els.runAllow, 'click', function (event) {
       event.stopPropagation();

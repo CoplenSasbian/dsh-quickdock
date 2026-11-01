@@ -167,5 +167,6 @@
   "time.daysAgo": "{count}d ago",
   "time.hoursAgo": "{count}h ago",
   "time.justNow": "just now",
-  "time.minutesAgo": "{count}m ago"
+  "time.minutesAgo": "{count}m ago",
+  "todo.title": "Tasks"
 }

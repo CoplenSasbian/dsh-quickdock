@@ -139,6 +139,7 @@ function parseReadRange(text, offset) {
   return null
 }
 
+const TODO_TOOL = /^(todo_write|todo|task_write|update_plan)$/i
 const EDIT_TOOL = /^(edit|edit_file)$/i
 const READ_TOOL = /^(read|read_file)$/i
 const MAX_DETAIL = 8000
@@ -302,6 +303,16 @@ const EVENT_HANDLERS = {
       ...parent ? { parent } : {},
       ...delta ? { delta } : {},
     })
+    // The agent's task list rides on todo_write; keep the newest one so the dock
+    // can show progress without reading the call's arguments itself.
+    if (TODO_TOOL.test(toolName) && parsed && Array.isArray(parsed.todos)) {
+      folder.todos = parsed.todos
+        .filter((row) => row && typeof row.content === 'string')
+        .map((row) => ({
+          content: oneLine(row.content, 120),
+          status: String(row.status || 'pending'),
+        }))
+    }
     // Full arguments live in details only (keeps the state snapshot small).
     folder.details.set('tool-' + data.callId, { args: raw.slice(0, MAX_DETAIL), result: '' })
   },
@@ -440,6 +451,8 @@ class StepFolder {
      * [this turn's seq, next turn's seq)).
      */
     this.turns = []
+    /** Newest task list the agent published (todo_write), or null. */
+    this.todos = null
   }
 
   /** Turn number of the latest started turn, or null. */

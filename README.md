@@ -127,6 +127,14 @@ live rows only under the running one. Older turns are read through
 `/turns` + `/turn?turn=N` the first time a session is opened and then kept, so
 nothing is cleared when a turn ends.
 
+## Task list
+
+The agent's own plan (the `todo_write` list) is folded from the call arguments
+and published as `todos` in the state. The input window draws it as a small
+card above the title bar - between the run window and the composer - with a
+"done/total" counter, a line per step (done, in progress, pending) and a
+collapse toggle.
+
 ## Questions
 
 The agent's questions are answered in the input window, never in the docked one
