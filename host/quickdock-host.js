@@ -810,10 +810,16 @@ export class QuickDockHost {
     try {
       const live = this.dsh.session(this.state.sessionId)
       if (!live || typeof this.dsh.projectionValues !== 'function') return null
-      const values = this.dsh.projectionValues(live, ['todo', 'todos', 'plan', 'todoList']) || {}
-      for (const key of ['todo', 'todos', 'plan', 'todoList']) {
+      // The official projection is 'todos' (dsh-tool-todo registers it on
+      // sessionProjections). Its wire value is the whole list or null, and it
+      // goes null at every turn/start - which is exactly why the main window
+      // drops the panel while the dock was still echoing its own fold.
+      const keys = ['todos', 'todo', 'plan']
+      const values = this.dsh.projectionValues(live, keys) || {}
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(values, key)) continue
         const value = values[key]
-        if (!value) continue
+        if (value === null || value === undefined) return { todos: [], goal: null }
         const list = Array.isArray(value) ? value : Array.isArray(value.todos) ? value.todos : null
         if (!list) continue
         return {
