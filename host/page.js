@@ -6,7 +6,7 @@
  * requests and has its final colors and language on the first paint.
  */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { VIEWS } from './constants.js'
@@ -48,9 +48,42 @@ export class PageRenderer {
     return cached
   }
 
+  /**
+   * Cache signature for the web directory: manifest plus every listed file.
+   * mtime + size is enough to notice an edit and cheap enough to check per render.
+   * @returns {string} signature, or '' when the directory cannot be read.
+   */
+  #signature() {
+    try {
+      const manifestPath = join(this.webDir, 'manifest.json')
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      const names = [manifestPath]
+        .concat((manifest.styles || []).map((name) => join(this.webDir, name)))
+        .concat((manifest.scripts || []).map((name) => join(this.webDir, name)))
+        .concat(['index.html', 'display.html'].map((name) => join(this.webDir, name)))
+      const parts = []
+      for (const file of names) {
+        try {
+          const stat = statSync(file)
+          parts.push(file + ':' + stat.mtimeMs + ':' + stat.size)
+        } catch (_) {
+          parts.push(file + ':missing')
+        }
+      }
+      return parts.join('|')
+    } catch (_) {
+      return ''
+    }
+  }
+
   /** Read the web asset manifest and every listed file once. */
   #load() {
-    if (this.assets) return this.assets
+    // Page edits are the most common change while working on the dock; noticing
+    // them here means they need no plugin reload, only a fresh window.
+    const signature = this.#signature()
+    if (this.assets && this.signature === signature) return this.assets
+    if (this.assets) this.trace('page assets changed on disk, reloading')
+    this.signature = signature
     const manifest = JSON.parse(readFileSync(join(this.webDir, 'manifest.json'), 'utf8'))
     const read = (name) => {
       try {
