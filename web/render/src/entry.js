@@ -318,14 +318,28 @@ function ToolBody({ step, detail, labels, t }) {
 function ThinkRow({ text, open, streaming, onToggle, t }) {
   const oneLine = String(text || '').replace(/\s+/g, ' ').trim()
   const body = useRef(null)
-  // A chain that keeps writing must keep its tail in view; the box is the only
-  // place the newest words appear.
+  // A chain that keeps writing must keep its tail in view - unless the reader
+  // scrolled up to read something, in which case following stops until they
+  // return to the bottom.
+  const follow = useRef(true)
   useEffect(() => {
     const node = body.current
     // The body itself is the scroll container (max-height with overflow).
-    if (!node || !open) return
+    if (!node || !open || !follow.current) return
     node.scrollTop = node.scrollHeight
   }, [text, open])
+  // Tracking the listener ourselves (instead of onScroll) keeps this working
+  // whatever the disclosure body does with its children.
+  useEffect(() => {
+    const node = body.current
+    if (!node || !open) return undefined
+    const update = () => {
+      follow.current = node.scrollHeight - node.clientHeight - node.scrollTop < 8
+    }
+    update()
+    node.addEventListener('scroll', update, { passive: true })
+    return () => node.removeEventListener('scroll', update)
+  }, [open, text])
   return h('div', { className: 'qd-row' },
     h(DisclosureRow, {
       icon: h(IconThinkOutlineRegular, null),
