@@ -315,6 +315,7 @@
       button.setAttribute('aria-label', label);
     }
     renderRunLine();
+    refreshDisplayVisibility();
   }
 
   window.addEventListener('storage', function (event) {
@@ -323,6 +324,13 @@
     syncListButton();
   });
 
+  /**
+   * Show or hide the docked execution window.
+   * The button decides what it does:
+   *  auto   - open while a turn runs, closed once it settles
+   *  open   - keep it whenever there is anything to show
+   *  closed - never
+   */
   function refreshDisplayVisibility() {
     var steps = (state && state.steps) || [];
     var interaction = state && state.interaction;
@@ -330,11 +338,14 @@
     var stream = state && state.stream;
     var hasContent = Boolean(steps.length || hasInter
       || (stream && (stream.text || stream.thinking || (stream.tools && stream.tools.length))));
+    var busy = Boolean(state && isBusy(state.status));
+    var show = detailMode === 'open' ? hasContent
+      : detailMode === 'closed' ? false
+        : (busy && hasContent);
     var quickDock = window.quickDock;
     if (!quickDock || !quickDock.setDisplayEmpty) return;
     try {
-      // Approvals are answered in this window's run panel; a hidden list stays hidden.
-      quickDock.setDisplayEmpty(!hasContent);
+      quickDock.setDisplayEmpty(!show);
     } catch (error) {
       /* IPC is optional outside Electron */
     }
@@ -481,46 +492,15 @@
   function renderRunLine() {
     if (!els.runLine || !state) return;
     var running = state.status === 'running';
-    var stream = state.stream || {};
-    var current = null;
-    var index = 0;
-    if (running) {
-      if (stream.tools && stream.tools.length) {
-        current = stream.tools[stream.tools.length - 1];
-      }
-      if (!current) {
-        var steps = state.steps || [];
-        for (index = steps.length - 1; index >= 0; index -= 1) {
-          var step = steps[index];
-          if (step && step.kind === 'tool' && step.status === 'run') {
-            current = step;
-            break;
-          }
-        }
-      }
-    }
-    // Expanded mode keeps the last call readable after the turn settled.
-    if (!current && detailMode === 'open') {
-      var rows = state.steps || [];
-      for (index = rows.length - 1; index >= 0; index -= 1) {
-        var row = rows[index];
-        if (row && row.kind === 'tool') {
-          current = row;
-          break;
-        }
-      }
-    }
-
-    var thinking = running ? lastThinkingLine(stream.thinking) : '';
-    var show = detailMode !== 'closed' && (running || Boolean(current));
-    if (els.stopBtnRun) els.stopBtnRun.classList.toggle('hidden', !running);
-
-    if (!show) {
+    if (!running) {
       els.runLine.classList.add('hidden');
       return;
     }
     els.runLine.classList.remove('hidden');
-    if (els.runDot) els.runDot.className = 'rl-dot' + (running ? (thinking ? ' thinking' : ' running') : '');
+
+    var stream = state.stream || {};
+    var thinking = lastThinkingLine(stream.thinking);
+    if (els.runDot) els.runDot.className = 'rl-dot' + (thinking ? ' thinking' : ' running');
 
     if (thinking) {
       els.runLineLabel.textContent = t('run.thinking');
@@ -529,12 +509,29 @@
       els.runLineArgs.textContent = thinking;
       return;
     }
+
+    var current = null;
+    var index = 0;
+    if (stream.tools && stream.tools.length) {
+      current = stream.tools[stream.tools.length - 1];
+    }
+    if (!current) {
+      var steps = state.steps || [];
+      for (index = steps.length - 1; index >= 0; index -= 1) {
+        var step = steps[index];
+        if (step && step.kind === 'tool' && step.status === 'run') {
+          current = step;
+          break;
+        }
+      }
+    }
     if (!current) {
       els.runLineLabel.textContent = t('run.executing');
       els.runLineName.hidden = true;
       els.runLineArgs.hidden = true;
       return;
     }
+
     var name = String(current.name || current.tool || '');
     var label = toolLabel(name);
     // Live stream drafts carry raw arguments; folded rows carry either a
@@ -560,7 +557,7 @@
     var parts = source.split(/\n+/);
     for (var index = parts.length - 1; index >= 0; index -= 1) {
       // Stream deltas are fragments: drop the punctuation a tail can start with
-      // so the line does not read "… , so the title…".
+      // so the line does not read "... , so the title...".
       var line = parts[index].trim().replace(/^[,.;:!?)\]]+\s*/, '');
       if (line) return U.shortText(line, 90);
     }

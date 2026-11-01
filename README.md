@@ -53,9 +53,9 @@ Register the plugin in the DSH profile (see `cordis.patch.yml`):
   next message goes.
 - **↗** opens the bound session in the DSH main window (dock -> Host API -> command
   bus -> Client half -> `ctx.uiWorkspace.openSession`).
-- **▤** cycles how the execution detail line behaves: auto (shown while a tool
-  runs, hidden once the turn settles), expanded (kept after the call finishes),
-  folded (never shown).
+- **▤** cycles how the docked execution window behaves: auto (open while a turn
+  runs, closed once it settles), expanded (kept while there is anything to
+  show), folded (never opened). The status line in this window is independent.
 - **⤒** keeps the window above other windows.
 - **The dock follows the DSH theme live**: light/dark switches and every
   `--dsw-*` palette change are read from the main window's computed styles and
