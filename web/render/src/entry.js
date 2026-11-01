@@ -317,6 +317,15 @@ function ToolBody({ step, detail, labels, t }) {
 /** Reasoning row: one 24px line that expands to the full text. */
 function ThinkRow({ text, open, streaming, onToggle, t }) {
   const oneLine = String(text || '').replace(/\s+/g, ' ').trim()
+  const body = useRef(null)
+  // A chain that keeps writing must keep its tail in view; the box is the only
+  // place the newest words appear.
+  useEffect(() => {
+    const node = body.current
+    // The body itself is the scroll container (max-height with overflow).
+    if (!node || !open) return
+    node.scrollTop = node.scrollHeight
+  }, [text, open])
   return h('div', { className: 'qd-row' },
     h(DisclosureRow, {
       icon: h(IconThinkOutlineRegular, null),
@@ -330,7 +339,7 @@ function ThinkRow({ text, open, streaming, onToggle, t }) {
         h('span', { className: 'qd-dot' }),
         h('span', { className: 'qd-summary' }, oneLine)
       )
-    }, open ? h('div', { className: 'qd-think-body' }, text) : null)
+    }, open ? h('div', { className: 'qd-think-body', ref: body }, text) : null)
   )
 }
 
