@@ -517,7 +517,8 @@ function RowList({ turns, stream, turn, running, t, loadDetail, onGrowth, detail
         h('button', {
           type: 'button',
           className: 'qd-more-btn',
-          onClick: onLoadMore
+          onClick: onLoadMore,
+          title: t('display.loadMoreHint', { count: moreCount })
         }, t('display.loadMore', { count: moreCount })))
       : null,
     list.map((entry) => h(TurnGroup, {

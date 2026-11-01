@@ -83,6 +83,7 @@
   "display.loadFailed": "Failed to load detail: {message}",
   "display.loading": "Loading…",
   "display.loadMore": "Load earlier turns ({count})",
+  "display.loadMoreHint": "Scroll up to load older turns",
   "display.logLabel": "Run log",
   "display.more": "{title}, etc.",
   "display.noDetail": "(no further detail for this step)",

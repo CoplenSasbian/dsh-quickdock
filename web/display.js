@@ -66,7 +66,9 @@
     var outline = [];
     var loadingHistory = false
     /** Watchdog for a history fetch that never settles. */
-    var loadingWatchdog = null;
+    var loadingWatchdog = null
+    /** Debounce for the auto-load at the top of the column. */
+    var topLoadTimer = null
     /** When the running history batch started (stale-flag recovery). */
     var loadingSince = 0;
     var loadedFor = 0;
@@ -478,7 +480,17 @@
           markGesture();
         }
       }, true);
+      // Older turns load themselves when the reader reaches the top: a button that
+      // has to be hunted for is the wrong affordance here.
       scroller.addEventListener('scroll', function () {
+        if (scroller.scrollTop < 90 && !loadingHistory && pendingTurns().length) {
+          anchorAbove = true
+          autoScroll = false
+          window.clearTimeout(topLoadTimer)
+          topLoadTimer = window.setTimeout(function () {
+            if (scroller.scrollTop < 90) loadMoreTurns(MORE_BATCH)
+          }, 120)
+        }
         if (gestureActive) {
           // Keep the window alive through momentum / drag events, then adopt.
           markGesture();
