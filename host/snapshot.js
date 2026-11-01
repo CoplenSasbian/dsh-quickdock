@@ -47,7 +47,9 @@ export function createSnapshotBuilder(deps) {
       // The agent's task list (todo_write), newest wins. Empty when it has none.
       todos: folder && Array.isArray(folder.todos) ? folder.todos : [],
       // Visible only when the host can read one; the card hides the line otherwise.
-      goal: typeof goal === 'function' ? goal() : null,
+      // A goal tool result wins over a service lookup: the tools are the only
+      // place DSH exposes it (no goal service or projection was found).
+      goal: (folder && folder.goal) || (typeof goal === 'function' ? goal() : null),
       // The run window renders the turn as a DSH process block: the header shows
       // how many steps it holds and how long it took, so the timing travels with it.
       turn: latestTurn === null ? null : {

@@ -987,6 +987,16 @@ export class QuickDockHost {
   }
 
   /** Bind the dock to an existing session (the header button path). */
+  /** Seed goal + plan from the events a freshly attached session already has. */
+  #seedHistory(sessionId) {
+    const live = this.dsh.session(sessionId)
+    const events = live && Array.isArray(live.eventsSnapshot) ? live.eventsSnapshot : null
+    if (!events || !events.length) return
+    const folder = this.#ensureFolder(sessionId)
+    const found = folder.seedFromHistory(events)
+    this.trace('seed history(' + sessionId + '): events=' + events.length + ' found=' + found)
+  }
+
   postBind(body) {
     const sessionId = String(body?.sessionId ?? '')
     if (!sessionId) return { ok: false }
@@ -996,6 +1006,9 @@ export class QuickDockHost {
     this.broker.reset()
     this.stream.clear()
     this.#ensureFolder(sessionId)
+    // A session attached mid-way already has a plan and maybe a goal: read them
+    // once instead of waiting for the next write.
+    this.#seedHistory(sessionId)
     this.catalogService.syncSettingsFromSession(sessionId)
     this.catalogService.refreshPermissions()
     this.publish()

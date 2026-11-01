@@ -140,6 +140,8 @@ function parseReadRange(text, offset) {
 }
 
 const TODO_TOOL = /^(todo_write|todo|task_write|update_plan)$/i
+/** Tools whose result body is the session goal. */
+const GOAL_TOOL = /^(create_goal|get_goal|update_goal)$/i
 const EDIT_TOOL = /^(edit|edit_file)$/i
 const READ_TOOL = /^(read|read_file)$/i
 const MAX_DETAIL = 8000
@@ -178,6 +180,30 @@ function resultText(message) {
  * @param {object} row row to settle.
  * @param {{text: string, diffs?: unknown[], failed?: boolean}} result settle data.
  */
+/**
+ * Keep the goal from a goal tool's result.
+ * @param {object} folder owning folder.
+ * @param {object} data tool/result payload.
+ */
+function captureGoal(folder, data) {
+  const text = resultText(data.message)
+  if (!text) return
+  let parsed = null
+  try {
+    parsed = JSON.parse(text)
+  } catch (_) {
+    return
+  }
+  const goal = parsed && parsed.goal
+  if (goal === null) {
+    folder.goal = null
+    return
+  }
+  const objective = goal && typeof goal.objective === 'string' ? goal.objective.trim() : ''
+  if (!objective) return
+  folder.goal = { objective: objective.slice(0, 240), phase: String(goal.phase || 'active') }
+}
+
 function settleTool(folder, row, result) {
   const text = String(result.text || '')
   row.status = result.failed ? 'fail' : 'done'
@@ -320,6 +346,9 @@ const EVENT_HANDLERS = {
   'tool/result'(folder, event) {
     const { data } = event
     const row = folder.byId.get('tool-' + data.message.toolCallId)
+    // The goal is only reachable through the tools that read it: no host service
+    // or projection exposes it (probed), but the result payload carries it.
+    if (row && GOAL_TOOL.test(String(row.tool || ''))) captureGoal(folder, data)
     if (!row) return
     settleTool(folder, row, {
       text: resultText(data.message),
@@ -465,6 +494,8 @@ class StepFolder {
     this.turns = []
     /** Newest task list the agent published (todo_write), or null. */
     this.todos = null
+    /** Goal read from a goal tool result, or null. */
+    this.goal = null
   }
 
   /** Turn number of the latest started turn, or null. */
@@ -562,6 +593,42 @@ class StepFolder {
     const handler = EVENT_HANDLERS[event?.type]
     if (handler) handler(this, event)
     return this.rows()
+  }
+
+  /**
+   * Seed the goal and the task list from events that happened before the dock
+   * attached. Folding the whole history would be wasteful; these two only care
+   * about their own event types, so one pass is enough.
+   * @param {object[]} events session events, oldest first.
+   * @returns {boolean} whether anything was found.
+   */
+  seedFromHistory(events) {
+    if (!Array.isArray(events) || !events.length) return false
+    const goalCalls = new Map()
+    let found = false
+    for (const event of events) {
+      if (!event || typeof event.type !== 'string') continue
+      if (event.type === 'todo/write') {
+        const todos = event.data && event.data.todos
+        if (Array.isArray(todos)) {
+          this.todos = todos
+            .filter((row) => row && typeof row.content === 'string')
+            .map((row) => ({ content: oneLine(row.content, 160), status: String(row.status || 'pending') }))
+          found = true
+        }
+        continue
+      }
+      if (event.type === 'tool/call' && event.data && GOAL_TOOL.test(String(event.data.name || ''))) {
+        goalCalls.set(String(event.data.callId), true)
+        continue
+      }
+      if (event.type === 'tool/result' && event.data && event.data.message) {
+        if (!goalCalls.has(String(event.data.message.toolCallId))) continue
+        captureGoal(this, event.data)
+        found = true
+      }
+    }
+    return found
   }
 
   /** Full detail of one row (fetched on demand); null when unknown. */
