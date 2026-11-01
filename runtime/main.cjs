@@ -591,6 +591,31 @@ class DockRuntime {
   }
 
   /** Show/hide the display window (hidden when there is no execution content). */
+  /**
+   * Bring the display window back to a usable height.
+   *
+   * Anything can end up squeezing it (a stale saved size, a bad setContentSize,
+   * the OS during a drag). Rather than diagnose each cause, every show checks
+   * the height and restores the configured one when it is below the floor.
+   * @returns {boolean} whether the window was resized.
+   */
+  healDisplaySize() {
+    const win = this.displayWin;
+    if (!win || win.isDestroyed()) return false;
+    const want = Math.max(160, this.config.displayHeight || 520);
+    const content = win.getContentSize();
+    if (content[1] >= Math.min(240, want)) return false;
+    this.displayWantH = want;
+    try {
+      win.setContentSize(this.displayWidth(), want);
+    } catch (_) {
+      return false;
+    }
+    trace('display size healed: ' + content[1] + ' -> ' + want);
+    this.placeDisplayWindow(true);
+    return true;
+  }
+
   setDisplayVisible(visible) {
     if (!this.displayWin || this.displayWin.isDestroyed()) return;
     if (!this.displayWin) return;
@@ -599,9 +624,12 @@ class DockRuntime {
       if (!this.displayWin.isVisible()) {
         // First composite must not be click-through: clear, show, then re-arm.
         this.releaseClickThrough(this.displayWin);
+        this.healDisplaySize();
         this.displayWin.showInactive();
         this.ensurePainted();
-        trace('display shown');
+        trace('display shown: bounds=' + JSON.stringify(this.displayWin.getBounds())
+          + ' contentSize=' + JSON.stringify(this.displayWin.getContentSize())
+          + ' visible=' + this.displayWin.isVisible());
       }
     } else if (this.displayWin.isVisible()) {
       this.displayWin.hide();
