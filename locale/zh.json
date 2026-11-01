@@ -2,6 +2,8 @@
   "app.displayTitle": "QuickDock 执行过程",
   "app.inputTitle": "QuickDock",
   "app.name": "QuickDock",
+  "ask.back": "上一步",
+  "ask.next": "下一步",
   "bar.close": "关闭 QuickDock (Esc)",
   "bar.connecting": "正在连接…",
   "bar.inputPanel": "输入面板",

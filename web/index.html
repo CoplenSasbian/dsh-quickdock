@@ -58,6 +58,25 @@
           <button class="card-btn danger" id="runDeny" data-i18n="card.deny">Deny</button>
         </div>
       </div>
+      <!--
+        Questions from the agent. They live here, not in the docked window: that
+        window can be hidden, and an unanswered question must never be invisible.
+        One question at a time - picking an option must not answer the rest.
+      -->
+      <div class="ask-card" id="askCard" hidden role="group" aria-live="polite">
+        <div class="ask-head">
+          <span class="ask-icon" aria-hidden="true">?</span>
+          <span class="ask-title" id="askTitle" data-i18n="card.question">Question</span>
+          <span class="ask-step" id="askStep"></span>
+        </div>
+        <div class="ask-q" id="askQuestionText"></div>
+        <div class="ask-options" id="askOptions"></div>
+        <textarea class="ask-input" id="askInput" rows="2" hidden></textarea>
+        <div class="ask-actions">
+          <button class="card-btn" type="button" id="askBack" data-i18n="ask.back">Back</button>
+          <button class="card-btn primary" type="button" id="askNext" data-i18n="ask.next">Next</button>
+        </div>
+      </div>
       <div class="composer-wrap">
         <div id="composerHost"></div>
       </div>

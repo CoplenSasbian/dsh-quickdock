@@ -448,6 +448,77 @@ html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
 }
 
 
+
+/* ---------- Question card: one question at a time ---------- */
+.ask-card{
+  flex:none;
+  margin:0 10px 7px;
+  padding:7px 9px 8px;
+  border:1px solid rgba(77,142,255,.38);
+  border-radius:9px;
+  background:rgba(77,142,255,.06);
+}
+.ask-card[hidden]{display:none}
+.ask-head{
+  display:flex;align-items:baseline;gap:5px;
+  font-size:11px;font-weight:500;
+  color:var(--brand,#4d8eff);
+}
+.ask-icon{font-size:10px}
+.ask-step{
+  margin-left:auto;
+  font-family:var(--qd-font-code);
+  font-size:9.5px;
+  color:var(--text-3);
+}
+.ask-q{
+  margin-top:4px;
+  font-size:11.5px;line-height:1.5;
+  color:var(--text-1);
+  white-space:pre-wrap;overflow-wrap:anywhere;
+  max-height:4.8em;overflow:auto;
+  scrollbar-width:thin;
+}
+.ask-options{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.ask-options:empty{display:none}
+.ask-opt{
+  display:flex;align-items:flex-start;gap:6px;
+  width:100%;padding:5px 7px;
+  border:1px solid var(--border-2);
+  border-radius:7px;
+  background:var(--bg-2);
+  color:var(--text-1);
+  font:inherit;font-size:11px;line-height:1.45;
+  text-align:left;cursor:pointer;
+  transition:background .12s,border-color .12s;
+}
+.ask-opt:hover{background:var(--qd-fill-soft);border-color:var(--border-1)}
+.ask-opt.on{border-color:var(--brand,#4d8eff);background:rgba(77,142,255,.12)}
+.ask-key{
+  flex:none;width:14px;height:14px;margin-top:1px;
+  border-radius:4px;
+  background:var(--qd-fill-soft);
+  font-family:var(--qd-font-code);font-size:9px;line-height:14px;
+  text-align:center;color:var(--text-3);
+}
+.ask-opt-text{display:flex;flex-direction:column;gap:1px;min-width:0}
+.ask-opt-desc{font-size:10px;color:var(--text-3)}
+.ask-input{
+  width:100%;margin-top:6px;
+  padding:6px 7px;
+  border:1px solid var(--border-2);border-radius:7px;
+  background:var(--bg-2);color:var(--text-1);
+  font:inherit;font-size:11px;line-height:1.5;
+  resize:none;outline:none;
+}
+.ask-input[hidden]{display:none}
+.ask-input:focus{border-color:var(--brand,#4d8eff)}
+.ask-actions{display:flex;gap:6px;margin-top:7px}
+.ask-actions .card-btn{
+  flex:1;min-height:24px;padding:2px 8px;font-size:11px;border-radius:6px;
+}
+.ask-actions .card-btn[disabled]{opacity:.45;cursor:default}
+
 /* ---------- Tool rows: expanded while running, collapsed when done ---------- */
 .drow .step.expandable{cursor:pointer}
 .drow .step-chev{

@@ -66,8 +66,9 @@ export const Config = Schema.object({
  * @param {object} config validated configuration.
  */
 export function apply(ctx, config) {
-  if (!config.enabled) return
+  if (!config.enabled) return undefined
   const host = new QuickDockHost(ctx, config)
   host.start()
   host.prefetchElectron()
+  return host
 }

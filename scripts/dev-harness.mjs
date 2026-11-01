@@ -364,7 +364,13 @@ server.listen(listenPort, '127.0.0.1', () => {
     approvalTimeoutMs: 300000
   }
   if (process.env.QD_NO_ELECTRON === '1') process.env.DSH_QUICKDOCK_ELECTRON_PATH = 'Z:\\__missing__'
-  apply(ctx, config)
+  const hostApp = apply(ctx, config)
+  // The dock process does not exist here, but the Host only delegates questions
+  // and approvals while a dock is up: fake it so those flows can be exercised.
+  if (hostApp && hostApp.state) {
+    hostApp.state.dock.running = true
+    hostApp.state.dock.visible = true
+  }
   console.log('\nQuickDock harness ready at ' + origin)
   bridge('web-url').then((result) => {
     console.log('  page: ' + (result.url || '(unavailable)'))

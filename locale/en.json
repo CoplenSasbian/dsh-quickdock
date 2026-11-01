@@ -2,6 +2,8 @@
   "app.displayTitle": "QuickDock Display",
   "app.inputTitle": "QuickDock",
   "app.name": "QuickDock",
+  "ask.back": "Back",
+  "ask.next": "Next",
   "bar.close": "Close QuickDock (Esc)",
   "bar.connecting": "Connecting…",
   "bar.inputPanel": "Input panel",

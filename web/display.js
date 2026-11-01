@@ -89,16 +89,8 @@
       Home: true, End: true, ' ': true, Spacebar: true
     };
 
-    function toastError(error) {
-      if (options.toastError) options.toastError(error);
-    }
-
     function scrollHost() {
       return document.getElementById('blocks');
-    }
-
-    function onAnswered() {
-      if (options.onAnswered) options.onAnswered();
     }
 
     /** Let the Host decide whether the run window should show at all. */
@@ -338,67 +330,15 @@
       }
     }
 
-    function cardHead(text, tag) {
-      var head = U.el('div', 'card-head', text);
-      if (tag) head.appendChild(U.el('span', 'ch-tag', tag));
-      return head;
-    }
-
     /**
      * Question card. Approvals are intentionally not rendered here: they are
      * answered in the input window's run panel, and duplicating the Allow/Deny
      * dialog in the list window made two identical dialogs appear.
      * Returns null when there is nothing to ask.
      */
-    function buildInteractionCard(interaction) {
-      if (!interaction || interaction.status !== 'open') return null;
-      if (interaction.kind !== 'question') return null;
-
-      var questionCard = U.el('div', 'card question');
-      questionCard.appendChild(cardHead(t('card.question'), ''));
-      var questionBody = U.el('div', 'card-body');
-      (interaction.questions || []).forEach(function (question) {
-        questionBody.appendChild(U.el('div', 'card-q', question.question || question.header || ''));
-        if (question.options && question.options.length) {
-          var options = U.el('div', 'opts');
-          question.options.forEach(function (option, index) {
-            var button = U.el('button', 'opt');
-            button.type = 'button';
-            button.appendChild(U.el('span', 'opt-key', String(index + 1)));
-            var text = U.el('span', 'opt-text', option.label);
-            if (option.description) text.appendChild(U.el('small', null, option.description));
-            button.appendChild(text);
-            button.addEventListener('click', function () {
-              api('answer', { id: interaction.id, answers: [{ id: question.id, selected: [option.label] }] }).catch(toastError);
-              markAnswered();
-            });
-            options.appendChild(button);
-          });
-          questionBody.appendChild(options);
-        } else {
-          var input = U.el('textarea', 'answer-input');
-          input.placeholder = t('card.answerPlaceholder');
-          var submit = U.el('button', 'card-btn primary', t('card.submit'));
-          submit.type = 'button';
-          submit.addEventListener('click', function () {
-            var value = input.value.trim();
-            if (!value) return;
-            api('answer', { id: interaction.id, answers: [{ id: question.id, selected: [value] }] }).catch(toastError);
-            markAnswered();
-          });
-          questionBody.appendChild(input);
-          questionBody.appendChild(submit);
-        }
-      });
-      questionCard.appendChild(questionBody);
-      return questionCard;
-    }
-
-    function markAnswered() {
-      var state = getState();
-      if (state && state.interaction) state.interaction.status = 'answered';
-      render();
-      onAnswered();
+    /** Questions are answered in the input window; nothing to draw here. */
+    function buildInteractionCard() {
+      return null;
     }
 
     /* -------------------------------- scrolling -------------------------------- */

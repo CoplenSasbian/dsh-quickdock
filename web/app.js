@@ -14,6 +14,9 @@
   var i18n = window.QD.i18n;
   var t = i18n.t;
 
+  /** Question stepper state: which interaction, which question, answers so far. */
+  var ask = { id: '', index: 0, answers: {} };
+
   /* ------------------------------- transport ------------------------------- */
 
   var params = new URLSearchParams(location.search);
@@ -447,6 +450,13 @@
     if (els.stopBtnRun) els.stopBtnRun.classList.toggle('hidden', !busy);
     renderRunLine();
     renderApproval();
+    try {
+      renderAsk();
+    } catch (error) {
+      // A broken card must not take the composer down with it.
+      if (els.askCard) els.askCard.hidden = true;
+      toastError(error);
+    }
     // The panel decides dragging/hit regions: re-report after the bar changes.
     scheduleHitReport();
     syncListButton();
@@ -578,6 +588,111 @@
     els.runApprovalReason.textContent = reason;
     els.runApprovalReason.hidden = !reason;
     els.runApprovalReason.title = reason;
+  }
+
+  /**
+   * Questions: one at a time, and nothing is sent until the last one is answered.
+   *
+   * Submitting on the first click was wrong twice over - a multi-question request
+   * lost every later answer, and the docked window that showed it can be hidden.
+   */
+  function renderAsk() {
+    if (!els.askCard || !state) return;
+    var interaction = state.interaction;
+    var asking = Boolean(interaction && interaction.status === 'open' && interaction.kind === 'question');
+    var questions = (asking && interaction.questions) || [];
+    if (!asking || !questions.length) {
+      els.askCard.hidden = true;
+      ask = { id: '', index: 0, answers: {} };
+      return;
+    }
+    if (ask.id !== interaction.id) ask = { id: interaction.id, index: 0, answers: {} };
+    if (ask.index >= questions.length) ask.index = questions.length - 1;
+
+    var question = questions[ask.index];
+    var chosen = ask.answers[question.id];
+    var last = ask.index === questions.length - 1;
+
+    els.askCard.hidden = false;
+    els.askTitle.textContent = t('card.question');
+    els.askStep.textContent = questions.length > 1
+      ? (ask.index + 1) + ' / ' + questions.length
+      : '';
+    els.askQuestionText.textContent = String(question.question || question.header || '');
+
+    // Options, or a free-text answer when the question has none.
+    els.askOptions.textContent = '';
+    var options = Array.isArray(question.options) ? question.options : [];
+    els.askInput.hidden = options.length > 0;
+    els.askInput.value = options.length ? '' : String((chosen && chosen[0]) || '');
+    options.forEach(function (option, index) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ask-opt' + (chosen && chosen[0] === option.label ? ' on' : '');
+      var key = document.createElement('span');
+      key.className = 'ask-key';
+      key.textContent = String(index + 1);
+      var text = document.createElement('span');
+      text.className = 'ask-opt-text';
+      text.textContent = option.label;
+      if (option.description) {
+        var desc = document.createElement('span');
+        desc.className = 'ask-opt-desc';
+        desc.textContent = option.description;
+        text.appendChild(desc);
+      }
+      button.appendChild(key);
+      button.appendChild(text);
+      button.addEventListener('click', function () { pickAsk(option.label); });
+      els.askOptions.appendChild(button);
+    });
+
+    els.askBack.hidden = ask.index === 0;
+    els.askNext.disabled = !hasAskAnswer(question);
+    els.askNext.textContent = last ? t('card.submit') : t('ask.next');
+    els.askNext.setAttribute('aria-label', els.askNext.textContent);
+  }
+
+  /** Whether the current question has an answer. */
+  function hasAskAnswer(question) {
+    if (!question || !state || !state.interaction) return false;
+    var answer = ask.answers[question.id];
+    return Boolean(answer && answer.length && String(answer[0]).trim());
+  }
+
+  /** Choose one option: record it, then move on (or submit on the last one). */
+  function pickAsk(label) {
+    var questions = (state && state.interaction && state.interaction.questions) || [];
+    var question = questions[ask.index];
+    if (!question) return;
+    ask.answers[question.id] = [label];
+    if (ask.index < questions.length - 1) {
+      ask.index += 1;
+      renderAsk();
+      scheduleHitReport();
+      return;
+    }
+    submitAsk();
+  }
+
+  /** Send every answer collected so far. */
+  function submitAsk() {
+    var interaction = state && state.interaction;
+    if (!interaction || interaction.status !== 'open') return;
+    var questions = interaction.questions || [];
+    var answers = [];
+    questions.forEach(function (question) {
+      var answer = ask.answers[question.id];
+      if (answer && answer.length && String(answer[0]).trim()) {
+        answers.push({ id: question.id, selected: answer });
+      }
+    });
+    if (!answers.length) return;
+    api('answer', { id: interaction.id, answers: answers }).catch(toastError);
+    interaction.status = 'answered';
+    els.askCard.hidden = true;
+    ask = { id: '', index: 0, answers: {} };
+    render();
   }
 
   /** Approval text: current locale first, then Chinese, then the raw reason. */
@@ -816,7 +931,38 @@
 
     U.on(els.runAllow, 'click', function (event) {
       event.stopPropagation();
-      answerApproval('allow');
+      els.askNext.addEventListener('click', function () {
+      var questions = (state && state.interaction && state.interaction.questions) || [];
+      var question = questions[ask.index];
+      if (!question) return;
+      if (els.askInput.hidden === false) {
+        var value = els.askInput.value.trim();
+        if (!value) return;
+        ask.answers[question.id] = [value];
+      }
+      if (!hasAskAnswer(question)) return;
+      if (ask.index < questions.length - 1) {
+        ask.index += 1;
+        renderAsk();
+        return;
+      }
+      submitAsk();
+    });
+    els.askBack.addEventListener('click', function () {
+      if (ask.index === 0) return;
+      ask.index -= 1;
+      renderAsk();
+    });
+    els.askInput.addEventListener('input', function () {
+      var questions = (state && state.interaction && state.interaction.questions) || [];
+      var question = questions[ask.index];
+      if (!question) return;
+      var value = els.askInput.value.trim();
+      if (value) ask.answers[question.id] = [value];
+      else delete ask.answers[question.id];
+      els.askNext.disabled = !value;
+    });
+    answerApproval('allow');
     });
     U.on(els.runDeny, 'click', function (event) {
       event.stopPropagation();
@@ -904,20 +1050,17 @@
       }
       hideWindow();
     }
-    // Number keys answer a single-choice question, unless the user is typing.
+    // Number keys pick an option on the CURRENT question; the stepper decides
+    // when the whole request is answered.
     var interaction = state && state.interaction;
-    var typing = document.activeElement && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName);
+    var typingNow = document.activeElement && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName);
     if (!interaction || interaction.status !== 'open' || interaction.kind !== 'question') return;
-    if (!/^[0-9]$/.test(event.key) || typing || (menu && menu.isOpen())) return;
-    var question = (interaction.questions || [])[0];
+    if (!/^[0-9]$/.test(event.key) || typingNow || (menu && menu.isOpen())) return;
+    var current = (interaction.questions || [])[ask.index];
     var choice = Number(event.key) - 1;
-    if (!question || !question.options || !question.options[choice]) return;
-    api('answer', {
-      id: interaction.id,
-      answers: [{ id: question.id, selected: [question.options[choice].label] }]
-    }).catch(toastError);
-    interaction.status = 'answered';
-    render();
+    if (!current || !current.options || !current.options[choice]) return;
+    event.preventDefault();
+    pickAsk(current.options[choice].label);
   });
 
   /* ------------------------------ click-through ------------------------------ */
