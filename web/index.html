@@ -34,19 +34,12 @@
         <button class="icon-btn" id="pinBtnA" data-i18n-title="bar.pin" data-i18n-aria-label="bar.pin" aria-pressed="false">⤒</button>
         <button class="icon-btn" id="hideBtnA" data-i18n-title="bar.close" data-i18n-aria-label="bar.close">✕</button>
       </div>
-      <!-- Composer: text area plus the four function keys and the send button. -->
+      <!--
+        Composer mount: the island draws the text box, the function pills and the
+        send button with the DSH primitives, so it matches the main window.
+      -->
       <div class="composer-wrap">
-        <div class="composer">
-          <textarea id="composer" rows="1" maxlength="100000" data-i18n-placeholder="composer.placeholder" data-i18n-aria-label="composer.label"></textarea>
-          <div class="funcbar">
-            <button class="fkey" id="permBtn" aria-haspopup="menu"><span class="fk-icon">▣</span><span id="permText" data-i18n="key.permission">Permission</span><span class="fk-caret">▾</span></button>
-            <button class="fkey" id="modelBtn" aria-haspopup="menu"><span class="fk-icon">◈</span><span id="modelText" data-i18n="key.model">Model</span><span class="fk-caret">▾</span></button>
-            <button class="fkey" id="thinkBtn" aria-haspopup="menu"><span class="fk-icon">✦</span><span id="thinkText" data-i18n="key.thinking">Thinking</span><span class="fk-caret">▾</span></button>
-            <button class="fkey accent hidden" id="agentBtn" aria-haspopup="menu"><span class="fk-icon">◎</span><span id="agentText">Agent</span><span class="fk-caret">▾</span></button>
-            <span class="func-spacer"></span>
-            <button class="send-btn" id="sendBtn" data-i18n-title="composer.send" data-i18n-aria-label="composer.sendLabel" disabled>↑</button>
-          </div>
-        </div>
+        <div id="composerHost"></div>
       </div>
     </section>
 

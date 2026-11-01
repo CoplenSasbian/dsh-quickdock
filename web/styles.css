@@ -137,26 +137,9 @@ html[data-theme="light"] .panel{
 .new-btn{border-radius:8px}
 
 /* ---------- Composer ---------- */
-.composer{border-radius:12px;transition:border-color .16s,background .16s,box-shadow .16s}
-.composer:focus-within{box-shadow:0 0 0 3px rgba(77,142,255,.1)}
-.composer textarea{font-size:12.5px;line-height:1.55}
-
-/* ---------- Function keys ---------- */
-.fkey{gap:4px;padding:4px 8px;border-radius:7px}
-.fkey:hover{background:var(--qd-interactive-hover);color:var(--qd-label-primary)}
-.fkey:active{background:var(--qd-interactive-active)}
-.fk-icon{font-size:10.5px;opacity:.6}
-.fk-caret{font-size:8px;opacity:.4}
-
-/* ---------- Send button ---------- */
-.send-btn{
-  width:30px;height:30px;font-size:14px;
-  box-shadow:0 4px 12px -3px rgba(77,142,255,.55);
-  transition:transform .12s,box-shadow .16s,filter .12s;
-}
-.send-btn:hover:not(:disabled){filter:brightness(1.06);box-shadow:0 6px 16px -3px rgba(77,142,255,.62)}
-.send-btn:active:not(:disabled){transform:translateY(1px) scale(.97)}
-.send-btn:disabled{background:var(--qd-fill-mid);color:var(--qd-label-tertiary);box-shadow:none}
+/* The composer is a render island (web/render/src/composer.js): only its host
+   is sized here, the box itself is drawn with the DSH primitives. */
+.composer-host{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 
 /* ---------- Dropdown menu ---------- */
 .menu{

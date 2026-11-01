@@ -50,9 +50,8 @@
   var els = {
     panelA: U.$('panelA'),
     wsName: U.$('wsName'), sessTitle: U.$('sessTitle'), sessMeta: U.$('sessMeta'),
-    composer: U.$('composer'), sendBtn: U.$('sendBtn'), newBtn: U.$('newBtn'),
-    permText: U.$('permText'), modelText: U.$('modelText'), thinkText: U.$('thinkText'),
-    agentText: U.$('agentText'), agentBtn: U.$('agentBtn'), statusDot: U.$('statusDot'),
+    composerHost: U.$('composerHost'), newBtn: U.$('newBtn'),
+    statusDot: U.$('statusDot'),
     menu: U.$('menu'), toast: U.$('toast'),
     confirm: U.$('confirm'), confirmOk: U.$('confirmOk'), confirmCancel: U.$('confirmCancel'),
     pinBtnA: U.$('pinBtnA'), hideBtnA: U.$('hideBtnA'), listBtn: U.$('listBtn'), openBtn: U.$('openBtn'),
@@ -66,8 +65,8 @@
   };
   if (isDisplay) {
     // The display window only has the row container and the toast.
-    ['panelA', 'wsName', 'sessTitle', 'sessMeta', 'composer', 'sendBtn', 'newBtn',
-      'permText', 'modelText', 'thinkText', 'agentText', 'agentBtn', 'statusDot', 'menu',
+    ['panelA', 'wsName', 'sessTitle', 'sessMeta', 'composerHost', 'newBtn',
+      'statusDot', 'menu',
       'confirm', 'confirmOk', 'confirmCancel', 'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn',
       'runPanel', 'runDot', 'runTitle', 'runElapsed', 'runAction', 'runNow', 'runSub',
       'stopBtnRun', 'hideBtnR', 'openBtnR', 'listBtnR', 'pinBtnR', 'runApproval',
@@ -76,6 +75,26 @@
     });
   } else {
     els.drows = null;
+  }
+
+  /* -------------------------------- composer ------------------------------- */
+
+  /**
+   * The composer is a DSH render island; the page keeps the behaviour and gets
+   * a small imperative handle back.
+   * @type {{setValue: Function, getValue: Function, clear: Function,
+   *         focus: Function, setMarks: Function, setDisabled: Function}|null}
+   */
+  var composer = null;
+  if (!isDisplay && els.composerHost && window.QD && window.QD.composer) {
+    composer = window.QD.composer.create({
+      host: els.composerHost,
+      placeholder: t('composer.placeholder'),
+      label: t('composer.label'),
+      sendTitle: t('composer.send'),
+      onSubmit: function (text) { send(text); },
+      onOpenMenu: function (kind, anchor) { openKeyMenu(kind, anchor); }
+    });
   }
 
   /* --------------------------------- state --------------------------------- */
@@ -334,22 +353,21 @@
     els.sessTitle.classList.toggle('blank', !state.session);
     els.sessMeta.textContent = state.session ? U.relTime(state.session.updatedAt || 0) : '';
 
-    var permission = (state.catalogs.permissions || []).find(function (option) {
-      return option.value === state.settings.permission;
-    });
-    els.permText.textContent = permission ? permission.name : (state.settings.permission || t('key.permission'));
-
-    var model = currentModel();
-    els.modelText.textContent = model
-      ? model.name
-      : (state.settings.model ? state.settings.model.split('/')[1] : t('key.model'));
-    els.thinkText.textContent = state.settings.reasoning ? reasoningLabel(state.settings.reasoning) : t('key.thinking');
-    els.agentBtn.classList.toggle('hidden', !state.newSession);
-    if (!els.agentBtn.classList.contains('hidden')) {
+    if (composer) {
+      var permission = (state.catalogs.permissions || []).find(function (option) {
+        return option.value === state.settings.permission;
+      });
+      var model = currentModel();
       var preset = (state.catalogs.agents || []).find(function (agent) {
         return agent.id === state.settings.agentPreset;
       });
-      els.agentText.textContent = preset ? preset.name : (state.settings.agentPreset || t('key.agent'));
+      composer.setMarks({
+        permission: permission ? permission.name : (state.settings.permission || t('key.permission')),
+        model: model ? model.name : (state.settings.model ? state.settings.model.split('/')[1] : t('key.model')),
+        thinking: state.settings.reasoning ? reasoningLabel(state.settings.reasoning) : t('key.thinking'),
+        agent: preset ? preset.name : (state.settings.agentPreset || t('key.agent')),
+        agentVisible: Boolean(state.newSession)
+      });
     }
 
     var status = state.status;
@@ -687,76 +705,52 @@
     menu.open(owner, t('menu.agentTitle'), items);
   }
 
-  if (!isDisplay) {
-    U.on(U.$('permBtn'), 'click', function (event) {
-      event.stopPropagation();
-      // The anchor must be read synchronously: currentTarget is null later.
-      var owner = event.currentTarget;
-      if (!requireState()) return;
-      openPermissionMenu(owner);
-    });
-
-    U.on(U.$('modelBtn'), 'click', function (event) {
-      event.stopPropagation();
-      var owner = event.currentTarget;
-      if (!requireState()) return;
-      var items = modelMenuItems();
-      if (!items.length) {
-        api('catalogs').then(function (catalogs) {
-          openModelMenu(owner, catalogs);
-        }).catch(toastError);
-        return;
-      }
-      menu.open(owner, t('menu.modelTitle'), items);
-      // Refresh the catalog in the background for the next open.
+  /**
+   * Open one function-key menu.
+   * @param {string} kind 'permission' | 'model' | 'thinking' | 'agent'.
+   * @param {HTMLElement} owner anchor element supplied by the composer island.
+   */
+  function openKeyMenu(kind, owner) {
+    if (!requireState()) return;
+    if (kind === 'permission') { openPermissionMenu(owner); return; }
+    if (kind === 'thinking') { openThinkingMenu(owner); return; }
+    if (kind === 'agent') { openAgentMenu(owner); return; }
+    if (kind !== 'model') return;
+    var items = modelMenuItems();
+    if (!items.length) {
       api('catalogs').then(function (catalogs) {
-        if (catalogs && Array.isArray(catalogs.models)) state.catalogs = catalogs;
-      }).catch(function () {});
-    });
-
-    U.on(U.$('thinkBtn'), 'click', function (event) {
-      event.stopPropagation();
-      var owner = event.currentTarget;
-      if (!requireState()) return;
-      openThinkingMenu(owner);
-    });
-
-    U.on(els.agentBtn, 'click', function (event) {
-      event.stopPropagation();
-      var owner = event.currentTarget;
-      if (!requireState()) return;
-      openAgentMenu(owner);
-    });
+        openModelMenu(owner, catalogs);
+      }).catch(toastError);
+      return;
+    }
+    menu.open(owner, t('menu.modelTitle'), items);
+    // Refresh the catalog in the background for the next open.
+    api('catalogs').then(function (catalogs) {
+      if (catalogs && Array.isArray(catalogs.models)) state.catalogs = catalogs;
+    }).catch(function () {});
   }
 
   /* ------------------------------- composer ------------------------------- */
 
-  function send() {
-    var text = els.composer.value.trim();
+  /**
+   * Send one message; the composer island calls this on Enter and on the button.
+   * @param {string} [draft] text the island already read from its input.
+   */
+  function send(draft) {
+    var text = String(draft || (composer ? composer.getValue() : '')).trim();
     if (!text) return;
-    els.composer.value = '';
-    els.sendBtn.disabled = true;
+    if (composer) composer.clear();
     var body = { text: text, fork: pendingFork };
     if (!state.sessionId) body.workspaceId = state.workspaceId || undefined;
     api('task', body).then(function () {
       pendingFork = false;
     }).catch(function (error) {
       toastError(error);
-      els.composer.value = text;
-      els.sendBtn.disabled = false;
+      if (composer) composer.setValue(text);
     });
   }
 
   if (!isDisplay) {
-    U.on(els.composer, 'input', function () {
-      els.sendBtn.disabled = !els.composer.value.trim();
-    });
-    U.on(els.composer, 'keydown', function (event) {
-      if (event.key !== 'Enter' || event.shiftKey) return;
-      event.preventDefault();
-      send();
-    });
-    U.on(els.sendBtn, 'click', send);
 
     U.on(els.newBtn, 'click', function (event) {
       event.stopPropagation();
@@ -1003,10 +997,7 @@
     markOffline();
   }
 
-  if (!isDisplay) {
-    if (els.sendBtn) els.sendBtn.disabled = true;
-    syncListButton();
-  }
+  if (!isDisplay) syncListButton();
 
   if (isDisplay && displayView) {
     // Content grows towards the input window depending on which side it sits.

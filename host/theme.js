@@ -71,6 +71,10 @@ export function normalizeTheme(payload) {
   if (!payload || typeof payload !== 'object') return null
   const raw = payload.tokens && typeof payload.tokens === 'object' ? payload.tokens : {}
   const tokens = {}
+  for (const [name, value] of Object.entries(raw)) {
+    const text = stringValue(value)
+    if (text && name.startsWith('--dsw-')) tokens[name] = text
+  }
   for (const [dsw, qd] of Object.entries(THEME_TOKEN_MAP)) {
     const value = stringValue(raw[qd]) || stringValue(raw[dsw])
     if (value) tokens[qd] = value
@@ -99,6 +103,12 @@ export function themeFromSnapshot(snapshot) {
   if (!snapshot?.active) return null
   const source = snapshot.active.tokens || {}
   const tokens = {}
+  // Forward the DSH tokens themselves as well: the render island draws with the
+  // DSH primitives, whose stylesheets read --dsw-* directly.
+  for (const [name, value] of Object.entries(source)) {
+    const text = stringValue(value)
+    if (text && name.startsWith('--dsw-')) tokens[name] = text
+  }
   for (const [dsw, qd] of Object.entries(THEME_TOKEN_MAP)) {
     const value = stringValue(source[dsw])
     if (value) tokens[qd] = value

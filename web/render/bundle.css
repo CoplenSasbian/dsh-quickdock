@@ -4255,6 +4255,77 @@ html[data-theme="light"] {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Composer (input window) ---------- */
+
+/* The box the main window draws: one surface holding the text and the marks. */
+.qd-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 6px 6px 10px;
+  border: 0.5px solid var(--dsw-alias-border-l3, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1, rgba(255, 255, 255, 0.04));
+  transition: border-color 0.16s, background 0.16s;
+}
+
+.qd-composer:focus-within {
+  border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.22));
+  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.06));
+}
+
+.qd-composer-input {
+  padding: 4px 0 2px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  resize: none;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.qd-composer-input::placeholder {
+  color: var(--dsw-alias-label-tertiary, rgba(255, 255, 255, 0.38));
+}
+
+.qd-composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.qd-composer-spacer {
+  flex: 1;
+}
+
+/* Pills carry the function keys: the main window's chip, not a fake button. */
+.qd-key {
+  gap: 5px;
+}
+
+.qd-key-icon {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.qd-key-text {
+  max-width: 128px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qd-send {
+  width: 28px;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 15px;
+}
+
 /* Sub-calls nest under their parent row, like the main window's call tree. */
 .qd-subcalls {
   display: flex;

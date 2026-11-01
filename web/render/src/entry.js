@@ -13,6 +13,7 @@ import {
   createElement as h, Fragment, useCallback, useEffect, useMemo, useRef, useState
 } from 'react'
 import { createRoot } from 'react-dom/client'
+import { createComposer } from './composer.js'
 import {
   DisclosureRow, TerminalBlock, DiffBlock, CodeBlock, MarkdownText, ReadBlock,
   IconAgentPresetOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
@@ -560,3 +561,4 @@ function create(options) {
 
 window.QD = window.QD || {}
 window.QD.render = { create: create }
+window.QD.composer = { create: createComposer }
