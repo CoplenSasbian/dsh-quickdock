@@ -35,16 +35,22 @@ GET /quickdock/api/meta
   "name": "dsh-quickdock",
   "apiVersion": 1,
   "capabilities": ["state", "stream", "workspaces", "sessions", "select", "bind", "task",
-                    "stop", "turns", "turn", "step-detail", "catalogs", "settings", "answer",
-                    "theme", "locale", "events"],
+                    "stop", "turns", "turn", "plan", "step-detail", "catalogs", "settings",
+                    "answer", "theme", "locale", "events"],
   "turns": { "latestInState": true, "history": "turns+turn", "retention": "maxSteps" },
   "events": { "replay": "events", "push": "stream?events=1", "retention": "maxEvents+maxBytes" },
-  "interactions": { "approvals": "claim-and-delegate", "questions": "claim-and-delegate" }
+  "interactions": { "approvals": "claim-and-delegate", "questions": "claim-and-delegate" },
+  "components": { "service": true, "dock": true }
 }
 ```
 
 `apiVersion` only changes for breaking changes; new fields and new routes are
 additive.
+
+`components` says what this instance mounted: `service` (the API itself) and
+`dock` (the Electron windows). A headless server - `{ "dock": false }` in the
+plugin config - answers every route below with `components.dock: false`. `dock`
+implies `service`; both off mounts nothing.
 
 ## Read endpoints
 
@@ -55,6 +61,7 @@ additive.
 | `GET sessions?workspaceId=<id>` | `{ workspaceId, sessions: [{ sessionId, title, cwd, updatedAt, running, blank }] }`. Omit the workspace to list every indexed session. |
 | `GET turns?sessionId=<id>` | `{ sessionId, outline, turns: [{ turn, seq, prompt, response, rows, startedAt, endedAt }] }`; defaults to the bound session. |
 | `GET turn?turn=<n>&sessionId=<id>` | `{ sessionId, turn, observed, steps }`; omitting `turn` reads the newest one, omitting `sessionId` uses the bound session. |
+| `GET plan?sessionId=<id>` | `{ todos, goal, source }` — the agent's current plan and goal (see below). |
 | `GET step-detail?id=<rowId>&sessionId=<id>` | `{ args, result }` for one expandable row (bound session by default). |
 | `GET catalogs` | Permission / model / reasoning / agent catalogs (may refresh models first). |
 | `GET events?sessionId=<id>&from=<seq>&limit=<n>&type=<filter>` | **Every** session event, verbatim: `{ sessionId, events: [{ seq, time, type, data }], latestSeq, dropped, retained }`. `from` resumes after a sequence number, `limit` caps the page (default 200, max 1000), `type` filters on the client's terms (`tool/*`, `assistant/message`, `*`). |
@@ -91,7 +98,10 @@ it; the rest of the history is read through `turns`/`turn`.
   "workspaces": [{ "id": "ws-1", "name": "dsh-quickdock", "path": "D:/code/dock" }],
   "session": { "id": "s-1", "title": "...", "cwd": "...", "updatedAt": 0, "running": true },
   "status": "running",
+  "version": { "hash": "0bae232", "pkg": "0.3.0", "startedAt": "2026-11-01T10:29:33Z" },
   "steps": [ ... rows of the newest turn ... ],
+  "todos": [ { "content": "read the failing test", "status": "completed" } ],
+  "goal": { "objective": "make the dock match DSH", "phase": "active" },
   "turn": { "number": 4, "count": 4, "steps": 6, "startedAt": "...", "endedAt": "" },
   "stream": { "thinking": "...", "text": "...", "tools": [] },
   "interaction": null,
@@ -122,6 +132,34 @@ it; the rest of the history is read through `turns`/`turn`.
 
 Full tool arguments and results are never in the state frame; fetch them with
 `step-detail`.
+
+### Plan and goal
+
+`todos` and `goal` are DSH's own projections, not something the Host keeps on
+its own:
+
+| Value | Source | Cleared by |
+|---|---|---|
+| `todos` | `ctx.sessionProjections` key `todos` (registered by `dsh-tool-todo`), folded from `todo/write` | `turn/start`: the value becomes `null` for every new turn |
+| `goal` | the same registry, key `goal` (registered by `dsh-goal`); wire view is the goal object itself | the goal being completed or cleared |
+
+The precedence is: **projection, then the Host's own fold**. A present projection
+wins even when it is `null` — that is what keeps a client from showing a plan the
+main window has already dropped. The fold is only consulted when no projection is
+registered at all (for example an older DSH).
+
+```http
+GET /quickdock/api/plan?t=<token>
+
+{ "todos": [ { "content": "write the docs", "status": "in_progress" } ],
+  "goal": { "objective": "make the dock match DSH", "phase": "active" },
+  "source": "projection" }
+```
+
+`source` is `projection`, `fold` or `empty`, so a client can tell a real "no
+plan" from "this build does not expose one". `todos` is always an array; `goal`
+is `null` when there is none. A client that only wants the produced state can
+read both from `GET state`.
 
 ## Minimal client
 
