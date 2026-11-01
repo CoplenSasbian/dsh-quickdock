@@ -4366,7 +4366,9 @@ html[data-theme="light"] {
   border: none;
   border-radius: 999px;
   background: var(--dsw-alias-button-info-fill, var(--dsw-alias-brand-primary, #4d8eff));
-  color: #fff;
+  /* On a filled button DSH paints the foreground token, which flips with the
+     theme: white on a dark fill, dark on a light one. */
+  color: var(--dsw-alias-label-primary-foreground, #ffffff);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
