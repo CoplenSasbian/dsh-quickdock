@@ -208,7 +208,13 @@ function ToolRow({ step, open, running, labels, detail, onToggle, t, subRows }) 
     h('span', { className: 'qd-tool-name' }, String(step.tool || '').trim())
   )
   const intent = String(step.description || '').trim()
-  const summary = String(step.command || '').trim() || intent
+  // A failed call shows its error where the command would be: DSH paints that
+  // line with the error color and keeps the message in view.
+  const failed = step.status === 'fail'
+  const errorLine = String(step.text || '').split(/\n/).map((row) => row.trim()).filter(Boolean)[0] || ''
+  const summary = failed
+    ? (errorLine || String(step.command || '').trim() || intent)
+    : String(step.command || '').trim() || intent
   const lines = step.lines && step.lines[0] && step.lines[1]
     ? t('display.lines', { from: step.lines[0], to: step.lines[1] })
     : ''
@@ -219,7 +225,7 @@ function ToolRow({ step, open, running, labels, detail, onToggle, t, subRows }) 
 
   const collapsed = h(Fragment, null,
     summary ? h('span', { className: rowCss.sep }) : null,
-    summary ? h('span', { className: rowCss.summary }, summary) : null,
+    summary ? h('span', { className: rowCss.summary, 'data-error': failed || undefined }, summary) : null,
     lines ? h('span', { className: rowCss.summarySuffix }, lines) : null,
     diff ? h('span', { className: rowCss.diffStat }, diff) : null
   )
@@ -238,13 +244,13 @@ function ToolRow({ step, open, running, labels, detail, onToggle, t, subRows }) 
       leadingClassName: rowCss.leading,
       titleClassName: rowCss.title,
       collapsedContent: collapsed
-    }, open && expandable ? h(ToolBody, { step: step, detail: detail, labels: labels, t: t }) : null),
+    }, open && expandable ? h(ToolBody, { step: step, detail: detail, labels: labels, t: t, failed: failed }) : null),
     subRows || null
   )
 }
 
 /** Expanded body: the card DSH renders for this kind of tool. */
-function ToolBody({ step, detail, labels, t }) {
+function ToolBody({ step, detail, labels, t, failed }) {
   if (!detail) return h('div', { className: 'qd-status' }, t('display.loading'))
   if (detail.error) return h('div', { className: 'qd-status qd-error' }, detail.error)
 
@@ -259,7 +265,7 @@ function ToolBody({ step, detail, labels, t }) {
       ? args.new_string
       : typeof args.content === 'string' ? args.content : ''
     if (oldText !== null || newText) {
-      return h('div', { className: 'qd-body' },
+      return h('div', { className: 'qd-body', 'data-error': failed || undefined },
         h(DiffBlock, {
           diffs: [{ path: path || String(args.path || ''), oldText: oldText, newText: newText }],
           labels: labels.diff
@@ -272,14 +278,14 @@ function ToolBody({ step, detail, labels, t }) {
     const code = args && typeof args.code === 'string' ? args.code
       : args && typeof args.program === 'string' ? args.program : ''
     if (code) {
-      return h('div', { className: 'qd-body' },
+      return h('div', { className: 'qd-body', 'data-error': failed || undefined },
         h(CodeBlock, { code: code, lang: 'javascript' })
       )
     }
   }
 
   if (TERMINAL_TOOLS.test(tool)) {
-    return h('div', { className: 'qd-body' },
+    return h('div', { className: 'qd-body', 'data-error': failed || undefined },
       h(TerminalBlock, {
         command: args && typeof args.command === 'string' ? args.command : String(step.command || ''),
         cwd: args && typeof args.cwd === 'string' ? args.cwd : undefined,
@@ -298,7 +304,7 @@ function ToolBody({ step, detail, labels, t }) {
       .replace(/\n$/, '')
     const rows = text === '' ? [] : text.split('\n').map((line, index) => ({ number: from + index, text: line }))
     const total = step.lines && step.lines[1] ? step.lines[1] : rows.length
-    return h('div', { className: 'qd-body' },
+    return h('div', { className: 'qd-body', 'data-error': failed || undefined },
       h(ReadBlock, {
         label: path || String(args && args.path || ''),
         lines: rows,
@@ -309,8 +315,8 @@ function ToolBody({ step, detail, labels, t }) {
     )
   }
 
-  return h('div', { className: 'qd-body' },
-    h('pre', { className: 'qd-pre' }, result || (detail.args ? detail.args : ''))
+  return h('div', { className: 'qd-body', 'data-error': failed || undefined },
+    h('pre', { className: 'qd-pre', 'data-error': failed || undefined }, result || (detail.args ? detail.args : ''))
   )
 }
 

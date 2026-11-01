@@ -220,6 +220,21 @@ html[data-theme="light"] {
   cursor: default;
 }
 
+/* Failures: DSH paints the marked parts (summary, body) with the error color. */
+.qd-row[data-state="fail"] .qd-tool-title,
+[data-error] {
+  color: var(--dsw-alias-state-error-primary, #f2555a);
+}
+
+/* The card's own text colours are set per element, so the error tint has to be
+   pushed down onto the output lines explicitly. */
+.qd-body[data-error] [class*="TerminalBlock-module_output"],
+.qd-body[data-error] [class*="TerminalBlock-module_line"],
+.qd-body[data-error] pre,
+.qd-body[data-error] code {
+  color: var(--dsw-alias-state-error-primary, #f2555a);
+}
+
 /* The wire name after the label: which tool actually ran. */
 .qd-tool-name {
   margin-left: 6px;

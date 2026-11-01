@@ -313,7 +313,9 @@ const EVENT_HANDLERS = {
     settleTool(folder, row, {
       text: resultText(data.message),
       diffs: data.meta?.diffs,
-      failed: Boolean(data.error || data.message.content?.[0]?.isError),
+      // The flag sits on the message (DSh's tool/result), and some runtimes
+      // also put it on the first content block.
+      failed: Boolean(data.error || data.message?.isError || data.message?.content?.[0]?.isError),
     })
   },
 
