@@ -220,14 +220,16 @@
       if (loadingHistory) return;
       var batch = pendingTurns().slice(0, count);
       if (!batch.length) {
-        if (latestState) renderRows(latestState);
+        if (latestState) render(latestState);
+        else render();
         return;
       }
       loadingHistory = true;
       var next = function (index) {
         if (index >= batch.length) {
           loadingHistory = false;
-          if (latestState) renderRows(latestState);
+          if (latestState) render(latestState);
+          else render();
           return;
         }
         var row = batch[index];
@@ -464,7 +466,9 @@
       var interaction = state && state.interaction;
       var hasInter = Boolean(interaction && interaction.status === 'open');
       var hasStream = hasLiveText(state && state.stream);
-      var hasContent = Boolean(steps.length || hasInter || hasStream);
+      // Loaded history counts as content: an old session binds with no live rows,
+      // and the column (plus its load-more pill) still has to be on screen.
+      var hasContent = Boolean(steps.length || hasInter || hasStream || turnList.length);
 
       // Approvals are answered in the input window, so a hidden list stays hidden.
       applyVisibility(hasContent);
