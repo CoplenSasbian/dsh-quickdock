@@ -29,7 +29,23 @@
       if (els.todoCard) els.todoCard.hidden = true;
       return;
     }
-    if (!els.todoCard || !state) return;
+    if (!state) {
+      report('todo page: no state yet');
+      return;
+    }
+    // The task window is up whenever it has a state: an empty plan still shows
+    // the placeholder instead of a window that never appears.
+    if (todoReported !== true) {
+      todoReported = true;
+      var todoBridge = window.quickDock;
+      if (todoBridge && todoBridge.setTodoEmpty) {
+        try { todoBridge.setTodoEmpty(false); } catch (error) { /* optional */ }
+      }
+    }
+    if (!els.todoCard) {
+      report('todo page: no card element');
+      return;
+    }
     var todos = Array.isArray(state.todos) ? state.todos : [];
     var goal = state.goal && state.goal.objective ? state.goal : null;
     if (els.todoGoal) {
@@ -37,17 +53,10 @@
       if (goal && els.todoGoalText) els.todoGoalText.textContent = goal.objective;
     }
     if (!todos.length && !goal) {
-      els.todoCard.hidden = true;
-      if (isTodo && todoReported !== false) {
-        report('todo page: empty (todos=' + todos.length + ' goal=' + Boolean(goal) + ')');
-        todoReported = false;
-        var bridgeHide = window.quickDock;
-        if (bridgeHide && bridgeHide.setTodoEmpty) {
-          try { bridgeHide.setTodoEmpty(true); } catch (error) { /* optional */ }
-        }
-      }
-      els.todoCard.classList.remove('open');
-      renderTodoList(null);
+      els.todoCard.hidden = false;
+      els.todoCard.classList.add('open');
+      els.todoCount.textContent = '';
+      renderTodoList([]);
       return;
     }
     var done = 0;
@@ -77,6 +86,13 @@
   function renderTodoList(todos) {
     if (!els.todoList) return;
     els.todoList.textContent = '';
+    if (!todos || !todos.length) {
+      var empty = document.createElement('div');
+      empty.className = 'todo-empty';
+      empty.textContent = t('todo.empty');
+      els.todoList.appendChild(empty);
+      return;
+    }
     (todos || []).forEach(function (row) {
       var status = String(row.status || 'pending');
       var item = document.createElement('div');

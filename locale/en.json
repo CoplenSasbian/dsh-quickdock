@@ -169,5 +169,6 @@
   "time.hoursAgo": "{count}h ago",
   "time.justNow": "just now",
   "time.minutesAgo": "{count}m ago",
+  "todo.empty": "No steps yet",
   "todo.title": "Tasks"
 }
