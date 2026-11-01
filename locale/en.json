@@ -58,6 +58,7 @@
   "display.noExitCode": "No exit code",
   "display.noOutput": "No output",
   "display.output": "Output",
+  "display.readWindow": "{shown} of {total} lines",
   "display.running": "Running",
   "display.signal": "signal {signal}",
   "display.thinking": "Thinking",

@@ -14,7 +14,7 @@ import {
 } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-  DisclosureRow, TerminalBlock, DiffBlock, MarkdownText,
+  DisclosureRow, TerminalBlock, DiffBlock, MarkdownText, ReadBlock,
   IconAgentPresetOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
   IconCodeOutlineRegular, IconEditOutlineRegular, IconGlobeOutlineRegular,
   IconSearchOutlineRegular, IconThinkOutlineRegular
@@ -47,6 +47,7 @@ const TOOL_ICONS = {
 
 const TERMINAL_TOOLS = /^(bash|pwsh|shell|terminal|run_code)$/i
 const EDIT_TOOLS = /^(edit|edit_file|write|str_replace_editor)$/i
+const READ_TOOLS = /^(read|read_file)$/i
 
 /** Only the newest running row animates, mirroring DSH's single live operation. */
 function runningId(steps) {
@@ -77,7 +78,12 @@ function makeLabels(t) {
     expandAria: (hidden) => t('display.expandLines', { count: hidden }),
     expand: (hidden) => t('display.expandLines', { count: hidden })
   }
+  const read = {
+    ...shared,
+    window: (shown, total) => t('display.readWindow', { shown: shown, total: total })
+  }
   return {
+    read: read,
     terminal: {
       ...shared,
       commandLine: (line) => t('display.commandLine', { line: line }),
@@ -91,6 +97,13 @@ function makeLabels(t) {
     },
     diff: shared
   }
+}
+
+/** Grammar hint from a path; unknown extensions fall back to plain monospace. */
+function languageOf(path) {
+  const name = String(path || '')
+  const dot = name.lastIndexOf('.')
+  return dot < 0 ? '' : name.slice(dot + 1).toLowerCase()
 }
 
 /** "8s", "1m 20s", "1h 04m" — a short elapsed value, like DSH's turn header. */
@@ -186,6 +199,24 @@ function ToolBody({ step, detail, labels, t }) {
         exitCode: step.status === 'fail' ? 1 : step.status === 'done' ? 0 : undefined,
         running: step.status === 'run',
         labels: labels.terminal
+      })
+    )
+  }
+
+  if (READ_TOOLS.test(tool)) {
+    const from = step.lines && step.lines[0] ? step.lines[0] : Number(args && args.offset) || 1
+    const text = result
+      .replace(/\n?\((?:Showing lines|End of file|Output capped)[^\n]*\)\s*$/, '')
+      .replace(/\n$/, '')
+    const rows = text === '' ? [] : text.split('\n').map((line, index) => ({ number: from + index, text: line }))
+    const total = step.lines && step.lines[1] ? step.lines[1] : rows.length
+    return h('div', { className: 'qd-body' },
+      h(ReadBlock, {
+        label: path || String(args && args.path || ''),
+        lines: rows,
+        totalLines: total,
+        lang: languageOf(path),
+        labels: labels.read
       })
     )
   }

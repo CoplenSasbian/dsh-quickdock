@@ -58,6 +58,7 @@
   "display.noExitCode": "无退出码",
   "display.noOutput": "没有输出",
   "display.output": "输出",
+  "display.readWindow": "{shown} / {total} 行",
   "display.running": "运行中",
   "display.signal": "信号 {signal}",
   "display.thinking": "思考",
