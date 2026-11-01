@@ -42,6 +42,7 @@
 
   var VIEW = window.__QD_VIEW__ === 'display' ? 'display' : 'input';
   var isDisplay = VIEW === 'display';
+  var displayView = null;
   // The <title> is static markup; the localized variant comes from the catalog.
   var titleKey = isDisplay ? 'app.displayTitle' : 'app.inputTitle';
   var localizedTitle = t(titleKey);
@@ -322,6 +323,23 @@
     syncListButton();
   });
 
+  function refreshDisplayVisibility() {
+    var steps = (state && state.steps) || [];
+    var interaction = state && state.interaction;
+    var hasInter = Boolean(interaction && interaction.status === 'open');
+    var stream = state && state.stream;
+    var hasContent = Boolean(steps.length || hasInter
+      || (stream && (stream.text || stream.thinking || (stream.tools && stream.tools.length))));
+    var quickDock = window.quickDock;
+    if (!quickDock || !quickDock.setDisplayEmpty) return;
+    try {
+      // Approvals are answered in this window's run panel; a hidden list stays hidden.
+      quickDock.setDisplayEmpty(!hasContent);
+    } catch (error) {
+      /* IPC is optional outside Electron */
+    }
+  }
+
   /* -------------------------------- rendering -------------------------------- */
 
   function currentWorkspace() {
@@ -353,6 +371,10 @@
 
   function render() {
     if (!state) return;
+    if (isDisplay) {
+      if (displayView) displayView.render(state);
+      return;
+    }
     var workspace = currentWorkspace();
 
     els.wsName.textContent = workspace ? workspace.name : t('bar.noWorkspace');
@@ -388,6 +410,7 @@
     // Input form vs run panel: while the agent works the form has no use.
     applyRunMode(status);
     updatePin();
+    refreshDisplayVisibility();
   }
 
   var STATUS_KEYS = {
@@ -591,6 +614,28 @@
       },
       t: t,
       onLayout: function () {
+        scheduleHitReport();
+      }
+    });
+  }
+
+  if (isDisplay && els.drows) {
+    displayView = window.QD.display.create({
+      root: els.drows,
+      api: api,
+      getState: function () {
+        return state;
+      },
+      // The docked window is shown/hidden by setDisplayEmpty; there is no
+      // separate list flag any more.
+      isListHidden: function () {
+        return false;
+      },
+      scheduleHitReport: function () {
+        scheduleHitReport();
+      },
+      toastError: toastError,
+      onAnswered: function () {
         scheduleHitReport();
       }
     });
@@ -984,4 +1029,29 @@
 
   if (!isDisplay) syncListButton();
 
+  if (isDisplay && displayView) {
+    // Content grows towards the input window depending on which side it sits.
+    displayView.bindAutoScroll();
+    displayView.initialScroll();
+    var applyAbove = function (value) {
+      document.body.classList.toggle('above', Boolean(value));
+    };
+    var quickDock = window.quickDock;
+    if (quickDock) {
+      if (quickDock.onStateChanged) {
+        quickDock.onStateChanged(function (next) {
+          if (next) applyAbove(next.displayAbove);
+        });
+      }
+      if (quickDock.getState) {
+        try {
+          quickDock.getState().then(function (next) {
+            if (next) applyAbove(next.displayAbove);
+          }).catch(function () {});
+        } catch (error) {
+          /* ignore */
+        }
+      }
+    }
+  }
 })();

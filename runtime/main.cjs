@@ -181,8 +181,31 @@ class DockRuntime {
       + ' content=' + JSON.stringify(this.win.getContentBounds())
       + ' contentSize=' + JSON.stringify(this.win.getContentSize()));
 
-    // The dock is one window: the composer lives here, so no run window is created.
-    this.displayWin = null;
+    // Display window: separate from the input window, sticks to its top or bottom edge.
+    this.displayWin = this.createDisplayWindow(restored.display);
+    trace('display window created: bounds=' + JSON.stringify(this.displayWin.getBounds()));
+    // Keep the creation-time content size as the reference: moving drifts the client area, use it to correct.
+    const initialSize = this.displayWin.getContentSize();
+    this.displayWantW = initialSize[0];
+    this.displayWantH = initialSize[1];
+    trace('display want size = ' + initialSize);
+    this.placeDisplayWindow(true);
+
+    /**
+     * The two windows must stay **stacked together**.
+     *
+     * Problem: when another app has focus and the input window is clicked, the input
+     * window moves to the front but the display window stays behind (or is covered) -
+     * the two panels get separated.
+     * moveTop() only changes z-order without stealing focus, so this is safe.
+     */
+    this.win.on('focus', () => this.raiseDisplay());
+    this.displayWin.on('focus', () => {
+      if (this.win && !this.win.isDestroyed()) {
+        try { this.win.moveTop(); } catch (_) {}
+      }
+    });
+
 
     /**
      * The two windows must stay **stacked together**.
@@ -362,7 +385,8 @@ class DockRuntime {
     await this.win.loadURL(this.config.url);
     trace('loadURL done: ' + this.config.url);
     if (this.displayWin) {
-      // No run window is created any more (see ready()).
+      await this.displayWin.loadURL(this.config.url + (this.config.url.indexOf('?') >= 0 ? '&' : '?') + 'view=display');
+      trace('display loadURL done');
     }
     this.status('ready', { pid: this.process.pid, bounds: this.win.getBounds(), controlPort: this.controlPort });
     trace('status(ready) written to stdout, controlPort=' + this.controlPort);
