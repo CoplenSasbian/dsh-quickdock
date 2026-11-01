@@ -6,7 +6,6 @@
   ],
   "scripts": [
     "locale.js",
-    "markdown.js",
     "util.js",
     "render/bundle.js",
     "display.js",

@@ -22,20 +22,6 @@
     return Boolean(stream.text || stream.thinking || (stream.tools && stream.tools.length));
   }
 
-  /** Render Markdown, falling back to escaped text (never raw innerHTML). */
-  function mdHtml(text) {
-    if (typeof renderMarkdown === 'function') {
-      try {
-        return renderMarkdown(text);
-      } catch (error) {
-        console.warn('[QuickDock] markdown failed:', error);
-      }
-    }
-    return String(text == null ? '' : text)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\n/g, '<br>');
-  }
-
   /**
    * Create the display view.
    * @param {{root: HTMLElement, api: Function, getState: Function,
@@ -134,7 +120,6 @@
         island = window.QD.render.create({
           root: rows,
           t: t,
-          markdown: mdHtml,
           loadDetail: function (id) {
             return api('step-detail?id=' + encodeURIComponent(id))
           },
