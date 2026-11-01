@@ -1,0 +1,15 @@
+# QuickDock is a bundle: this file is the component list DSH's plugin page shows.
+#
+#   dsh-quickdock  (the package row) - the Host API and the client bundle that
+#                                      draws the header Dock button. Mounted by
+#                                      the package itself, so a cold start works.
+#   quickdock-dock                   - the windows: Electron supervisor, page
+#                                      renderer, window commands. Switch it off
+#                                      for a headless API server.
+#
+# The dock is inserted rather than mounted by the package row so DSH can toggle it
+# without taking the API (and the button) down with it.
+- insert:
+    - id: quickdock-dock
+      name: dsh-quickdock/dock
+      config: {}

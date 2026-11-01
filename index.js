@@ -30,11 +30,11 @@ export const Config = Schema.object(configSchema)
 export function apply(ctx, config) {
   if (!config.enabled) return undefined
   const host = new QuickDockHost(ctx, config)
-  // Both components from this one row: the API and the windows. A subpath row
-  // (dsh-quickdock/dock) was tried for a separate switch, but DSH's client-module
-  // scan then lost the package's bundle and the header Dock button with it.
-  host.start()
-  host.prefetchElectron()
+  // The package row mounts the API (and carries the client bundle for the header
+  // button); the windows are their own row, inserted by cordis.patch.yml, so DSH
+  // can switch them off without taking the API down.
+  host.start({ service: true, dock: false })
+  if (config.dock === true) host.prefetchElectron()
   setHost(host)
   return host
 }
