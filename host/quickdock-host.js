@@ -624,6 +624,9 @@ export class QuickDockHost {
     // missing pill can be diagnosed from dock.log.
     this.trace('turns(' + id + '): outline=' + (outline ? outline.length : 'none')
       + ' local=' + observed.size + ' total=' + turns.length)
+    // One-shot probe: which projections and session fields could carry the rows
+    // of turns this fold never saw.
+    this.#probeHistory(live)
     return { sessionId: id, outline: Boolean(outline), turns }
   }
 
@@ -632,6 +635,27 @@ export class QuickDockHost {
    * the dock simply renders the latest).
    * @param {string|number} value turn number; empty = latest.
    */
+  /** Log what history sources a live session exposes (temporary diagnostic). */
+  #probeHistory(live) {
+    if (!live || this.probedHistory) return
+    this.probedHistory = true
+    try {
+      this.trace('probe session keys: ' + Object.keys(live).join(','))
+    } catch (_) { /* ignore */ }
+    try {
+      this.trace('probe projections: ' + Object.keys(this.dsh.projections || {}).join(','))
+    } catch (_) { /* ignore */ }
+    for (const key of ['messages', 'conversation', 'history', 'turnMessages', 'items', 'events', 'log']) {
+      try {
+        const value = this.dsh.projectionValues(live, [key])[key]
+        const shape = Array.isArray(value) ? 'array:' + value.length : typeof value
+        this.trace('probe projection ' + key + ' = ' + shape)
+      } catch (error) {
+        this.trace('probe projection ' + key + ' threw: ' + String(error && error.message))
+      }
+    }
+  }
+
   turnDetail(value, sessionId) {
     const target = sessionId || this.state.sessionId
     const folder = target ? this.state.folders.get(target) : null
