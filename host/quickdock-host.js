@@ -620,6 +620,10 @@ export class QuickDockHost {
       }
     }
     turns.sort((a, b) => a.turn - b.turn)
+    // The dock's "load earlier turns" pill depends on this list; log its size so a
+    // missing pill can be diagnosed from dock.log.
+    this.trace('turns(' + id + '): outline=' + (outline ? outline.length : 'none')
+      + ' local=' + observed.size + ' total=' + turns.length)
     return { sessionId: id, outline: Boolean(outline), turns }
   }
 
