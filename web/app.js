@@ -469,11 +469,11 @@
     if (!panel || !quickDock || !quickDock.setContentHeight) return;
     // The task card sits above the panel as its own block, so both count.
     var stackHeight = Math.ceil(panel.getBoundingClientRect().height);
-    if (unified && els.displayPane) {
-      // One window, three panes: the details take displayHeight, the rest is
-      // measured. The runtime clamps the whole thing to the work area.
-      var paneBox = els.displayPane.getBoundingClientRect();
-      stackHeight += Math.ceil(paneBox.height) + 8;
+    if (unified) {
+      // One window, three panes. The details pane asks for a configured height;
+      // the other two are measured. The runtime clamps the total to the work
+      // area, and CSS lets the pane shrink by that difference.
+      stackHeight += (window.__QD_PANE_HEIGHT__ || 420) + 8;
     }
     // The task card lives in its own window now; only count it if it is here.
     if (els.todoCard && !els.todoCard.hidden) {

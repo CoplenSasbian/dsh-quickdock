@@ -850,7 +850,9 @@ class DockRuntime {
     if (wanted <= 0) return 0;
     const bounds = win.getBounds();
     const area = currentDisplay(this.electron.screen, bounds).workArea;
-    const target = Math.max(120, Math.min(wanted, Math.floor(area.height * 0.8)));
+    // Leave the titlebar and a little air, not a fifth of the screen: with three
+    // panes the total is what matters and the details pane shrinks to fit.
+    const target = Math.max(120, Math.min(wanted, area.height - 40));
     if (Math.abs(target - bounds.height) < 2) return bounds.height;
     const bottom = bounds.y + bounds.height;
     const y = Math.max(area.y + 4, bottom - target);

@@ -130,7 +130,8 @@ export class PageRenderer {
       .replace('<!--QD_THEME-->', put(shell.theme))
       .replace('<!--QD_I18N-->', put(shell.i18n))
       .replace('<!--QD_STYLES-->', put('<style>' + assets.styles + '</style>'))
-      .replace('</head>', put('<style>body .display-pane{height:' + Math.round(this.displayHeight || 420) + 'px}</style></head>'))
+      .replace('</head>', put('<style>:root{--qd-pane-height:' + Math.round(this.displayHeight || 420) + 'px}</style>'
+        + '<script>window.__QD_PANE_HEIGHT__ = ' + Math.round(this.displayHeight || 420) + ';</script></head>'))
       .replace('<!--QD_SCRIPT-->', put('<script>' + assets.scripts + '</script>'))
       .replace(/<html[^>]*>/, put('<html lang="' + shell.lang + '" data-theme="' + shell.scheme + '">'))
       // One page serves three windows: tell it which one it is.
