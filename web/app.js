@@ -60,13 +60,11 @@
       watchPlan();
       return;
     }
-    var done = 0;
-    todos.forEach(function (row) { if (row.status === 'completed') done += 1; });
     els.todoCard.hidden = false;
     els.todoCard.classList.toggle('open', todoOpen);
     syncTodoHeight();
     watchPlan();
-    els.todoCount.textContent = todos.length ? done + '/' + todos.length : '';
+    els.todoCount.textContent = todos.length ? progressLabel(todos) : '';
     if (els.todoBuild) {
       var build = state.version;
       els.todoBuild.textContent = build && build.hash ? build.hash : '';
@@ -90,41 +88,62 @@
     }
   }
 
-  /** Rebuild the rows (cheap: a handful of items). */
+  /**
+   * DSH's own summary line: the counts that are non-zero, joined by dots
+   * ("3 done · 1 active · 2 pending").
+   * @param {object[]} todos the plan.
+   * @returns {string} summary.
+   */
+  function progressLabel(todos) {
+    var done = 0;
+    var active = 0;
+    todos.forEach(function (row) {
+      if (row.status === 'completed') done += 1;
+      else if (row.status === 'in_progress') active += 1;
+    });
+    var pending = todos.length - done - active;
+    var parts = [];
+    if (done > 0) parts.push(t('todo.progress.done', { done: String(done) }));
+    if (active > 0) parts.push(t('todo.progress.active', { active: String(active) }));
+    if (pending > 0) parts.push(t('todo.progress.pending', { pending: String(pending) }));
+    return parts.join(' · ');
+  }
+
   function renderTodoList(todos) {
     if (!els.todoList) return;
     els.todoList.textContent = '';
     if (!todos || !todos.length) {
-      var empty = document.createElement('div');
-      empty.className = 'todo-empty';
-      empty.textContent = t('todo.empty');
-      els.todoList.appendChild(empty);
+      var placeholder = document.createElement('li');
+      placeholder.className = 'todo-empty';
+      placeholder.textContent = t('todo.empty');
+      els.todoList.appendChild(placeholder);
       return;
     }
-    (todos || []).forEach(function (row) {
-      var status = String(row.status || 'pending');
-      var item = document.createElement('div');
-      item.className = 'todo-item ' + status;
-      var mark = document.createElement('span');
-      mark.className = 'todo-mark';
-      mark.textContent = status === 'completed' ? '✓' : status === 'in_progress' ? '●' : '○';
-      var text = document.createElement('span');
-      text.className = 'todo-text';
-      text.textContent = String(row.content || '');
-      item.appendChild(mark);
-      item.appendChild(text);
+    todos.forEach(function (row) {
+      var status = row.status === 'completed' ? 'completed'
+        : row.status === 'in_progress' ? 'in_progress' : 'pending';
+      var item = document.createElement('li');
+      item.className = 'todo-item';
+      item.dataset.status = status;
+      var glyph = document.createElement('span');
+      glyph.className = 'glyph';
+      glyph.setAttribute('role', 'img');
+      var statusKey = status === 'completed' ? 'todo.status.completed'
+        : status === 'in_progress' ? 'todo.status.inProgress'
+          : 'todo.status.pending';
+      glyph.setAttribute('aria-label', t(statusKey));
+      glyph.textContent = status === 'completed' ? '✓' : status === 'in_progress' ? '●' : '○';
+      var content = document.createElement('span');
+      content.className = 'content';
+      content.textContent = row.content;
+      item.appendChild(glyph);
+      item.appendChild(content);
       els.todoList.appendChild(item);
     });
   }
-
   /** Last height reported to the host (the task window sizes itself). */
   var reportedTodoHeight = 0;
 
-  /**
-   * Report the task card's height so its window can shrink or grow with it.
-   * The window keeps the edge that faces the input window, so the panel grows
-   * away from the composer.
-   */
   function syncTodoHeight() {
     if (!isTodo || !els.todoCard) return;
     var bridge = window.quickDock;

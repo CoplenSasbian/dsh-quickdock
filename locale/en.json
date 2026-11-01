@@ -172,5 +172,11 @@
   "time.justNow": "just now",
   "time.minutesAgo": "{count}m ago",
   "todo.empty": "No steps yet",
+  "todo.progress.active": "{active} active",
+  "todo.progress.done": "{done} done",
+  "todo.progress.pending": "{pending} pending",
+  "todo.status.completed": "Done",
+  "todo.status.inProgress": "In progress",
+  "todo.status.pending": "Pending",
   "todo.title": "Tasks"
 }

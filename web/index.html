@@ -26,15 +26,15 @@
       <iframe id="displayFrame" title="Execution"></iframe>
     </div>
     <div class="todo-card" id="todoCard" hidden>
-      <div class="todo-head" id="todoHead" role="button" tabindex="0">
-        <span class="todo-icon" aria-hidden="true">☰</span>
-        <span class="todo-title" data-i18n="todo.title">Tasks</span>
-        <span class="todo-build" id="todoBuild"></span>
+      <button class="todo-head" id="todoHead" type="button" aria-expanded="false" data-i18n-aria-label="todo.title">
+        <span class="todo-icon" aria-hidden="true">☑</span>
+        <span class="todo-title" data-i18n="todo.title"></span>
         <span class="todo-count" id="todoCount"></span>
+        <span class="todo-build" id="todoBuild"></span>
         <span class="todo-chevron" aria-hidden="true">▾</span>
-      </div>
-      <div class="todo-goal" id="todoGoal" hidden><span class="todo-goal-mark" aria-hidden="true">◎</span><span id="todoGoalText"></span></div>
-      <div class="todo-list" id="todoList"></div>
+      </button>
+      <div class="todo-goal" id="todoGoal" hidden><span aria-hidden="true">◎</span><span class="todo-goal-text" id="todoGoalText"></span></div>
+      <ul class="todo-list" id="todoList"></ul>
     </div>
     <section id="panelA" class="panel" data-i18n-aria-label="bar.inputPanel">
       <!--

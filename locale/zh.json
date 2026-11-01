@@ -172,5 +172,11 @@
   "time.justNow": "刚刚",
   "time.minutesAgo": "{count} 分钟前",
   "todo.empty": "还没有步骤",
+  "todo.progress.active": "{active} 进行中",
+  "todo.progress.done": "{done} 已完成",
+  "todo.progress.pending": "{pending} 待处理",
+  "todo.status.completed": "已完成",
+  "todo.status.inProgress": "进行中",
+  "todo.status.pending": "待处理",
   "todo.title": "任务"
 }
