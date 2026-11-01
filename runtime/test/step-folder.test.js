@@ -247,3 +247,56 @@ test('edit meta.diffs overrides the argument estimate', () => {
   }));
   assert.deepStrictEqual(folder.rows()[0].delta, [2, 1], 'real hunks from the whole file');
 });
+
+test('ptc sub-calls become child rows of the code call', () => {
+  const folder = new StepFolder(200);
+  folder.apply(toolCall(1, 'root', 'run_code', JSON.stringify({ code: 'x' })));
+  folder.apply(ev('tool/ptc-dispatch-start', 2, {
+    rootCallId: 'root',
+    parentCallId: 'root',
+    subCallId: 'root:ptc:1',
+    name: 'ops_bash',
+    arguments: { command: 'ls', description: 'List files' },
+  }));
+  const [root, child] = folder.rows();
+  assert.strictEqual(root.id, 'tool-root');
+  assert.strictEqual(child.id, 'tool-root:ptc:1', 'each dispatch gets its own row');
+  assert.strictEqual(child.parent, 'root', 'and hangs off the call that ran the code');
+  assert.strictEqual(child.tool, 'ops_bash');
+  assert.strictEqual(child.description, 'List files');
+  assert.strictEqual(child.command, 'ls');
+  assert.strictEqual(child.status, 'run');
+
+  folder.apply(ev('tool/ptc-dispatch', 3, {
+    rootCallId: 'root',
+    parentCallId: 'root',
+    subCallId: 'root:ptc:1',
+    name: 'ops_bash',
+    arguments: { command: 'ls' },
+    isError: false,
+    content: [{ type: 'text', text: 'a\nb' }],
+  }));
+  const settled = folder.rows()[1];
+  assert.strictEqual(settled.status, 'done');
+  assert.strictEqual(settled.text, 'a\nb');
+  assert.deepStrictEqual(folder.details.get('tool-root:ptc:1'), {
+    args: JSON.stringify({ command: 'ls', description: 'List files' }),
+    result: 'a\nb',
+  });
+});
+
+test('a failed ptc dispatch settles as a failed row', () => {
+  const folder = new StepFolder(200);
+  folder.apply(toolCall(1, 'root', 'run_code', JSON.stringify({ code: 'x' })));
+  folder.apply(ev('tool/ptc-dispatch', 2, {
+    parentCallId: 'root',
+    subCallId: 'root:ptc:9',
+    name: 'read',
+    arguments: { file_path: 'a.js' },
+    isError: true,
+    content: [{ type: 'text', text: 'ENOENT' }],
+  }));
+  const child = folder.rows()[1];
+  assert.strictEqual(child.status, 'fail');
+  assert.strictEqual(child.parent, 'root');
+});

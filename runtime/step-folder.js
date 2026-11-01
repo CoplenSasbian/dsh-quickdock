@@ -176,6 +176,78 @@ function resultText(message) {
  * through the folder's row helpers. Unknown event types stay ignored, which is
  * also how a future DSH event degrades safely.
  */
+/**
+ * Settle one tool row: status, result text, and the metadata DSH derives from
+ * the result (edit diff totals, read line range).
+ * @param {object} folder folder instance owning the row.
+ * @param {object} row row to settle.
+ * @param {{text: string, diffs?: unknown[], failed?: boolean}} result settle data.
+ */
+function settleTool(folder, row, result) {
+  const text = String(result.text || '')
+  row.status = result.failed ? 'fail' : 'done'
+  if (text) row.text = text.slice(0, MAX_ROW_TEXT)
+
+  // edit: the result's meta.diffs covers the whole file (replace_all included),
+  // so it is more accurate than the argument-side estimate.
+  const diffs = Array.isArray(result.diffs) ? result.diffs : null
+  if (diffs && diffs.length && EDIT_TOOL.test(String(row.tool || ''))) {
+    let added = 0
+    let removed = 0
+    for (const hunk of diffs) {
+      if (!hunk || typeof hunk.newText !== 'string') continue
+      const stats = lineDiffStats(typeof hunk.oldText === 'string' ? hunk.oldText : '', hunk.newText)
+      added += stats[0]
+      removed += stats[1]
+    }
+    row.delta = [added, removed]
+  }
+  // read: the real range comes from the footer, with the request offset as start.
+  if (READ_TOOL.test(String(row.tool || ''))) {
+    let offset = 1
+    try {
+      offset = Number(parseArgs(folder.details.get(String(row.id))?.args || '{}').offset) || 1
+    } catch (_) {
+      offset = 1
+    }
+    const range = parseReadRange(text, offset)
+    if (range) row.lines = range
+  }
+  const detail = folder.details.get(String(row.id)) || { args: '', result: '' }
+  detail.result = text.slice(0, MAX_DETAIL)
+  folder.details.set(String(row.id), detail)
+}
+
+/**
+ * Add or refresh one PTC sub-call row. The arguments arrive as an object, and
+ * the row hangs off the parent call so the dock can nest it.
+ */
+function pushPtcRow(folder, data, time, seq, status) {
+  const raw = typeof data.arguments === 'string' ? data.arguments : JSON.stringify(data.arguments || {})
+  const parsed = typeof data.arguments === 'string' ? parseArgs(raw) : data.arguments || null
+  const description = parsed && typeof parsed.description === 'string'
+    ? oneLine(parsed.description, MAX_DESCRIPTION)
+    : ''
+  const parent = data.parentCallId ? String(data.parentCallId) : ''
+  const delta = EDIT_TOOL.test(String(data.name || ''))
+    && parsed && typeof parsed.old_string === 'string' && typeof parsed.new_string === 'string'
+    ? lineDiffStats(parsed.old_string, parsed.new_string)
+    : null
+  folder.pushRow(seq, {
+    id: 'tool-' + data.subCallId,
+    kind: 'tool',
+    tool: String(data.name || ''),
+    description,
+    command: summarizeArgs(parsed, raw),
+    status,
+    time,
+    ...parent ? { parent } : {},
+    ...delta ? { delta } : {},
+  })
+  folder.details.set('tool-' + data.subCallId, { args: raw.slice(0, MAX_DETAIL), result: '' })
+  return folder.byId.get('tool-' + data.subCallId)
+}
+
 const EVENT_HANDLERS = {
   'turn/start'(folder, event) {
     // A new prompt opens a turn. Rows still belong to the previous turns; the
@@ -238,43 +310,37 @@ const EVENT_HANDLERS = {
 
   'tool/result'(folder, event) {
     const { data } = event
-    const id = 'tool-' + data.message.toolCallId
-    const row = folder.byId.get(id)
+    const row = folder.byId.get('tool-' + data.message.toolCallId)
     if (!row) return
-    row.status = data.error || data.message.content?.[0]?.isError ? 'fail' : 'done'
-    const text = resultText(data.message)
-    if (text) row.text = text.slice(0, MAX_ROW_TEXT)
+    settleTool(folder, row, {
+      text: resultText(data.message),
+      diffs: data.meta?.diffs,
+      failed: Boolean(data.error || data.message.content?.[0]?.isError),
+    })
+  },
 
-    // edit: the result's meta.diffs covers the whole file (replace_all included),
-    // so it is more accurate than the argument-side estimate.
-    if (row.kind === 'tool' && EDIT_TOOL.test(String(row.tool || ''))) {
-      const diffs = Array.isArray(data.meta?.diffs) ? data.meta.diffs : null
-      if (diffs && diffs.length) {
-        let added = 0
-        let removed = 0
-        for (const hunk of diffs) {
-          if (!hunk || typeof hunk.newText !== 'string') continue
-          const stats = lineDiffStats(typeof hunk.oldText === 'string' ? hunk.oldText : '', hunk.newText)
-          added += stats[0]
-          removed += stats[1]
-        }
-        row.delta = [added, removed]
-      }
-    }
-    // read: the real range comes from the footer, with the request offset as start.
-    if (row.kind === 'tool' && READ_TOOL.test(String(row.tool || ''))) {
-      let offset = 1
-      try {
-        offset = Number(parseArgs(folder.details.get(id)?.args || '{}').offset) || 1
-      } catch (_) {
-        offset = 1
-      }
-      const range = parseReadRange(text, offset)
-      if (range) row.lines = range
-    }
-    const detail = folder.details.get(id) || { args: '', result: '' }
-    detail.result = text.slice(0, MAX_DETAIL)
-    folder.details.set(id, detail)
+  /**
+   * PTC sub-calls: a run_code call dispatches real tools from inside the program.
+   * They arrive as their own event pair (dispatch-start / dispatch) with
+   * subCallId + parentCallId, which is exactly the call tree the main window
+   * draws — without these the dock shows one opaque "code" row.
+   */
+  'tool/ptc-dispatch-start'(folder, event) {
+    const { data, time, seq } = event
+    if (!data || !data.subCallId) return
+    pushPtcRow(folder, data, time ?? '', seq, 'run')
+  },
+
+  'tool/ptc-dispatch'(folder, event) {
+    const { data, time, seq } = event
+    if (!data || !data.subCallId) return
+    const id = 'tool-' + data.subCallId
+    const row = folder.byId.get(id) || pushPtcRow(folder, data, time ?? '', seq, 'done')
+    if (!row) return
+    settleTool(folder, row, {
+      text: resultText({ content: data.content }),
+      failed: Boolean(data.isError),
+    })
   },
 
   'assistant/message'(folder, event) {

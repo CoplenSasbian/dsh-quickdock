@@ -45,6 +45,17 @@ const TOOL_ICONS = {
   web_fetch: IconGlobeOutlineRegular
 }
 
+/** DSH prefixes some runtime tools (ops_bash); layouts key off the bare name. */
+function baseTool(name) {
+  return String(name || '').replace(/^ops_/i, '')
+}
+
+/** `mcp__server__tool` reads as the tool name; everything else keeps its name. */
+function shortTool(name) {
+  const match = /^mcp__.+?__(.+)$/.exec(String(name || ''))
+  return match ? match[1] : baseTool(name)
+}
+
 /** Tool name -> DSH activity category, in the order DSH classifies them. */
 const CATEGORIES = [
   [/^(read)$/i, 'read'],
@@ -73,7 +84,7 @@ const ACT_KEYS = {
 }
 
 function categoryOf(tool) {
-  const name = String(tool || '')
+  const name = baseTool(tool)
   for (const [pattern, category] of CATEGORIES) if (pattern.test(name)) return category
   return 'tools'
 }
@@ -179,8 +190,8 @@ function elapsedOf(turn, running, now) {
 
 /** One tool call: title, one-line summary, optional metadata, expandable body. */
 function ToolRow({ step, open, running, labels, detail, onToggle, t, subRows }) {
-  const Icon = TOOL_ICONS[String(step.tool || '').toLowerCase()] || IconAgentPresetOutlineRegular
-  const title = String(step.description || '').trim() || String(step.tool || '') || t('display.toolFallback')
+  const Icon = TOOL_ICONS[baseTool(step.tool).toLowerCase()] || IconAgentPresetOutlineRegular
+  const title = String(step.description || '').trim() || shortTool(step.tool) || t('display.toolFallback')
   const summary = String(step.command || '').trim()
   const lines = step.lines && step.lines[0] && step.lines[1]
     ? t('display.lines', { from: step.lines[0], to: step.lines[1] })
@@ -221,7 +232,7 @@ function ToolBody({ step, detail, labels, t }) {
   if (!detail) return h('div', { className: 'qd-status' }, t('display.loading'))
   if (detail.error) return h('div', { className: 'qd-status qd-error' }, detail.error)
 
-  const tool = String(step.tool || '')
+  const tool = baseTool(step.tool)
   const args = parseArgs(detail.args)
   const result = String(detail.result || '')
   const path = args && typeof args.file_path === 'string' ? args.file_path : ''
@@ -363,7 +374,7 @@ function LiveRows({ stream, t, labels }) {
     } catch (error) {
       summary = raw.slice(0, 80)
     }
-    const Icon = TOOL_ICONS[name.toLowerCase()] || IconAgentPresetOutlineRegular
+    const Icon = TOOL_ICONS[baseTool(name).toLowerCase()] || IconAgentPresetOutlineRegular
     rows.push(h('div', { className: 'qd-row', key: 'live-tool-' + index },
       h(DisclosureRow, {
         icon: h(Icon, null),
