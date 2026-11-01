@@ -23,6 +23,14 @@
   var TOKEN = params.get('t') || sessionStorage.getItem('qd-token') || '';
   if (TOKEN) sessionStorage.setItem('qd-token', TOKEN);
 
+  /** Diagnostic line in dock.log (the page has no console of its own). */
+  function report(message) {
+    var bridge = window.quickDock;
+    if (bridge && bridge.debug) {
+      try { bridge.debug(String(message)); } catch (error) { /* ignore */ }
+    }
+  }
+
   /** Call one API endpoint; the Host puts the reason in the body on failure. */
   function api(path, body) {
     return fetch('/quickdock/api/' + path, {
@@ -597,8 +605,16 @@
    * lost every later answer, and the docked window that showed it can be hidden.
    */
   function renderAsk() {
-    if (!els.askCard || !state) return;
+    if (!els.askCard || !state) {
+      report('ask: no card or no state (card=' + Boolean(els.askCard) + ' state=' + Boolean(state) + ')');
+      return;
+    }
     var interaction = state.interaction;
+    if (interaction && interaction.kind === 'question' && ask.lastReported !== interaction.id) {
+      ask.lastReported = interaction.id;
+      report('ask arrived: id=' + interaction.id + ' status=' + interaction.status
+        + ' questions=' + ((interaction.questions || []).length));
+    }
     var asking = Boolean(interaction && interaction.status === 'open' && interaction.kind === 'question');
     var questions = (asking && interaction.questions) || [];
     if (!asking || !questions.length) {
