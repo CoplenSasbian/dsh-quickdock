@@ -31,6 +31,11 @@ export function createBridgeHandler(deps) {
       app.dock.resetWindows()
       return { body: { ok: true } }
     },
+    'restart-service'() {
+      // Heavier than a window restart: cached page assets are dropped too.
+      app.restartService()
+      return { body: { ok: true } }
+    },
     restart() {
       // A stuck window (stale page, wedged renderer) is best fixed by a fresh
       // process: stop kills it and summon brings a new one up.

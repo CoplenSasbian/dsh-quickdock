@@ -36,6 +36,7 @@
   "client.resetWindows": "重置窗口大小",
   "client.restartDock": "重启 Dock 窗口",
   "client.restartFailed": "重启失败：{reason}",
+  "client.restartService": "重启服务（重读页面资源）",
   "client.sendToDock": "在 QuickDock 中打开此会话",
   "client.startTimeout": "QuickDock 启动超时。请看 {log}",
   "client.unknownError": "未知错误",

@@ -35,6 +35,19 @@ export class PageRenderer {
     this.assets = null
   }
 
+  /**
+   * Drop the cached assets so the next page load reads web/ from disk again.
+   * A "restart the service" that did not do this would keep serving the old
+   * page to a brand new window.
+   * @returns {number} how many files were cached (0 when nothing was loaded).
+   */
+  invalidate() {
+    const cached = this.assets ? 1 + (this.assets.scripts ? 1 : 0) : 0
+    this.assets = null
+    this.trace('page assets invalidated')
+    return cached
+  }
+
   /** Read the web asset manifest and every listed file once. */
   #load() {
     if (this.assets) return this.assets

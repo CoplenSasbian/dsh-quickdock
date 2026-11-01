@@ -36,6 +36,7 @@
   "client.resetWindows": "Reset the window size",
   "client.restartDock": "Restart the dock window",
   "client.restartFailed": "Restart failed: {reason}",
+  "client.restartService": "Restart the service (reloads page assets)",
   "client.sendToDock": "Open this session in QuickDock",
   "client.startTimeout": "QuickDock did not start in time. See {log}",
   "client.unknownError": "Unknown error",

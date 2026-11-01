@@ -820,6 +820,28 @@ export class QuickDockHost {
   }
 
   /**
+   * Restart the whole dock service: drop the cached page assets, tear the
+   * process down and bring it back. Unlike restartDock this also picks up edits
+   * to web/*, which is what makes it useful while iterating on the page.
+   */
+  restartService() {
+    this.trace('service restart requested from the main window')
+    const dropped = this.page && typeof this.page.invalidate === 'function'
+      ? this.page.invalidate()
+      : 0
+    this.state.folders.clear()
+    this.stream.clear()
+    this.broker.reset()
+    this.dock.stop()
+    const timer = setTimeout(() => {
+      this.#seedHistory(this.state.sessionId)
+      void this.dock.summon()
+    }, 500)
+    this.#disposeOn(() => clearTimeout(timer), 'quickdock: service restart timer')
+    return { dropped }
+  }
+
+  /**
    * Restart the dock process: the window is torn down and a fresh one is
    * summoned, which re-reads the page assets and the runtime.
    */

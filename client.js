@@ -36,6 +36,7 @@ var MESSAGES = {
     'client.dockFailed': 'QuickDock request failed: {reason}',
     'client.downloading': 'QuickDock is downloading its desktop runtime {percent}% ({mb}/{total} MB)',
     'client.more': 'More dock actions',
+    'client.restartService': 'Restart the service (reloads page assets)',
     'client.restartDock': 'Restart the dock window',
     'client.restartFailed': 'Restart failed: {reason}',
     'client.hideDock': 'Close the dock window',
@@ -53,6 +54,7 @@ var MESSAGES = {
     'client.dockFailed': 'QuickDock 请求失败：{reason}',
     'client.downloading': 'QuickDock 正在下载桌面运行时 {percent}%（{mb}/{total} MB）',
     'client.more': '更多 Dock 操作',
+    'client.restartService': '重启服务（重读页面资源）',
     'client.restartDock': '重启 Dock 窗口',
     'client.restartFailed': '重启失败：{reason}',
     'client.hideDock': '关闭 Dock 窗口',
@@ -313,6 +315,17 @@ function SendToDock(props) {
     }
   }
 
+  const restartService = async (event) => {
+    event.stopPropagation()
+    setMenu(null)
+    try {
+      const result = await bridge('restart-service', {})
+      if (result && result.error) showError(t('client.restartFailed', { reason: result.error }))
+    } catch (error) {
+      showError(t('client.restartFailed', { reason: String(error && error.message || error) }))
+    }
+  }
+
   const restart = async (event) => {
     event.stopPropagation()
     setMenu(null)
@@ -327,6 +340,7 @@ function SendToDock(props) {
   const menuItems = [
     { key: 'hide', label: t('client.hideDock'), onClick: hide },
     { key: 'reset', label: t('client.resetWindows'), onClick: resetWindows },
+    { key: 'service', label: t('client.restartService'), onClick: restartService },
     { key: 'restart', label: t('client.restartDock'), onClick: restart }
   ]
 
