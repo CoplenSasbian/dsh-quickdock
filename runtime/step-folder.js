@@ -510,6 +510,15 @@ class StepFolder {
      * [this turn's seq, next turn's seq)).
      */
     this.turns = []
+    /**
+     * Highest event sequence ever evicted by the maxSteps window.
+     *
+     * A turn whose first event sits after this watermark kept every row it
+     * produced; a turn that starts before it lost some (or all) of them, so its
+     * rows in this folder are a tail, not the turn. History reads use this to
+     * decide between the fold and rebuilding the turn from the session snapshot.
+     */
+    this.evictedSeq = 0
     /** Newest task list the agent published (todo_write), or null. */
     this.todos = null
     /** Goal read from a goal tool result, or null. */
@@ -530,6 +539,20 @@ class StepFolder {
   hasTurn(turn) {
     const value = Number(turn)
     return this.turns.some((entry) => entry.turn === value)
+  }
+
+  /**
+   * Whether every row a turn produced is still in the fold.
+   *
+   * A listed turn whose rows were (partly) evicted must be rebuilt from the
+   * session snapshot: returning the surviving tail would show a truncated turn.
+   * @param {number} turn turn number.
+   * @returns {boolean} true when the maxSteps window never touched the turn.
+   */
+  hasFullTurn(turn) {
+    const index = this.turns.findIndex((entry) => entry.turn === Number(turn))
+    if (index < 0) return false
+    return this.turns[index].seq > this.evictedSeq
   }
 
   /**
@@ -593,6 +616,7 @@ class StepFolder {
     }
     if (this.list.length >= this.maxSteps) {
       const dropped = this.list.shift()
+      this.evictedSeq = Math.max(this.evictedSeq, this.seqOf.get(dropped.id) ?? 0)
       this.byId.delete(dropped.id)
       this.seqOf.delete(dropped.id)
       this.details.delete(dropped.id)

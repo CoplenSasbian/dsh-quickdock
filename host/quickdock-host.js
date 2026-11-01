@@ -882,6 +882,11 @@ export class QuickDockHost {
         folder.apply(event)
         folded += 1
       } catch (_) { /* a malformed event must not break the read */ }
+      // Stop once the next turn has started: the replay keeps only its newest
+      // maxSteps rows, so folding on past the target would evict the very rows
+      // this read exists to return (that made every older turn come back empty).
+      const latest = folder.latestTurn()
+      if (latest !== null && latest > turn) break
     }
     const rows = folder.rows(turn)
     this.trace('fold from snapshot(' + sessionId + ' turn ' + turn + '): events=' + events.length
@@ -998,7 +1003,20 @@ export class QuickDockHost {
       if (rows) return { sessionId: target, turn, observed: true, steps: rows }
       return { sessionId: target, turn, observed: false, steps: [] }
     }
-    return { sessionId: target, turn, observed: true, steps: folder.rows(turn) }
+    const rows = folder.rows(turn)
+    // A turn the retention window touched keeps only its tail (or nothing), so
+    // the fold is only authoritative while it never evicted the turn. That is
+    // what made "load earlier turns" work once and then return empty batches:
+    // the second batch asked for turns whose rows were already gone.
+    if (rows.length && (!wantsTurn || folder.hasFullTurn(turn))) {
+      return { sessionId: target, turn, observed: true, steps: rows }
+    }
+    if (wantsTurn) {
+      const rebuilt = this.#foldTurnFromSnapshot(target, turn)
+      if (rebuilt) return { sessionId: target, turn, observed: true, steps: rebuilt }
+      return { sessionId: target, turn, observed: false, steps: [] }
+    }
+    return { sessionId: target, turn, observed: true, steps: rows }
   }
 
   /**

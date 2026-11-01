@@ -34,6 +34,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Fixed
 
+- "Load earlier turns" keeps working past the first batch. The fold keeps only its
+  newest `maxSteps` rows, so every older turn stayed listed while its rows were
+  gone, and each batch after the first came back empty (`observed: true, steps: 0`).
+  `GET turn` now answers from the fold only while the retention window never
+  touched the turn; otherwise it rebuilds that one turn from the session log,
+  replaying just up to the turn's end so the window cannot evict it again.
 - The header Dock button is back after the bundle patch was emptied: DSH builds the
   page's client-module roster from the rows a bundle declares and resolves the
   client bundle from the row named after the package, so a patch of `[]` mounted

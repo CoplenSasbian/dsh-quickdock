@@ -59,7 +59,7 @@ implies `service`; both off mounts nothing.
 | `GET state` | Full state snapshot (see below). |
 | `GET workspaces` | `{ workspaceId, workspaces: [{ id, name, path, sessionCount }] }`. |
 | `GET sessions?workspaceId=<id>` | `{ workspaceId, sessions: [{ sessionId, title, cwd, updatedAt, running, blank }] }`. Omit the workspace to list every indexed session. |
-| `GET turns?sessionId=<id>` | `{ sessionId, outline, turns: [{ turn, seq, prompt, response, rows, startedAt, endedAt }] }`; defaults to the bound session. |
+| `GET turns?sessionId=<id>` | `{ sessionId, outline, turns: [{ turn, seq, prompt, response, rows, startedAt, endedAt }] }`; defaults to the bound session. `rows` counts what the in-memory fold still holds: an old turn can report `0` and still be readable, because `turn` rebuilds it from the session log. |
 | `GET turn?turn=<n>&sessionId=<id>` | `{ sessionId, turn, observed, steps }`; omitting `turn` reads the newest one, omitting `sessionId` uses the bound session. |
 | `GET plan?sessionId=<id>` | `{ todos, goal, source }` — the agent's current plan and goal (see below). |
 | `GET step-detail?id=<rowId>&sessionId=<id>` | `{ args, result }` for one expandable row (bound session by default). |
