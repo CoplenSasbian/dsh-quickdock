@@ -168,6 +168,7 @@
       if (!sessionId) return;
       // A different session starts a new column.
       if (sessionId !== loadedSession) {
+        report('column reset for session ' + sessionId + ' (was ' + loadedSession + ')')
         loadedSession = sessionId;
         turnList = [];
         outline = [];
@@ -257,11 +258,15 @@
         var row = batch[index];
         var meta = { number: row.turn, startedAt: row.startedAt, endedAt: row.endedAt };
         api('turn?turn=' + row.turn).then(function (detail) {
+          report('turn ' + row.turn + ': observed=' + Boolean(detail && detail.observed)
+            + ' steps=' + ((detail && detail.steps && detail.steps.length) || 0))
           if (detail && detail.observed && detail.steps && detail.steps.length) {
             turnList.push({ number: row.turn, turn: meta, steps: detail.steps });
             turnList.sort(function (a, b) { return a.number - b.number; });
           }
-        }).catch(function () {}).then(function () { next(index + 1); });
+        }).catch(function (error) {
+          report('turn ' + row.turn + ' failed: ' + String((error && error.message) || error))
+        }).then(function () { next(index + 1); });
       };
       next(0);
     }
