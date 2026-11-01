@@ -17,24 +17,24 @@
     below this one, so neither window resizes while content grows.
   -->
   <main id="dock" class="stack" aria-label="QuickDock">
+    <!--
+      The agent's task list, docked to the top of this window: it sits between
+      the run window and the composer, so progress is visible while typing.
+    -->
+    <div class="todo-card" id="todoCard" hidden>
+      <div class="todo-head" id="todoHead" role="button" tabindex="0">
+        <span class="todo-icon" aria-hidden="true">☰</span>
+        <span class="todo-title" data-i18n="todo.title">Tasks</span>
+        <span class="todo-count" id="todoCount"></span>
+        <span class="todo-chevron" aria-hidden="true">▾</span>
+      </div>
+      <div class="todo-list" id="todoList"></div>
+    </div>
     <section id="panelA" class="panel" data-i18n-aria-label="bar.inputPanel">
       <!--
         One row: session title + read-only workspace chip + status dot + actions.
         Which session is bound is decided in DSH (header Dock button), not here.
       -->
-      <!--
-        The agent's task list, docked to the top of this window: it sits between
-        the run window and the composer, so progress is visible while typing.
-      -->
-      <div class="todo-card" id="todoCard" hidden>
-        <div class="todo-head" id="todoHead" role="button" tabindex="0">
-          <span class="todo-icon" aria-hidden="true">☰</span>
-          <span class="todo-title" data-i18n="todo.title">Tasks</span>
-          <span class="todo-count" id="todoCount"></span>
-          <span class="todo-chevron" aria-hidden="true">▾</span>
-        </div>
-        <div class="todo-list" id="todoList"></div>
-      </div>
       <div class="bar">
         <span class="sess-title blank" id="sessTitle" data-i18n="bar.connecting">Connecting…</span>
         <span class="sess-meta" id="sessMeta"></span>

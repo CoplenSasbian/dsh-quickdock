@@ -450,13 +450,25 @@ html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
 
 
 /* ---------- Task list: the agent's own steps ---------- */
+/* Its own card, outside the panel: the window background shows between them, so
+   the task list reads as a separate strip above the input window. */
 .todo-card{
   flex:none;
-  margin:0 10px 7px;
-  border:1px solid var(--border-2);
-  border-radius:9px;
-  background:var(--bg-2);
+  width:100%;
+  margin:0 0 8px;
+  border:1px solid var(--border-1);
+  border-radius:14px;
+  background:var(--bg-1);
+  box-shadow:
+    0 12px 28px -14px rgba(0,0,0,.5),
+    inset 0 1px 0 rgba(255,255,255,.04);
   overflow:hidden;
+  pointer-events:auto;
+}
+html[data-theme="light"] .todo-card{
+  box-shadow:
+    0 12px 26px -16px rgba(20,26,40,.22),
+    inset 0 1px 0 rgba(255,255,255,.9);
 }
 .todo-card[hidden]{display:none}
 .todo-head{

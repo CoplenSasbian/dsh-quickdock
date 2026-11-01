@@ -14,8 +14,8 @@
   var i18n = window.QD.i18n;
   var t = i18n.t;
 
-  /** Whether the task list is collapsed (remembered per render). */
-  var todoOpen = true;
+  /** Whether the task list is expanded; it starts collapsed to keep the window short. */
+  var todoOpen = false;
 
   /**
    * The agent's task list: a small card at the top of the input window, between
@@ -321,8 +321,14 @@
     var panel = els.panelA;
     var quickDock = window.quickDock;
     if (!panel || !quickDock || !quickDock.setContentHeight) return;
-    // .stack pads 10px top and bottom around the panel.
-    var height = Math.ceil(panel.getBoundingClientRect().height) + 20;
+    // The task card sits above the panel as its own block, so both count.
+    var stackHeight = Math.ceil(panel.getBoundingClientRect().height);
+    if (els.todoCard && !els.todoCard.hidden) {
+      var box = els.todoCard.getBoundingClientRect();
+      stackHeight += Math.ceil(box.height) + 8;
+    }
+    // .stack pads 10px top and bottom around the blocks.
+    var height = stackHeight + 20;
     // Before the first render the panel is a stub: reporting it would shrink the
     // window to the clamp and flash.
     if (height < 160 || Math.abs(height - reportedHeight) < 2) return;
@@ -336,7 +342,10 @@
   }
 
   if (window.ResizeObserver && els.panelA) {
-    new window.ResizeObserver(function () { syncWindowHeight(); }).observe(els.panelA);
+    var heightObserver = new window.ResizeObserver(function () { syncWindowHeight(); });
+    heightObserver.observe(els.panelA);
+    // The task card is a sibling block: expanding it changes the window height.
+    if (els.todoCard) heightObserver.observe(els.todoCard);
   }
 
   /* ------------------------------ detail mode ------------------------------ */
@@ -1014,6 +1023,7 @@
       var toggleTodos = function () {
         todoOpen = !todoOpen;
         renderTodos();
+        syncWindowHeight();
         scheduleHitReport();
       };
       els.todoHead.addEventListener('click', toggleTodos);
