@@ -83,7 +83,7 @@
   "display.tool.search": "搜索",
   "display.tool.web": "网页",
   "display.tool.write": "写入",
-  "display.toolFallback": "工具",
+  "display.toolFallback": "工具调用",
   "error.http": "请求失败 HTTP {status}",
   "error.noSession": "还没有绑定会话",
   "host.busOffline": "DSH 主窗口没有连上（插件是否启用？）",

@@ -137,6 +137,15 @@ html[data-theme="light"] .panel{
 .new-btn{border-radius:8px}
 
 
+/* One line naming the running tool; empty unless something is called. */
+.run-line{display:flex;align-items:center;gap:6px;height:24px;padding:0 12px;flex:none;font-size:11.5px;color:var(--text-2);-webkit-app-region:drag;overflow:hidden}
+.run-line.hidden{display:none}
+.run-line .rl-icon{font-size:10px;opacity:.6;flex:none}
+.run-line .rl-label{flex:none;color:var(--text-2)}
+.run-line .rl-name{flex:none;color:var(--text-2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.run-line .rl-name:before,.run-line .rl-args:before{content:'·';margin-right:6px;opacity:.5}
+.run-line .rl-args{flex:1 1 auto;min-width:0;font-family:var(--qd-font-code);font-size:10.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 /* Stop lives in the title bar: no extra row while the agent works. */
 .bar .stop-btn{width:24px;height:24px;flex:none;justify-content:center;background:transparent;border:0;box-shadow:none;color:var(--text-2);padding:0}
 .bar .stop-btn:hover{background:var(--qd-interactive-hover);color:var(--text-1)}

@@ -57,6 +57,8 @@
     pinBtnA: U.$('pinBtnA'), hideBtnA: U.$('hideBtnA'), listBtn: U.$('listBtn'), openBtn: U.$('openBtn'),
     drows: U.$('drows'),
     stopBtnRun: U.$('stopBtnRun'),
+    runLine: U.$('runLine'), runLineLabel: U.$('runLineLabel'),
+    runLineName: U.$('runLineName'), runLineArgs: U.$('runLineArgs'),
     runApproval: U.$('runApproval'), runApprovalTool: U.$('runApprovalTool'),
     runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny')
   };
@@ -401,10 +403,83 @@
   function applyRunMode(status) {
     var busy = isBusy(status);
     if (els.stopBtnRun) els.stopBtnRun.classList.toggle('hidden', !busy);
+    renderRunLine();
     renderApproval();
     // The panel decides dragging/hit regions: re-report after the bar changes.
     scheduleHitReport();
     syncListButton();
+  }
+
+  /** Tool name -> the label DSH prints before the dot. */
+  var TOOL_LABELS = [
+    [/^(read)$/i, 'display.tool.read'],
+    [/^(read_image)$/i, 'display.tool.read'],
+    [/^(write)$/i, 'display.tool.write'],
+    [/^(edit|edit_file|str_replace_editor)$/i, 'display.tool.edit'],
+    [/^(grep|glob|fs_search)$/i, 'display.tool.search'],
+    [/^(bash|pwsh|shell|terminal)$/i, 'display.tool.commands'],
+    [/^(run_code|ptc|workflow)$/i, 'display.tool.code'],
+    [/^(web_search|web_fetch)$/i, 'display.tool.web']
+  ];
+
+  /**
+   * Label for one tool name; the DSH rule is the bare name, so the ops_ prefix
+   * some runtimes add is stripped before matching.
+   * @param {string} name raw tool name.
+   * @returns {{label: string, known: boolean}} localized label and whether the
+   *   name matched a known kind (unknown tools keep their name in the line).
+   */
+  function toolLabel(name) {
+    var bare = String(name || '').replace(/^ops_/i, '');
+    for (var index = 0; index < TOOL_LABELS.length; index += 1) {
+      if (TOOL_LABELS[index][0].test(bare)) {
+        return { label: t(TOOL_LABELS[index][1]), known: true };
+      }
+    }
+    return { label: t('display.toolFallback'), known: false };
+  }
+
+  /**
+   * One line naming the tool the agent is running right now.
+   *
+   * The window has no step list any more, but "what is it doing" still matters:
+   * the line reads like DSH's row - label, then the tool name when it is an
+   * unknown/MCP tool, then the arguments.
+   */
+  function renderRunLine() {
+    if (!els.runLine || !state) return;
+    var current = null;
+    var stream = state.stream;
+    if (state.status === 'running' && stream && stream.tools && stream.tools.length) {
+      current = stream.tools[stream.tools.length - 1];
+    }
+    if (!current && state.status === 'running') {
+      var steps = state.steps || [];
+      for (var index = steps.length - 1; index >= 0; index -= 1) {
+        var step = steps[index];
+        if (step && step.kind === 'tool' && step.status === 'run') {
+          current = step;
+          break;
+        }
+      }
+    }
+    if (!current) {
+      els.runLine.classList.add('hidden');
+      return;
+    }
+    var name = String(current.name || current.tool || '');
+    var label = toolLabel(name);
+    // Live stream drafts carry raw arguments; folded rows carry either a
+    // summary or the JSON tail the Host keeps for unnamed tools.
+    var args = current.args !== undefined && current.args !== null && typeof current.args === 'object'
+      ? U.compactArgs(current.args)
+      : (current.command || current.args || current.description || '');
+    els.runLine.classList.remove('hidden');
+    els.runLineLabel.textContent = label.label;
+    els.runLineName.hidden = label.known || !name;
+    els.runLineName.textContent = label.known ? '' : name;
+    els.runLineArgs.hidden = !args;
+    els.runLineArgs.textContent = String(args || '');
   }
 
   /** Show the pending approval, if one is waiting for an answer. */

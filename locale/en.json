@@ -83,7 +83,7 @@
   "display.tool.search": "Search",
   "display.tool.web": "Web",
   "display.tool.write": "Write",
-  "display.toolFallback": "tool",
+  "display.toolFallback": "Tool call",
   "error.http": "Request failed: HTTP {status}",
   "error.noSession": "No session is bound yet",
   "host.busOffline": "The DSH main window is not connected (is the plugin enabled?)",

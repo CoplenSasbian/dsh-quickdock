@@ -36,7 +36,17 @@
         <button class="icon-btn" id="hideBtnA" data-i18n-title="bar.close" data-i18n-aria-label="bar.close">✕</button>
       </div>
       <!--
-        Composer mount: the island draws the text box, the function pills and the
+        One line naming the tool the agent is running, in DSH's own shape:
+        label - tool name (when it is an MCP/unknown tool) - arguments.
+      -->
+      <div id="runLine" class="run-line hidden" aria-live="polite">
+        <span class="rl-icon" aria-hidden="true">✦</span>
+        <span class="rl-label" id="runLineLabel"></span>
+        <span class="rl-name" id="runLineName" hidden></span>
+        <span class="rl-args" id="runLineArgs" hidden></span>
+      </div>
+      <!--
+        Composer mount: the island draws the text box, the function keys and the
         send button with the DSH primitives, so it matches the main window.
       -->
       <!-- In-place approval: answering never leaves the window. -->

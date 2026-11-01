@@ -287,12 +287,16 @@ const EVENT_HANDLERS = {
     // Sub-calls name their parent: the dock nests them like the call tree the
     // main window draws, instead of flattening them into sibling rows.
     const parent = data.parentCallId ? String(data.parentCallId) : ''
+    const command = summarizeArgs(parsed, raw)
     folder.pushRow(seq, {
       id: 'tool-' + data.callId,
       kind: 'tool',
       tool: data.name,
       description: description.slice(0, MAX_DESCRIPTION),
-      command: summarizeArgs(parsed, raw),
+      command,
+      // No telling argument? Keep a short JSON tail: the window names the call
+      // the way DSH does ("tool - name - {args}") instead of hiding it.
+      ...command ? {} : { args: oneLine(raw, 160) },
       status: 'run',
       time: time ?? '',
       ...parent ? { parent } : {},
