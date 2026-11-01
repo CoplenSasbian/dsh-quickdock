@@ -159,6 +159,23 @@
       if (latestState) renderRows(latestState);
     });
 
+    // Growth does not fire a scroll event, so following the bottom needs the
+    // layout itself as the trigger: rows arriving one by one (a long turn, a
+    // streamed chain) must keep the newest one in view.
+    if (window.ResizeObserver) {
+      try {
+        var growObserver = new window.ResizeObserver(function () {
+          var scroller = scrollHost();
+          if (scroller && autoScroll) scroller.scrollTop = scroller.scrollHeight;
+        });
+        growObserver.observe(host);
+        var listEl = document.getElementById('blocks');
+        if (listEl) growObserver.observe(listEl);
+      } catch (error) {
+        /* the observer is an enhancement, not a requirement */
+      }
+    }
+
     /** Create the island once and hand it the newest state. */
     /**
      * Keep the column in step with the newest turn and pull older ones once, so
@@ -554,8 +571,12 @@
       if (!didInitialScroll) {
         didInitialScroll = true;
         autoScroll = true;
+        // Layout may not be flushed when this runs (fonts, images, the island's
+        // first commit), so pin on the next frames as well instead of writing
+        // scrollTop once against a height that is still 0.
         var scroller = scrollHost();
         if (scroller) scroller.scrollTop = scroller.scrollHeight;
+        followGrowth(600);
       }
       scheduleHitReport();
     }
