@@ -520,11 +520,15 @@ html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
 .ask-actions .card-btn{
   min-width:64px;min-height:24px;padding:2px 10px;font-size:11px;border-radius:6px;
 }
+/* Tinted, not filled: a filled button takes its colour from --brand, which a
+   theme may set to something light - leaving white text on a white button. */
 .ask-actions .card-btn.primary{
-  border-color:var(--brand,#4d8eff);
-  background:var(--brand,#4d8eff);
-  color:#fff;
+  border-color:rgba(77,142,255,.55);
+  background:rgba(77,142,255,.18);
+  color:var(--brand,#4d8eff);
+  font-weight:500;
 }
+.ask-actions .card-btn.primary:hover{background:rgba(77,142,255,.26)}
 .ask-actions .card-btn[disabled]{opacity:.45;cursor:default}
 
 /* ---------- Tool rows: expanded while running, collapsed when done ---------- */
