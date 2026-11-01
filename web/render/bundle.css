@@ -4191,11 +4191,13 @@ html[data-theme="light"] {
 }
 
 /* Dock render island: layout the DSH stylesheets assume but do not own. */
+/* The panel is the scroll host, so the inset lives here: rows must not touch
+ * the window edge, and the turn header's hairline follows the same column. */
 .qd-flow {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 2px 0;
+  padding: 8px 14px 10px;
 }
 
 .qd-row {
