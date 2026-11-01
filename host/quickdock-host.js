@@ -32,6 +32,7 @@ import { EventHub } from './event-hub.js'
 import { DELEGATE, InteractionBroker } from './interactions.js'
 import { LocaleController } from './locale.js'
 import { PageRenderer } from './page.js'
+import { readVersion } from './version.js'
 import { SessionIndex } from './session-index.js'
 import { createSnapshotBuilder } from './snapshot.js'
 import { StreamBuffer } from './stream-buffer.js'
@@ -210,7 +211,11 @@ export class QuickDockHost {
     this.catalogService.refreshAll()
     void this.index.refresh()
     this.#startTimers()
-    this.dsh.logger?.info?.('quickdock: host half loaded')
+    const version = readVersion(ROOT_DIR)
+    this.state.version = version
+    this.trace('host half loaded: version=' + (version.pkg || '?')
+      + ' commit=' + (version.hash || 'unknown') + ' startedAt=' + version.startedAt)
+    this.dsh.logger?.info?.('quickdock: host half loaded ' + (version.hash || ''))
   }
 
   /** Snapshot of the runtime download, polled by the Client footer badge. */

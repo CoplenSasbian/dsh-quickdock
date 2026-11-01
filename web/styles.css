@@ -489,6 +489,7 @@ html[data-theme="light"] .todo-card{
 .todo-head:hover{background:var(--qd-fill-soft)}
 .todo-icon{font-size:10px;color:var(--text-3)}
 .todo-title{font-weight:500}
+.todo-build{margin-left:auto;font-family:var(--qd-font-code);font-size:9px;color:var(--text-3);opacity:.7}
 .todo-count{
   margin-left:auto;
   font-family:var(--qd-font-code);font-size:9.5px;

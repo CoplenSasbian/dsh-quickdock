@@ -25,6 +25,8 @@ export function createSnapshotBuilder(deps) {
       .filter((agent) => agent?.status === 'running' && agent.id !== state.sessionId).length
 
     return {
+      // Which build the host is running: makes a stale process obvious.
+      version: state.version || null,
       workspaceId: state.workspaceId,
       sessionId: state.sessionId,
       newSession: state.newSession,

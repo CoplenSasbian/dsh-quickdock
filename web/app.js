@@ -64,6 +64,11 @@
     els.todoCard.hidden = false;
     els.todoCard.classList.toggle('open', todoOpen);
     els.todoCount.textContent = todos.length ? done + '/' + todos.length : '';
+    if (els.todoBuild) {
+      var build = state.version;
+      els.todoBuild.textContent = build && build.hash ? build.hash : '';
+      els.todoBuild.title = build ? 'host ' + (build.pkg || '?') + ' · ' + (build.hash || '?') + ' · ' + build.startedAt : '';
+    }
     if (isTodo) {
       report('todo page: todos=' + todos.length + ' goal=' + Boolean(goal) + ' asked=' + todoReported);
       var wantVisible = true;
@@ -175,6 +180,7 @@
     runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny'),
     todoCard: U.$('todoCard'), todoHead: U.$('todoHead'), todoCount: U.$('todoCount'),
     todoList: U.$('todoList'), todoGoal: U.$('todoGoal'), todoGoalText: U.$('todoGoalText'),
+    todoBuild: U.$('todoBuild'),
     askCard: U.$('askCard'), askTitle: U.$('askTitle'), askStep: U.$('askStep'),
     askQuestionText: U.$('askQuestionText'), askOptions: U.$('askOptions'),
     askInput: U.$('askInput'), askBack: U.$('askBack'), askNext: U.$('askNext')
@@ -186,7 +192,7 @@
       'confirm', 'confirmOk', 'confirmCancel', 'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn',
       'stopBtnRun', 'runApproval',
       'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny',
-      'todoCard', 'todoHead', 'todoCount', 'todoList', 'todoGoal', 'todoGoalText',
+      'todoCard', 'todoHead', 'todoCount', 'todoList', 'todoGoal', 'todoGoalText', 'todoBuild',
       'askCard', 'askTitle', 'askStep', 'askQuestionText', 'askOptions',
       'askInput', 'askBack', 'askNext'].forEach(function (key) {
       els[key] = null;
