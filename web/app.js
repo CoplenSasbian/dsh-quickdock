@@ -139,10 +139,6 @@
     }
   }
 
-  if (window.ResizeObserver && els.todoCard) {
-    new window.ResizeObserver(function () { syncTodoHeight(); }).observe(els.todoCard);
-  }
-
   /** Question stepper state: which interaction, which question, answers so far. */
   var ask = { id: '', index: 0, answers: {} };
 
@@ -434,6 +430,9 @@
     heightObserver.observe(els.panelA);
     // The task card is a sibling block: expanding it changes the window height.
     if (els.todoCard) heightObserver.observe(els.todoCard);
+    if (isTodo && window.ResizeObserver) {
+      new window.ResizeObserver(function () { syncTodoHeight(); }).observe(els.todoCard);
+    }
   }
 
   /* ------------------------------ detail mode ------------------------------ */
