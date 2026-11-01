@@ -337,12 +337,6 @@ class DockRuntime {
      * fixed so the composer grows upwards, and the result is clamped into the
      * work area and remembered like any other geometry change.
      */
-    /** Collapse the docked window to one line (or restore its height). */
-    ipcMain.handle('dock:display-collapsed', (event, collapsed) => {
-      if (this.quitting) return false;
-      return this.setDisplayCollapsed(collapsed === true);
-    });
-
     ipcMain.handle('dock:content-height', (event, height) => {
       if (this.quitting) return 0;
       return this.setContentHeight(height);
@@ -654,40 +648,6 @@ class DockRuntime {
     this.remember();
     trace('content height: ' + bounds.height + ' -> ' + target);
     return target;
-  }
-
-  /**
-   * Collapse the docked window to a single line (the turn header) or restore it.
-   * @param {boolean} collapsed whether the window should be collapsed.
-   * @returns {boolean} the state actually applied.
-   */
-  setDisplayCollapsed(collapsed) {
-    const win = this.displayWin;
-    if (!win || win.isDestroyed()) return false;
-    if (collapsed) {
-      if (!this.displayCollapsed) {
-        this.displayCollapsed = win.getBounds();
-      }
-      const bounds = win.getBounds();
-      const area = currentDisplay(this.electron.screen, bounds).workArea;
-      const height = 40;
-      const y = this.displayAbove ? bounds.y : bounds.y + bounds.height - height;
-      win.setBounds({ x: bounds.x, y: Math.max(area.y, y), width: bounds.width, height });
-      if (this.displayWin && !this.displayWin.isDestroyed()) {
-        this.displayWin.webContents.send('dock:collapsed', true);
-      }
-      return true;
-    }
-    if (this.displayCollapsed) {
-      const saved = this.displayCollapsed;
-      this.displayCollapsed = null;
-      win.setBounds(saved);
-      this.placeDisplayWindow(true);
-      if (this.displayWin && !this.displayWin.isDestroyed()) {
-        this.displayWin.webContents.send('dock:collapsed', false);
-      }
-    }
-    return false;
   }
 
   setMenuSpace(extra) {

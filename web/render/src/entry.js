@@ -407,7 +407,7 @@ function LiveRows({ stream, t, labels }) {
   return h('div', { className: 'qd-live' }, rows)
 }
 
-function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth }) {
+function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth, detailMode }) {
   const [openIds, setOpenIds] = useState(() => new Set())
   const [details, setDetails] = useState({})
   const [turnChoice, setTurnChoice] = useState(null)
@@ -446,27 +446,48 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth }) {
 
   // Every open row (auto-opened running rows included) loads its detail, and a
   // settled row refetches once so its result replaces the running view.
+  /**
+   * Whether a row is open right now.
+   *  auto   - only the running row
+   *  open   - every row
+   *  closed - none
+   * A manual toggle still wins inside auto for the row it touched.
+   */
+  const rowOpen = useCallback((step) => {
+    const id = String(step.id)
+    if (detailMode === 'open') return true
+    if (detailMode === 'closed') return false
+    return openIds.has(id) || step.status === 'run'
+  }, [detailMode, openIds])
+
   const openSignature = useMemo(() => {
     const ids = [...openIds]
-    steps.forEach((step) => { if (step.status === 'run') ids.push(String(step.id)) })
-    return ids.sort().join(',')
-  }, [openIds, steps])
+    steps.forEach((step) => {
+      if (step.status === 'run' || detailMode === 'open') ids.push(String(step.id))
+    })
+    return ids.sort().join(',') + '|' + detailMode
+  }, [openIds, steps, detailMode])
 
   useEffect(() => {
     const wanted = new Set(openIds)
-    steps.forEach((step) => { if (step.status === 'run') wanted.add(String(step.id)) })
+    steps.forEach((step) => {
+      if (step.status === 'run' || detailMode === 'open') wanted.add(String(step.id))
+    })
     steps.forEach((step) => {
       const id = String(step.id)
       if (wanted.has(id)) request(id, step.status)
     })
-  }, [openSignature, steps, openIds, request])
+  }, [openSignature, steps, openIds, request, detailMode])
 
   const labels = useMemo(() => makeLabels(t), [t])
   const markdownLabels = useMemo(() => ({
     code: { copyLabel: t('display.copy'), copiedLabel: t('display.copied') },
     footnotes: t('display.footnotes')
   }), [t])
-  const turnOpen = turnChoice === null ? Boolean(running) : turnChoice
+  // The turn fold follows the same mode: auto opens it while the turn runs.
+  const turnOpen = detailMode === 'open' ? true
+    : detailMode === 'closed' ? false
+      : turnChoice === null ? Boolean(running) : turnChoice
   const toggleTurn = useCallback(() => {
     setTurnChoice((prev) => !(prev === null ? Boolean(running) : prev))
     if (onGrowth) onGrowth()
@@ -493,7 +514,7 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth }) {
     return h(ToolRow, {
       key: id,
       step: step,
-      open: openIds.has(id) || step.status === 'run',
+      open: rowOpen(step),
       running: id === live,
       labels: labels,
       detail: details[id],
@@ -550,7 +571,8 @@ function create(options) {
         running: Boolean(state && state.running),
         t: options.t || IDENTITY,
         loadDetail: options.loadDetail,
-        onGrowth: options.onGrowth
+        onGrowth: options.onGrowth,
+        detailMode: (state && state.detail) || 'auto'
       }))
     },
     unmount() {

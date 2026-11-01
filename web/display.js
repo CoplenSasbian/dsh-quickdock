@@ -30,7 +30,22 @@
    * @returns {{render: Function, bindAutoScroll: Function, initialScroll: Function,
    *            scrollHost: Function, applyVisibility: Function}}
    */
+  /**
+   * Detail mode chosen in the input window (the details button). Both pages share
+   * the origin, so the docked window reads the same storage key.
+   * @returns {'auto'|'open'|'closed'|'hidden'} current mode.
+   */
+  function readDetailMode() {
+    try {
+      var saved = localStorage.getItem('qd-detail-mode');
+      return saved === 'open' || saved === 'closed' || saved === 'hidden' ? saved : 'auto';
+    } catch (error) {
+      return 'auto';
+    }
+  }
+
   function create(options) {
+    var latestState = null;
     var host = options.root;
     var api = options.api;
     var getState = options.getState;
@@ -113,8 +128,16 @@
       return rows
     }
 
+    // The mode lives in localStorage; another window changing it must fold the
+    // rows here without waiting for a state push.
+    window.addEventListener('storage', function (event) {
+      if (event.key !== 'qd-detail-mode') return;
+      if (latestState) renderRows(latestState);
+    });
+
     /** Create the island once and hand it the newest state. */
     function renderRows(state) {
+      latestState = state;
       var rows = rowsHost()
       if (!island) {
         island = window.QD.render.create({
@@ -130,6 +153,7 @@
         })
       }
       island.render({
+        detail: readDetailMode(),
         steps: (state && state.steps) || [],
         stream: state && state.stream,
         turn: state && state.turn,

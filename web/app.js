@@ -281,12 +281,12 @@
    *  - closed: never shown
    */
   var DETAIL_KEY = 'qd-detail-mode';
-  var DETAIL_MODES = ['auto', 'open', 'collapsed', 'closed'];
+  var DETAIL_MODES = ['auto', 'open', 'closed', 'hidden'];
   var DETAIL_LABELS = {
     auto: 'detail.auto',
     open: 'detail.open',
-    collapsed: 'detail.collapsed',
-    closed: 'detail.closed'
+    closed: 'detail.closed',
+    hidden: 'detail.hidden'
   };
   var detailMode = readDetailMode();
 
@@ -344,15 +344,13 @@
     var hasContent = Boolean(steps.length || hasInter
       || (stream && (stream.text || stream.thinking || (stream.tools && stream.tools.length))));
     var busy = Boolean(state && isBusy(state.status));
-    var show = detailMode === 'closed' ? false
-      : detailMode === 'auto' ? (busy && hasContent)
-        : hasContent;
+    // Only "hidden" closes the window; the other modes decide how the rows
+    // inside it are folded, which the docked page handles itself.
+    var show = detailMode !== 'hidden' && (hasContent || busy);
     var quickDock = window.quickDock;
-    if (!quickDock) return;
+    if (!quickDock || !quickDock.setDisplayEmpty) return;
     try {
-      if (quickDock.setDisplayEmpty) quickDock.setDisplayEmpty(!show);
-      // Collapsed keeps the window but folds it to its header line.
-      if (quickDock.setDisplayCollapsed) quickDock.setDisplayCollapsed(detailMode === 'collapsed' && show);
+      quickDock.setDisplayEmpty(!show);
     } catch (error) {
       /* IPC is optional outside Electron */
     }
@@ -1017,12 +1015,6 @@
   if (!isDisplay) syncListButton();
 
   if (isDisplay && displayView) {
-    var dock = window.quickDock;
-    if (dock && dock.onCollapsed) {
-      dock.onCollapsed(function (collapsed) {
-        document.body.classList.toggle('collapsed', Boolean(collapsed));
-      });
-    }
     // Content grows towards the input window depending on which side it sits.
     displayView.bindAutoScroll();
     displayView.initialScroll();
