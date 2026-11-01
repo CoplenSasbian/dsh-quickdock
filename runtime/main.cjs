@@ -186,13 +186,20 @@ class DockRuntime {
     this.displayWin = unified ? null : this.createDisplayWindow(restored.display);
     if (unified) trace('unified layout: one window, the docked pane lives inside it');
     this.todoWin = this.config.todoWindow === true ? this.createTodoWindow(restored.display) : null;
-    trace('display window created: bounds=' + JSON.stringify(this.displayWin.getBounds()));
-    // Keep the creation-time content size as the reference: moving drifts the client area, use it to correct.
-    const initialSize = this.displayWin.getContentSize();
-    this.displayWantW = initialSize[0];
-    this.displayWantH = initialSize[1];
-    trace('display want size = ' + initialSize);
-    this.placeDisplayWindow(true);
+    if (this.displayWin) {
+      trace('display window created: bounds=' + JSON.stringify(this.displayWin.getBounds()));
+      // Keep the creation-time content size as the reference: moving drifts the
+      // client area, use it to correct.
+      const initialSize = this.displayWin.getContentSize();
+      this.displayWantW = initialSize[0];
+      this.displayWantH = initialSize[1];
+      trace('display want size = ' + initialSize);
+      this.placeDisplayWindow(true);
+    } else {
+      // Unified layout: the docked pane lives inside the one window.
+      this.displayWantW = this.config.width;
+      this.displayWantH = this.config.displayHeight;
+    }
 
     /**
      * The two windows must stay **stacked together**.
@@ -203,11 +210,13 @@ class DockRuntime {
      * moveTop() only changes z-order without stealing focus, so this is safe.
      */
     this.win.on('focus', () => this.raiseDisplay());
-    this.displayWin.on('focus', () => {
-      if (this.win && !this.win.isDestroyed()) {
-        try { this.win.moveTop(); } catch (_) {}
-      }
-    });
+    if (this.displayWin) {
+      this.displayWin.on('focus', () => {
+        if (this.win && !this.win.isDestroyed()) {
+          try { this.win.moveTop(); } catch (_) {}
+        }
+      });
+    }
 
 
     /**
