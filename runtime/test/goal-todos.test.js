@@ -11,18 +11,18 @@ const { StepFolder } = require('../step-folder.js');
 test('goal: captured from a goal tool result', () => {
   const folder = new StepFolder(200);
   folder.apply({ type: 'turn/start', seq: 1, data: { turn: 1 }, time: '2026-11-01T00:00:00Z' });
-  folder.apply({ type: 'tool/call', seq: 2, data: { callId: 'g1', name: 'create_goal', arguments: '{"objective":"x"}' } });
+  folder.apply({ type: 'tool/call', seq: 2, data: { callId: 'g1', name: 'create_goal', arguments: '{"objective":"seed goal"}' } });
   folder.apply({
     type: 'tool/result',
     seq: 3,
     data: {
       message: {
         toolCallId: 'g1',
-        content: [{ type: 'text', text: JSON.stringify({ goal: { id: 'goal-1', objective: '把目标显示出来', phase: 'active' }, activation: 'armed' }) }]
+        content: [{ type: 'text', text: JSON.stringify({ goal: { id: 'goal-1', objective: 'show the goal', phase: 'active' }, activation: 'armed' }) }]
       }
     }
   });
-  assert.deepStrictEqual(folder.goal, { objective: '把目标显示出来', phase: 'active' });
+  assert.deepStrictEqual(folder.goal, { objective: 'show the goal', phase: 'active' });
 });
 
 test('goal: a cleared goal result removes it', () => {
@@ -55,10 +55,10 @@ test('seed: goal and plan come from history', () => {
     { type: 'turn/start', seq: 1, data: { turn: 1 }, time: '2026-11-01T00:00:00Z' },
     { type: 'todo/write', seq: 2, data: { todos: [{ content: 'a', status: 'pending' }, { content: 'b', status: 'completed' }] } },
     { type: 'tool/call', seq: 3, data: { callId: 'g9', name: 'get_goal', arguments: '{}' } },
-    { type: 'tool/result', seq: 4, data: { message: { toolCallId: 'g9', content: [{ type: 'text', text: '{"goal":{"objective":"旧目标","phase":"active"}}' }] } } }
+    { type: 'tool/result', seq: 4, data: { message: { toolCallId: 'g9', content: [{ type: 'text', text: '{"goal":{"objective":"seed goal","phase":"active"}}' }] } } }
   ];
   assert.strictEqual(folder.seedFromHistory(events), true);
-  assert.deepStrictEqual(folder.goal, { objective: '旧目标', phase: 'active' });
+  assert.deepStrictEqual(folder.goal, { objective: 'seed goal', phase: 'active' });
   assert.deepStrictEqual(folder.todos.map((row) => row.status), ['pending', 'completed']);
   assert.strictEqual(folder.rows(1).length, 0, 'seeding must not fabricate rows');
 });
