@@ -377,6 +377,18 @@ const EVENT_HANDLERS = {
     })
   },
 
+  /**
+   * The agent's plan. DSH emits this on every todo_write, so it is the source to
+   * trust; the tool-call fallback below only covers feeds without the event.
+   */
+  'todo/write'(folder, event) {
+    const todos = event && event.data && event.data.todos
+    if (!Array.isArray(todos)) return
+    folder.todos = todos
+      .filter((row) => row && typeof row.content === 'string')
+      .map((row) => ({ content: oneLine(row.content, 160), status: String(row.status || 'pending') }))
+  },
+
   'assistant/message'(folder, event) {
     const { data, time, seq } = event
     const message = data.message ?? {}

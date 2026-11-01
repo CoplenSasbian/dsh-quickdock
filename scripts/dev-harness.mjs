@@ -322,6 +322,20 @@ async function testRoutes(req, res, url) {
     }
     return send(200, { result })
   }
+  if (url.pathname === '/test/goal') {
+    // No goal service exists in this fake host: install one so the card's goal
+    // line can be exercised.
+    const body = await readJson(req)
+    const original = ctx.get.bind(ctx)
+    ctx.get = (name) => {
+      if (name !== 'goals') return original(name)
+      return {
+        get: (sessionId) => (body.objective ? { objective: body.objective, phase: body.phase || 'active', sessionId } : null)
+      }
+    }
+    if (hostApp) hostApp.publish()
+    return send(200, { ok: true })
+  }
   if (url.pathname === '/test/interaction') {
     // Publish a question straight into the state: the question broker only runs
     // with a real dock, and the card's rendering is what needs exercising.

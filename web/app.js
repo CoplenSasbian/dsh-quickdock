@@ -24,7 +24,12 @@
   function renderTodos() {
     if (!els.todoCard || !state) return;
     var todos = Array.isArray(state.todos) ? state.todos : [];
-    if (!todos.length) {
+    var goal = state.goal && state.goal.objective ? state.goal : null;
+    if (els.todoGoal) {
+      els.todoGoal.hidden = !goal;
+      if (goal && els.todoGoalText) els.todoGoalText.textContent = goal.objective;
+    }
+    if (!todos.length && !goal) {
       els.todoCard.hidden = true;
       els.todoCard.classList.remove('open');
       renderTodoList(null);
@@ -34,7 +39,7 @@
     todos.forEach(function (row) { if (row.status === 'completed') done += 1; });
     els.todoCard.hidden = false;
     els.todoCard.classList.toggle('open', todoOpen);
-    els.todoCount.textContent = done + '/' + todos.length;
+    els.todoCount.textContent = todos.length ? done + '/' + todos.length : '';
     if (renderTodoList.lastTodos !== todos || renderTodoList.lastOpen !== todoOpen) {
       renderTodoList(todos);
       renderTodoList.lastTodos = todos;
@@ -122,7 +127,7 @@
     runApproval: U.$('runApproval'), runApprovalTool: U.$('runApprovalTool'),
     runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny'),
     todoCard: U.$('todoCard'), todoHead: U.$('todoHead'), todoCount: U.$('todoCount'),
-    todoList: U.$('todoList'),
+    todoList: U.$('todoList'), todoGoal: U.$('todoGoal'), todoGoalText: U.$('todoGoalText'),
     askCard: U.$('askCard'), askTitle: U.$('askTitle'), askStep: U.$('askStep'),
     askQuestionText: U.$('askQuestionText'), askOptions: U.$('askOptions'),
     askInput: U.$('askInput'), askBack: U.$('askBack'), askNext: U.$('askNext')
@@ -134,7 +139,7 @@
       'confirm', 'confirmOk', 'confirmCancel', 'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn',
       'stopBtnRun', 'runApproval',
       'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny',
-      'todoCard', 'todoHead', 'todoCount', 'todoList',
+      'todoCard', 'todoHead', 'todoCount', 'todoList', 'todoGoal', 'todoGoalText',
       'askCard', 'askTitle', 'askStep', 'askQuestionText', 'askOptions',
       'askInput', 'askBack', 'askNext'].forEach(function (key) {
       els[key] = null;

@@ -138,7 +138,8 @@ export class QuickDockHost {
       dsh: this.dsh,
       index: this.index,
       hub: this.hub,
-      stream: this.stream
+      stream: this.stream,
+      goal: () => this.sessionGoal()
     })
 
     this.resolver = new ElectronResolver({
@@ -639,6 +640,7 @@ export class QuickDockHost {
     // One-shot probe: which projections and session fields could carry the rows
     // of turns this fold never saw.
     this.#probeHistory(live)
+    this.#probeGoal()
     return { sessionId: id, outline: Boolean(outline), turns }
   }
 
@@ -648,6 +650,56 @@ export class QuickDockHost {
    * @param {string|number} value turn number; empty = latest.
    */
   /** Log what history sources a live session exposes (temporary diagnostic). */
+  /** One-shot probe: where could the session goal live? */
+  /**
+   * The session's goal, when the host can see one.
+   *
+   * DSH keeps goals behind a service the plugin is not guaranteed to have, so
+   * every candidate is tried and a missing one simply means "no goal line".
+   * @returns {{objective: string, phase: string}|null} goal or null.
+   */
+  sessionGoal() {
+    if (!this.state.sessionId) return null
+    for (const name of ['goals', 'goal', 'sessionGoals', 'goalService']) {
+      try {
+        const service = this.ctx.get(name)
+        if (!service) continue
+        const read = service.get || service.current || service.of
+        const value = typeof read === 'function' ? read.call(service, this.state.sessionId) : null
+        if (!value) continue
+        const objective = String(value.objective || value.text || '').trim()
+        if (!objective) continue
+        return { objective, phase: String(value.phase || 'active') }
+      } catch (_) { /* try the next candidate */ }
+    }
+    return null
+  }
+
+  #probeGoal() {
+    if (this.probedGoal) return
+    this.probedGoal = true
+    for (const name of ['goals', 'goal', 'goalService', 'sessionGoals', 'goalStore', 'agentGoals']) {
+      let shape = 'missing'
+      try {
+        const service = this.ctx.get(name)
+        if (service) shape = typeof service + ':' + Object.keys(service || {}).join('|')
+      } catch (error) {
+        shape = 'threw'
+      }
+      this.trace('goal probe service ' + name + ' = ' + shape)
+    }
+    for (const key of ['goal', 'sessionGoal', 'goalState']) {
+      try {
+        const live = this.dsh.session(this.state.sessionId)
+        const value = this.dsh.projectionValues(live, [key])[key]
+        this.trace('goal probe projection ' + key + ' = '
+          + (value === undefined ? 'undefined' : JSON.stringify(value).slice(0, 160)))
+      } catch (error) {
+        this.trace('goal probe projection ' + key + ' threw')
+      }
+    }
+  }
+
   #probeHistory(live) {
     if (!live || this.probedHistory) return
     this.probedHistory = true

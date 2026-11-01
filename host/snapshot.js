@@ -11,7 +11,7 @@
  * @returns {() => object} snapshot producer.
  */
 export function createSnapshotBuilder(deps) {
-  const { config, state, dsh, index, hub, stream } = deps
+  const { config, state, dsh, index, hub, stream, goal } = deps
 
   return function snapshot() {
     const workspaces = dsh.workspaces().map((row) => ({ id: row.id, name: row.name, path: row.path }))
@@ -46,6 +46,8 @@ export function createSnapshotBuilder(deps) {
       steps: folder ? folder.rows() : [],
       // The agent's task list (todo_write), newest wins. Empty when it has none.
       todos: folder && Array.isArray(folder.todos) ? folder.todos : [],
+      // Visible only when the host can read one; the card hides the line otherwise.
+      goal: typeof goal === 'function' ? goal() : null,
       // The run window renders the turn as a DSH process block: the header shows
       // how many steps it holds and how long it took, so the timing travels with it.
       turn: latestTurn === null ? null : {
