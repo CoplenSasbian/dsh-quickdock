@@ -13,6 +13,8 @@
   "bar.noWorkspace": "No workspace",
   "bar.openInDsh": "Open current session in DSH",
   "bar.pin": "Always on top",
+  "bar.reload": "Reload the conversation",
+  "bar.reloaded": "Reloading the execution window",
   "bar.statusTitle": "Status",
   "bar.toggleList": "Show / hide the run window",
   "bar.toggleListLabel": "Show or hide the run window",

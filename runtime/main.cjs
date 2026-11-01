@@ -332,6 +332,17 @@ class DockRuntime {
         this.regions[this.whichWindow(event)].drag = value;
       }
     });
+    /**
+     * Reload the docked window: the page then re-reads the state and the history
+     * from scratch, which is the cure for a read that raced the host.
+     */
+    ipcMain.on('dock:reload-display', (event) => {
+      if (!sendAllowed(event)) return;
+      const win = this.displayWin;
+      if (!win || win.isDestroyed()) return;
+      trace('reload requested for the docked window');
+      win.webContents.reload();
+    });
     ipcMain.on('dock:hide', (event) => { if (sendAllowed(event)) this.hide(); });
     /**
      * Size the task window to the height its page reports. The edge that faces

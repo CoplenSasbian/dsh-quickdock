@@ -13,6 +13,8 @@
   "bar.noWorkspace": "未绑定工作区",
   "bar.openInDsh": "在 DSH 中打开当前会话",
   "bar.pin": "顶置",
+  "bar.reload": "重新加载对话",
+  "bar.reloaded": "已请求重新加载执行窗口",
   "bar.statusTitle": "状态",
   "bar.toggleList": "显示 / 隐藏执行过程窗口",
   "bar.toggleListLabel": "显示或隐藏执行过程窗口",

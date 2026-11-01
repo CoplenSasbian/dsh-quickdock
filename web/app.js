@@ -206,6 +206,7 @@
     todoCard: U.$('todoCard'), todoHead: U.$('todoHead'), todoCount: U.$('todoCount'),
     todoList: U.$('todoList'), todoGoal: U.$('todoGoal'), todoGoalText: U.$('todoGoalText'),
     todoBuild: U.$('todoBuild'),
+    reloadBtn: U.$('reloadBtn'),
     askCard: U.$('askCard'), askTitle: U.$('askTitle'), askStep: U.$('askStep'),
     askQuestionText: U.$('askQuestionText'), askOptions: U.$('askOptions'),
     askInput: U.$('askInput'), askBack: U.$('askBack'), askNext: U.$('askNext')
@@ -217,7 +218,7 @@
       'confirm', 'confirmOk', 'confirmCancel', 'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn',
       'stopBtnRun', 'runApproval',
       'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny',
-      'todoCard', 'todoHead', 'todoCount', 'todoList', 'todoGoal', 'todoGoalText', 'todoBuild',
+      'todoCard', 'todoHead', 'todoCount', 'todoList', 'todoGoal', 'todoGoalText', 'todoBuild', 'reloadBtn',
       'askCard', 'askTitle', 'askStep', 'askQuestionText', 'askOptions',
       'askInput', 'askBack', 'askNext'].forEach(function (key) {
       els[key] = null;
@@ -1100,6 +1101,17 @@
         return;
       }
       api('select', { newSession: true }).catch(toastError);
+    });
+
+    // Manual reload: the docked window re-reads the state and the history, which
+    // covers the case where its first read raced the host.
+    U.on(els.reloadBtn, 'click', function (event) {
+      event.stopPropagation();
+      var bridge = window.quickDock;
+      if (bridge && bridge.reloadDisplay) {
+        try { bridge.reloadDisplay(); } catch (error) { /* optional */ }
+      }
+      toast(t('bar.reloaded'));
     });
 
     U.on(els.stopBtnRun, 'click', function () {

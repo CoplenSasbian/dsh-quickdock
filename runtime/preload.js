@@ -14,6 +14,7 @@ const outbound = Object.freeze({
   setInteractive: 'dock:set-interactive',
   setHitRegions: 'dock:set-hit-regions',
   debug: 'dock:debug',
+  reloadDisplay: 'dock:reload-display',
   setDragZones: 'dock:set-drag-zones',
   setAlwaysOnTop: 'dock:set-always-on-top',
   setDisplayEmpty: 'dock:set-display-empty',
@@ -44,6 +45,11 @@ const api = Object.freeze({
     ipcRenderer.send(outbound.setInteractive, interactive);
   },
   /** Report rectangles that should receive mouse events. */
+  /** Ask the docked window to reload (re-reads state and history). */
+  reloadDisplay() {
+    ipcRenderer.send(outbound.reloadDisplay);
+  },
+
   /** Diagnostic line in dock.log (the page has no console of its own). */
   debug(message) {
     ipcRenderer.send(outbound.debug, String(message));
