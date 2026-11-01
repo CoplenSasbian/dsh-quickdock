@@ -145,7 +145,7 @@ test('row summary keeps one useful value, never raw JSON', () => {
   assert.strictEqual(bash.command, 'npm test -- --watch=false');
   assert.strictEqual(read.command, '…/proj/web/app.js', 'long paths keep three segments');
   assert.strictEqual(grep.command, 'step-json in web');
-  assert.strictEqual(mystery.command, 'foo=bar n=1', 'unknown fields fall back to key=value');
+  assert.strictEqual(mystery.command, '', 'unknown fields leave the row with its title, like DSH');
   assert.strictEqual(descOnly.command, '', 'a lone description produces no subtitle');
   for (const row of folder.rows()) assert.ok(!row.command.includes('{"'), 'no JSON blobs may be rendered');
 });

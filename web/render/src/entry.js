@@ -50,10 +50,18 @@ function baseTool(name) {
   return String(name || '').replace(/^ops_/i, '')
 }
 
-/** `mcp__server__tool` reads as the tool name; everything else keeps its name. */
-function shortTool(name) {
-  const match = /^mcp__.+?__(.+)$/.exec(String(name || ''))
-  return match ? match[1] : baseTool(name)
+/** Category -> the row's leading label, as DSH prints it before the dot. */
+const TOOL_LABELS = {
+  read: 'display.tool.read',
+  readImage: 'display.tool.read',
+  write: 'display.tool.write',
+  edit: 'display.tool.edit',
+  search: 'display.tool.search',
+  commands: 'display.tool.commands',
+  code: 'display.tool.code',
+  webSearch: 'display.tool.web',
+  webFetch: 'display.tool.web',
+  tools: 'display.toolFallback'
 }
 
 /** Tool name -> DSH activity category, in the order DSH classifies them. */
@@ -191,8 +199,11 @@ function elapsedOf(turn, running, now) {
 /** One tool call: title, one-line summary, optional metadata, expandable body. */
 function ToolRow({ step, open, running, labels, detail, onToggle, t, subRows }) {
   const Icon = TOOL_ICONS[baseTool(step.tool).toLowerCase()] || IconAgentPresetOutlineRegular
-  const title = String(step.description || '').trim() || shortTool(step.tool) || t('display.toolFallback')
-  const summary = String(step.command || '').trim()
+  // DSH's row is "label · summary": the label names the kind of work, and the
+  // summary carries the telling argument (path, command) or the model's intent.
+  const title = t(TOOL_LABELS[categoryOf(step.tool)] || TOOL_LABELS.tools)
+  const intent = String(step.description || '').trim()
+  const summary = String(step.command || '').trim() || intent
   const lines = step.lines && step.lines[0] && step.lines[1]
     ? t('display.lines', { from: step.lines[0], to: step.lines[1] })
     : ''

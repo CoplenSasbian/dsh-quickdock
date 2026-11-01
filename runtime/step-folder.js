@@ -81,15 +81,9 @@ function summarizeArgs(parsed, raw) {
     return /path|file/i.test(key) ? shortPath(value) : oneLine(value)
   }
 
-  const parts = []
-  for (const key of Object.keys(parsed)) {
-    if (key === 'description') continue // already the row title
-    const value = parsed[key]
-    if (value === null || value === undefined || value === '' || typeof value === 'object') continue
-    parts.push(key + '=' + oneLine(value, 48))
-    if (parts.length >= 2) break
-  }
-  return oneLine(parts.join(' '))
+  // Nothing telling to show: DSH draws no `key=value` tail, so an argument the
+  // summary table above does not recognize leaves the row with its title only.
+  return ''
 }
 
 /**
