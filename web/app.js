@@ -57,7 +57,7 @@
     pinBtnA: U.$('pinBtnA'), hideBtnA: U.$('hideBtnA'), listBtn: U.$('listBtn'), openBtn: U.$('openBtn'),
     drows: U.$('drows'),
     stopBtnRun: U.$('stopBtnRun'),
-    runLine: U.$('runLine'), runLineLabel: U.$('runLineLabel'),
+    runLine: U.$('runLine'), runDot: U.$('runDot'), runLineLabel: U.$('runLineLabel'),
     runLineName: U.$('runLineName'), runLineArgs: U.$('runLineArgs'),
     runApproval: U.$('runApproval'), runApprovalTool: U.$('runApprovalTool'),
     runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny')
@@ -449,24 +449,20 @@
   }
 
   /**
-   * One line naming the tool the agent is running right now.
+   * One line naming what the agent is doing right now.
    *
-   * The window has no step list any more, but "what is it doing" still matters:
-   * the line reads like DSH's row - label, then the tool name when it is an
-   * unknown/MCP tool, then the arguments.
+   * Shape: dot - label - text - stop. The dot and the stop button live in this
+   * bar instead of the title bar, so the title keeps only the session.
+   * Priority: live reasoning, then the running tool, then "working".
    */
   function renderRunLine() {
     if (!els.runLine || !state) return;
-    if (detailMode === 'closed') {
-      els.runLine.classList.add('hidden');
-      return;
-    }
     var running = state.status === 'running';
+    var stream = state.stream || {};
     var current = null;
     var index = 0;
     if (running) {
-      var stream = state.stream;
-      if (stream && stream.tools && stream.tools.length) {
+      if (stream.tools && stream.tools.length) {
         current = stream.tools[stream.tools.length - 1];
       }
       if (!current) {
@@ -491,8 +487,29 @@
         }
       }
     }
-    if (!current) {
+
+    var thinking = running ? lastThinkingLine(stream.thinking) : '';
+    var show = detailMode !== 'closed' && (running || Boolean(current));
+    if (els.stopBtnRun) els.stopBtnRun.classList.toggle('hidden', !running);
+
+    if (!show) {
       els.runLine.classList.add('hidden');
+      return;
+    }
+    els.runLine.classList.remove('hidden');
+    if (els.runDot) els.runDot.className = 'rl-dot' + (running ? (thinking ? ' thinking' : ' running') : '');
+
+    if (thinking) {
+      els.runLineLabel.textContent = t('run.thinking');
+      els.runLineName.hidden = true;
+      els.runLineArgs.hidden = false;
+      els.runLineArgs.textContent = thinking;
+      return;
+    }
+    if (!current) {
+      els.runLineLabel.textContent = t('run.executing');
+      els.runLineName.hidden = true;
+      els.runLineArgs.hidden = true;
       return;
     }
     var name = String(current.name || current.tool || '');
@@ -502,12 +519,29 @@
     var args = current.args !== undefined && current.args !== null && typeof current.args === 'object'
       ? U.compactArgs(current.args)
       : (current.command || current.args || current.description || '');
-    els.runLine.classList.remove('hidden');
     els.runLineLabel.textContent = label.label;
     els.runLineName.hidden = label.known || !name;
     els.runLineName.textContent = label.known ? '' : name;
     els.runLineArgs.hidden = !args;
     els.runLineArgs.textContent = String(args || '');
+  }
+
+  /**
+   * Last meaningful line of the reasoning stream.
+   * @param {string} text accumulated thinking text.
+   * @returns {string} one short line, empty when there is nothing to say.
+   */
+  function lastThinkingLine(text) {
+    var source = String(text || '');
+    if (!source) return '';
+    var parts = source.split(/\n+/);
+    for (var index = parts.length - 1; index >= 0; index -= 1) {
+      // Stream deltas are fragments: drop the punctuation a tail can start with
+      // so the line does not read "… , so the title…".
+      var line = parts[index].trim().replace(/^[,.;:!?)\]]+\s*/, '');
+      if (line) return U.shortText(line, 90);
+    }
+    return '';
   }
 
   /** Show the pending approval, if one is waiting for an answer. */

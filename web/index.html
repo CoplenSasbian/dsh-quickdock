@@ -27,7 +27,6 @@
         <span class="sess-meta" id="sessMeta"></span>
         <span class="ws-chip" data-i18n-title="bar.workspaceTitle"><span class="pk-icon">▣</span><span class="pk-name" id="wsName" data-i18n="bar.workspace">Workspace</span></span>
         <span class="bar-spacer"></span>
-        <button class="icon-btn stop-btn hidden" id="stopBtnRun" data-i18n-title="run.stop" data-i18n-aria-label="run.stop"><span class="sq"></span></button>
         <span class="status-dot" id="statusDot" data-i18n-title="bar.statusTitle" data-i18n-aria-label="bar.statusTitle"></span>
         <button class="icon-btn" id="openBtn" data-i18n-title="bar.openInDsh" data-i18n-aria-label="bar.openInDsh">↗</button>
         <button class="icon-btn" id="listBtn" data-i18n-title="bar.toggleList" data-i18n-aria-label="bar.toggleListLabel" aria-pressed="true">▤</button>
@@ -40,10 +39,12 @@
         label - tool name (when it is an MCP/unknown tool) - arguments.
       -->
       <div id="runLine" class="run-line hidden" aria-live="polite">
-        <span class="rl-icon" aria-hidden="true">✦</span>
+        <span class="rl-dot" id="runDot" aria-hidden="true"></span>
+        <span class="rl-figure" aria-hidden="true">✦</span>
         <span class="rl-label" id="runLineLabel"></span>
         <span class="rl-name" id="runLineName" hidden></span>
         <span class="rl-args" id="runLineArgs" hidden></span>
+        <button class="stop-btn" id="stopBtnRun" data-i18n-title="run.stop" data-i18n-aria-label="run.stop"><span class="sq"></span></button>
       </div>
       <!--
         Composer mount: the island draws the text box, the function keys and the
