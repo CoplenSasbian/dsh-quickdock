@@ -52,12 +52,12 @@ test('entries: the service mounts the API and no windows', async () => {
   assert.strictEqual(app.dock, null, 'no supervisor in the service entry');
 });
 
-test('entries: the package row mounts the service of the bundle', async () => {
+test('entries: the package row mounts both components', async () => {
   const { app } = await mountEntry(INDEX, {});
-  // The package row mounts the API and carries the client bundle (the Dock
-  // button); the windows are the bundle's inserted component row.
+  // A component row was tried and cost the header Dock button: DSH builds the
+  // client roster from bundle rows, and a subpath is not a package specifier.
   assert.ok(app, 'the package row must mount');
-  assert.deepStrictEqual(app.state.components, { service: true, dock: false });
+  assert.deepStrictEqual(app.state.components, { service: true, dock: true });
 });
 
 test('entries: the dock entry attaches to the running service', async () => {
