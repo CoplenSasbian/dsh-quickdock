@@ -27,6 +27,7 @@
         <span class="sess-meta" id="sessMeta"></span>
         <span class="ws-chip" data-i18n-title="bar.workspaceTitle"><span class="pk-icon">▣</span><span class="pk-name" id="wsName" data-i18n="bar.workspace">Workspace</span></span>
         <span class="bar-spacer"></span>
+        <button class="icon-btn stop-btn hidden" id="stopBtnRun" data-i18n-title="run.stop" data-i18n-aria-label="run.stop"><span class="sq"></span></button>
         <span class="status-dot" id="statusDot" data-i18n-title="bar.statusTitle" data-i18n-aria-label="bar.statusTitle"></span>
         <button class="icon-btn" id="openBtn" data-i18n-title="bar.openInDsh" data-i18n-aria-label="bar.openInDsh">↗</button>
         <button class="icon-btn" id="listBtn" data-i18n-title="bar.toggleList" data-i18n-aria-label="bar.toggleListLabel" aria-pressed="true">▤</button>
@@ -38,19 +39,6 @@
         Composer mount: the island draws the text box, the function pills and the
         send button with the DSH primitives, so it matches the main window.
       -->
-      <!--
-        Run strip: one line while the agent works. The composer below stays
-        usable, so the window never turns into a progress panel.
-      -->
-      <div id="runPanel" class="run-strip hidden">
-        <span class="status-dot" id="runDot" data-i18n-title="bar.statusTitle" data-i18n-aria-label="bar.statusTitle"></span>
-        <span class="run-title" id="runTitle" data-i18n="run.title">Running</span>
-        <span class="run-elapsed" id="runElapsed"></span>
-        <span class="run-action" id="runAction" hidden></span>
-        <span class="run-sub" id="runSub"></span>
-        <span class="strip-spacer"></span>
-        <button class="stop-btn" id="stopBtnRun"><span class="sq"></span><span data-i18n="run.stop">Stop</span></button>
-      </div>
       <!-- In-place approval: answering never leaves the window. -->
       <div class="run-approval" id="runApproval" hidden>
         <div class="ra-head"><span class="ra-icon">⚠</span><span data-i18n="card.needConfirm">Needs confirmation</span><span class="ra-tool" id="runApprovalTool"></span></div>

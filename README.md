@@ -115,33 +115,25 @@ All UI strings live in `locale/en.json` and `locale/zh.json` (flat dotted keys,
 Adding a language: add `locale/<id>.json`, extend `SUPPORTED_LOCALES` in
 `runtime/i18n.js` (and the client catalog), then run `npm run check`.
 
-## Run window rendering
+## Composer rendering
 
-The run window draws its rows with the **DSH web UI primitives**
-(`@deepseek-ai/dsh-client-ui-primitives`, MIT) instead of re-implementing them: the same
-`DisclosureRow` / `TextShimmer` / `TerminalBlock` / `DiffBlock` components the main window
-uses, so typography, spacing, dots, chevrons and expanded cards match by construction.
+The dock is a single window: a title bar and the composer. While the agent works the bar
+grows a stop button; the composer never moves, so typing stays possible.
 
-The island is a small React app in `web/render/src`. It owns the turn: a foldable process
-header (`N steps` + elapsed time, closed once the turn ends, exactly like DSH), its rows,
-the assistant replies that stay outside the fold, and the live stream rows (streaming
-reasoning, tool drafts, prose with a caret). `display.js` keeps what is not a row: the
-question card, scroll following and hit regions. Artifacts are committed, so installing
-the plugin needs no build:
+The composer is a render island (`web/render/src/composer.js`). Its layout and metrics are
+copied from DSH's own composer (ui-conversation `InputBar.module.css`): one card surface
+(`--dsw-specific-input-major`, panel radius, soft elevation), the text at 14px/24px, then a
+row of borderless 28px selects with a 34px round primary button on the right. The page
+keeps the behaviour (submit, menus, drafts) behind a small imperative handle.
+
+Artifacts are committed, so installing the plugin needs no build:
 
 ```bash
 npm run build:render   # rebuild web/render/bundle.js + bundle.css after editing src/
 ```
 
-The build resolves only the three shiki grammars the primitives pre-warm and stubs the
-brand-glyph barrel, keeping the inlined page bundle under ~1 MB.
-
-The input window's composer is a second island (web/render/src/composer.js). Its layout
-and metrics are copied from DSH's own composer (ui-conversation InputBar.module.css): one
-card surface, the text, then a row of borderless selects with a round primary button. The
-page keeps the behaviour (submit, menus, drafts) behind a small imperative handle. Both
-islands read the DSH palette directly, because the Host forwards every --dsw-* token and
-not only the ones its own stylesheet uses.
+The island reads the DSH palette directly, because the Host forwards every `--dsw-*` token
+and not only the ones its own stylesheet uses.
 
 ## Project layout
 

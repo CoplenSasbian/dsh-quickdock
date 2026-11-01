@@ -56,8 +56,6 @@
     confirm: U.$('confirm'), confirmOk: U.$('confirmOk'), confirmCancel: U.$('confirmCancel'),
     pinBtnA: U.$('pinBtnA'), hideBtnA: U.$('hideBtnA'), listBtn: U.$('listBtn'), openBtn: U.$('openBtn'),
     drows: U.$('drows'),
-    runPanel: U.$('runPanel'), runDot: U.$('runDot'), runTitle: U.$('runTitle'),
-    runElapsed: U.$('runElapsed'), runAction: U.$('runAction'), runNow: U.$('runNow'), runSub: U.$('runSub'),
     stopBtnRun: U.$('stopBtnRun'),
     runApproval: U.$('runApproval'), runApprovalTool: U.$('runApprovalTool'),
     runApprovalReason: U.$('runApprovalReason'), runAllow: U.$('runAllow'), runDeny: U.$('runDeny')
@@ -67,7 +65,6 @@
     ['panelA', 'wsName', 'sessTitle', 'sessMeta', 'composerHost', 'newBtn',
       'statusDot', 'menu',
       'confirm', 'confirmOk', 'confirmCancel', 'pinBtnA', 'hideBtnA', 'listBtn', 'openBtn',
-      'runPanel', 'runDot', 'runTitle', 'runElapsed', 'runAction', 'runNow', 'runSub',
       'stopBtnRun', 'runApproval',
       'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny'].forEach(function (key) {
       els[key] = null;
@@ -397,143 +394,33 @@
       || Boolean(state && state.interaction && state.interaction.status === 'open');
   }
 
-  var runStartedAt = 0;
-  var runTicker = null;
-
+  /**
+   * While the agent works the bar grows a stop button; the composer never moves.
+   * @param {string} status agent status.
+   */
   function applyRunMode(status) {
-    if (!els.runPanel) return;
     var busy = isBusy(status);
-    // The composer stays: the strip only reports, it never takes the window.
-    els.runPanel.classList.toggle('hidden', !busy);
-    // The panel decides dragging/hit regions: re-report after switching.
+    if (els.stopBtnRun) els.stopBtnRun.classList.toggle('hidden', !busy);
+    renderApproval();
+    // The panel decides dragging/hit regions: re-report after the bar changes.
     scheduleHitReport();
     syncListButton();
-
-    if (!busy) {
-      if (runTicker) {
-        clearInterval(runTicker);
-        runTicker = null;
-      }
-      runStartedAt = 0;
-      return;
-    }
-    if (!runStartedAt) runStartedAt = Date.now();
-    if (!runTicker) {
-      runTicker = setInterval(function () {
-        if (!state || !isBusy(state.status)) return;
-        updateRunInfo();
-      }, 1000);
-    }
-    updateRunInfo();
   }
 
-  /** Refresh elapsed time, current action and step counts of the run panel. */
-  function updateRunInfo() {
-    if (!els.runPanel || !state) return;
-    var status = state.status;
+  /** Show the pending approval, if one is waiting for an answer. */
+  function renderApproval() {
+    if (!els.runApproval || !state) return;
     var interaction = state.interaction;
-
-    if (els.runDot) {
-      els.runDot.className = 'status-dot ' + ({
-        running: 'running', ask: 'ask', done: 'done', error: 'error'
-      }[status] || '');
-    }
-    if (els.runTitle) {
-      var title = 'status.ready';
-      if (interaction && interaction.status === 'open') {
-        title = interaction.kind === 'approval' ? 'status.ask' : 'status.waitingAnswer';
-      } else if (status === 'ask') {
-        title = 'status.waitingAnswer';
-      } else if (status === 'running') {
-        title = 'status.running';
-      } else if (status === 'done') {
-        title = 'status.done';
-      } else if (status === 'error') {
-        title = 'status.failed';
-      }
-      els.runTitle.textContent = t(title);
-    }
-    if (els.runElapsed) {
-      els.runElapsed.textContent = runStartedAt ? U.formatElapsed(Date.now() - runStartedAt) : '';
-    }
-
-    var stream = state.stream;
-    var steps = state.steps || [];
-
-    // 1) What is running now: the live tool call, else the last tool row.
-    var action = '';
-    if (stream && stream.tools && stream.tools.length) {
-      var tool = stream.tools[stream.tools.length - 1];
-      action = (tool.name || t('display.toolFallback')) + '  ' + U.compactArgs(tool.args);
-    }
-    if (!action) {
-      for (var index = steps.length - 1; index >= 0; index -= 1) {
-        var step = steps[index];
-        if (step && step.kind === 'tool') {
-          action = (step.tool || t('display.toolFallback')) + '  ' + U.compactArgs(step.command);
-          break;
-        }
-      }
-    }
-    if (els.runAction) {
-      var shownAction = U.shortText(action, 150);
-      if (els.runAction.textContent !== shownAction) els.runAction.textContent = shownAction;
-      els.runAction.hidden = !shownAction;
-    }
-
-    // 2) What is being written now: live stream first, committed row second.
-    var live = stream ? (stream.text || stream.thinking || '') : '';
-    var latest = '';
-    for (var back = steps.length - 1; back >= 0; back -= 1) {
-      var row = steps[back];
-      if (!row) continue;
-      var text = row.kind === 'think' ? (row.text || '')
-        : row.kind === 'say' ? (row.text || '')
-          : (row.description || '');
-      if (text) {
-        latest = text;
-        break;
-      }
-    }
-    var body = U.shortText(live, 400) || U.shortText(latest, 400);
-    if (els.runNow) {
-      var shown = body || (status === 'running' ? t('run.starting') : '');
-      if (els.runNow.textContent !== shown) els.runNow.textContent = shown;
-      els.runNow.classList.toggle('streaming', Boolean(live));
-      // Purple only while thinking, so "thinking" and "talking" differ.
-      els.runNow.classList.toggle('thinking', Boolean(stream && stream.thinking && !stream.text));
-      if (els.runNow.scrollHeight > els.runNow.clientHeight) {
-        els.runNow.scrollTop = els.runNow.scrollHeight;
-      }
-    }
-    if (els.runSub) {
-      var done = 0;
-      var failed = 0;
-      steps.forEach(function (row) {
-        if (row.status === 'fail') failed += 1;
-        else if (row.status === 'done') done += 1;
-      });
-      var bits = [];
-      if (done) bits.push(t('run.doneCount', { count: done }));
-      if (failed) bits.push(t('run.failedCount', { count: failed }));
-      if (state.backgroundRunning) bits.push(t('run.backgroundCount', { count: state.backgroundRunning }));
-      els.runSub.textContent = bits.join(' · ');
-    }
-
-    // 3) Approval block: answer without leaving the input window.
-    if (els.runApproval) {
-      var approval = interaction && interaction.status === 'open' && interaction.kind === 'approval'
-        ? interaction
-        : null;
-      els.runApproval.hidden = !approval;
-      if (approval) {
-        var reason = approvalText(approval);
-        els.runApprovalTool.textContent = approval.toolName ? String(approval.toolName) : '';
-        els.runApprovalReason.textContent = reason;
-        els.runApprovalReason.hidden = !reason;
-        els.runApprovalReason.title = reason;
-      }
-    }
+    var approval = interaction && interaction.status === 'open' && interaction.kind === 'approval'
+      ? interaction
+      : null;
+    els.runApproval.hidden = !approval;
+    if (!approval) return;
+    var reason = approvalText(approval);
+    els.runApprovalTool.textContent = approval.toolName ? String(approval.toolName) : '';
+    els.runApprovalReason.textContent = reason;
+    els.runApprovalReason.hidden = !reason;
+    els.runApprovalReason.title = reason;
   }
 
   /** Approval text: current locale first, then Chinese, then the raw reason. */
