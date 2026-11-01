@@ -52,6 +52,9 @@
     /** How many each click of the button adds. */
     var MORE_BATCH = 5;
 
+    /** True while older turns are being inserted above the viewport. */
+    var anchorAbove = false;
+
     /** Set once the column had content; the window then stays up. */
     var seenContent = false;
     var turnList = [];
@@ -243,6 +246,9 @@
       var next = function (index) {
         if (index >= batch.length) {
           loadingHistory = false;
+          // Everything fetched lands above the current view: keep the reader where
+          // they were instead of jumping to the top.
+          anchorAbove = true;
           if (latestState) render(latestState);
           else render();
           return;
@@ -389,11 +395,26 @@
       }, GESTURE_IDLE_MS);
     }
 
-    function applyAutoScroll(prevTop, wasAuto) {
+    /**
+     * Restore the reading position after a render.
+     *
+     * Older turns are inserted ABOVE the viewport, so the scroll offset must grow
+     * by however much the content grew - otherwise the reader is thrown to the
+     * top of the conversation on every "load earlier turns".
+     * @param {number} prevTop offset before the render.
+     * @param {boolean} wasAuto whether the list was following the bottom.
+     * @param {number} prevHeight scrollHeight before the render.
+     */
+    function applyAutoScroll(prevTop, wasAuto, prevHeight) {
       var scroller = scrollHost();
       if (!scroller) return;
-      if (wasAuto) scroller.scrollTop = scroller.scrollHeight;
-      else scroller.scrollTop = prevTop;
+      if (wasAuto) {
+        scroller.scrollTop = scroller.scrollHeight;
+        return;
+      }
+      var grown = Math.max(0, scroller.scrollHeight - (prevHeight || 0));
+      scroller.scrollTop = anchorAbove ? prevTop + grown : prevTop;
+      anchorAbove = false;
     }
 
     function bindAutoScroll() {
@@ -499,9 +520,10 @@
 
       var scroller = scrollHost();
       var prevTop = scroller ? scroller.scrollTop : 0;
+      var prevHeight = scroller ? scroller.scrollHeight : 0;
       var wasAuto = autoScroll;
       syncRows(state, interaction, hasInter);
-      applyAutoScroll(prevTop, wasAuto);
+      applyAutoScroll(prevTop, wasAuto, prevHeight);
       scheduleHitReport();
     }
 
