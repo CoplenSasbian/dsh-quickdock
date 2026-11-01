@@ -116,6 +116,11 @@ const ROUTES = [
   },
   {
     method: 'GET',
+    path: 'plan',
+    handle: ({ app, url }) => app.readPlan(url.searchParams.get('sessionId') || '')
+  },
+  {
+    method: 'GET',
     path: 'turn',
     handle: ({ app, url }) => app.turnDetail(
       url.searchParams.get('turn') ?? '',

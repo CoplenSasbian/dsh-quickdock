@@ -768,6 +768,38 @@ export class QuickDockHost {
     return rows && rows.length ? rows : null
   }
 
+  /**
+   * The agent's plan and goal, asked for on demand.
+   *
+   * They are persistent (todo/write is written to the session log), so a client
+   * that missed the event must be able to ask for them instead of waiting.
+   * @param {string} [sessionId] defaults to the bound session.
+   * @returns {{todos: object[], goal: object|null, source: string}} current state.
+   */
+  readPlan(sessionId) {
+    const target = String(sessionId || this.state.sessionId || '')
+    if (!target) return { todos: [], goal: null, source: 'none' }
+    const folder = this.state.folders.get(target) || null
+    if (folder && folder.todos && folder.todos.length) {
+      return { todos: folder.todos, goal: folder.goal || null, source: 'fold' }
+    }
+    const live = this.dsh.session(target)
+    const events = live && Array.isArray(live.eventsSnapshot) ? live.eventsSnapshot : null
+    if (events && events.length) {
+      // Scan backwards: the newest write wins, no need to fold everything.
+      const found = new StepFolder(this.config.maxSteps)
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        const event = events[index]
+        if (!event || event.type !== 'todo/write') continue
+        found.apply(event)
+        if (found.todos && found.todos.length) {
+          return { todos: found.todos, goal: folder ? folder.goal || null : null, source: 'snapshot' }
+        }
+      }
+    }
+    return { todos: [], goal: folder ? folder.goal || null : null, source: 'empty' }
+  }
+
   turnDetail(value, sessionId) {
     const target = sessionId || this.state.sessionId
     if (!target) return { sessionId: null, turn: null, observed: false, steps: [] }

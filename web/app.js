@@ -57,6 +57,7 @@
       els.todoCard.classList.add('open');
       els.todoCount.textContent = '';
       renderTodoList([]);
+      watchPlan();
       return;
     }
     var done = 0;
@@ -64,6 +65,7 @@
     els.todoCard.hidden = false;
     els.todoCard.classList.toggle('open', todoOpen);
     syncTodoHeight();
+    watchPlan();
     els.todoCount.textContent = todos.length ? done + '/' + todos.length : '';
     if (els.todoBuild) {
       var build = state.version;
@@ -137,6 +139,50 @@
     } catch (error) {
       /* the bridge is optional outside Electron */
     }
+  }
+
+  /** How many times the task window asked for the plan on its own. */
+  var planQueries = 0;
+  var planTimer = null;
+
+  /**
+   * Ask the host for the plan when the pushed state has none.
+   *
+   * todo/write is persistent, so a window that missed the event can still read
+   * the current list through the API instead of showing "no steps yet" forever.
+   */
+  function queryPlan() {
+    if (!isTodo) return;
+    if (planQueries >= 20) return;
+    planQueries += 1;
+    api('plan').then(function (plan) {
+      if (!plan || !Array.isArray(plan.todos)) return;
+      if (!plan.todos.length && !plan.goal) return;
+      report('plan from api: todos=' + plan.todos.length + ' source=' + plan.source);
+      // Feed the same renderer the pushed state would have fed.
+      state.todos = plan.todos;
+      if (plan.goal) state.goal = plan.goal;
+      renderTodos();
+      scheduleHitReport();
+    }).catch(function (error) {
+      report('plan query failed: ' + String((error && error.message) || error));
+    });
+  }
+
+  /** Poll while the plan is missing: the host may still be seeding. */
+  function watchPlan() {
+    if (!isTodo) return;
+    if (planTimer) return;
+    planTimer = setInterval(function () {
+      var empty = !state || !Array.isArray(state.todos) || !state.todos.length;
+      if (!empty) {
+        clearInterval(planTimer);
+        planTimer = null;
+        return;
+      }
+      queryPlan();
+    }, 2000);
+    queryPlan();
   }
 
   /** Question stepper state: which interaction, which question, answers so far. */
