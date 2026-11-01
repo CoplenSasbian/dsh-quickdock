@@ -303,6 +303,8 @@
 
     function renderRows(state) {
       latestState = state;
+      // A new conversation has no session yet: never fall back to a stale turn.
+      var blank = Boolean(state && (state.newSession || !state.sessionId));
       var rows = rowsHost()
       if (!island) {
         island = window.QD.render.create({
@@ -322,9 +324,9 @@
         turns: turnList,
         moreCount: pendingTurns().length,
         onLoadMore: function () { loadMoreTurns(MORE_BATCH); },
-        steps: (state && state.steps) || [],
-        stream: state && state.stream,
-        turn: state && state.turn,
+        steps: blank ? [] : ((state && state.steps) || []),
+        stream: blank ? null : (state && state.stream),
+        turn: blank ? null : (state && state.turn),
         running: Boolean(state && state.status === 'running')
       })
     }
@@ -500,7 +502,13 @@
       // Absorb before deciding whether there is anything to show: on a cold bind
       // the live state is empty and only the outline can tell us otherwise.
       absorbHistory(state);
-      var steps = (state && state.steps) || [];
+      // A new conversation has no session yet: the previous column must not survive.
+      var blank = Boolean(state && (state.newSession || !state.sessionId));
+      if (blank) {
+        turnList = [];
+        outline = [];
+      }
+      var steps = blank ? [] : ((state && state.steps) || []);
       var interaction = state && state.interaction;
       var hasInter = Boolean(interaction && interaction.status === 'open');
       var hasStream = hasLiveText(state && state.stream);
@@ -514,7 +522,7 @@
       // hint, and the panel keeps its full height instead of collapsing to a
       // two-pixel strip inside a 520px window.
       if (!hasContent) {
-        syncRows(state, interaction, hasInter);
+        syncRows(blank ? Object.assign({}, state, { turn: null, stream: null, steps: [] }) : state, interaction, hasInter);
         return;
       }
 

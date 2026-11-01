@@ -4365,10 +4365,11 @@ html[data-theme="light"] {
   flex: none;
   border: none;
   border-radius: 999px;
-  background: var(--dsw-alias-button-info-fill, var(--dsw-alias-brand-primary, #4d8eff));
-  /* On a filled button DSH paints the foreground token, which flips with the
-     theme: white on a dark fill, dark on a light one. */
-  color: var(--dsw-alias-label-primary-foreground, #ffffff);
+  /* Fixed brand blue with a fixed white glyph. Every theme token tried here
+     (button-info-fill, brand-primary) resolved to white in some theme, which made
+     the arrow disappear; the button is QuickDock's, not a theme surface. */
+  background: #4d8eff;
+  color: #ffffff;
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
@@ -4377,7 +4378,7 @@ html[data-theme="light"] {
 }
 
 .qd-send:hover:not(:disabled) {
-  background: var(--dsw-alias-button-info-hover, var(--dsw-alias-brand-primary, #4d8eff));
+  filter: brightness(1.08);
 }
 
 .qd-send:disabled {

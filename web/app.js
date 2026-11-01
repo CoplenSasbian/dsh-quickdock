@@ -196,6 +196,12 @@
       if (!plan || !Array.isArray(plan.todos)) return;
       if (!plan.todos.length && !plan.goal) return;
       report('plan from api: todos=' + plan.todos.length + ' source=' + plan.source);
+      // 'projection' is DSH's own answer: it is complete, so stop asking. New
+      // writes still arrive over the state stream.
+      if (plan.source === 'projection' && planTimer) {
+        clearInterval(planTimer);
+        planTimer = null;
+      }
       // Feed the same renderer the pushed state would have fed.
       state.todos = plan.todos;
       if (plan.goal) state.goal = plan.goal;
@@ -505,20 +511,23 @@
     var quickDock = window.quickDock;
     if (!panel || !quickDock || !quickDock.setContentHeight) return;
     // The task card sits above the panel as its own block, so both count.
-    var stackHeight = Math.ceil(panel.getBoundingClientRect().height);
-    if (unified) {
-      // One window, three panes. The details pane asks for a configured height;
-      // the other two are measured. The runtime clamps the total to the work
-      // area, and CSS lets the pane shrink by that difference.
-      stackHeight += (window.__QD_PANE_HEIGHT__ || 420) + 8;
-    }
-    // The task card lives in its own window now; only count it if it is here.
-    if (els.todoCard && !els.todoCard.hidden) {
-      var box = els.todoCard.getBoundingClientRect();
-      stackHeight += Math.ceil(box.height) + 8;
-    }
-    // .stack pads 10px top and bottom around the blocks.
-    var height = stackHeight + 20;
+    // Sum the blocks with their real margins and the stack's own padding: the
+    // spacing is CSS, so hard-coding it here drifts the moment it changes.
+    var stack = document.querySelector('.stack');
+    var stackStyle = stack ? window.getComputedStyle(stack) : null;
+    var height = stackStyle
+      ? parseFloat(stackStyle.paddingTop) + parseFloat(stackStyle.paddingBottom)
+      : 0;
+    var blockHeight = function (element) {
+      if (!element || element.hidden) return 0;
+      var style = window.getComputedStyle(element);
+      return element.getBoundingClientRect().height
+        + (parseFloat(style.marginTop) || 0)
+        + (parseFloat(style.marginBottom) || 0);
+    };
+    if (unified) height += window.__QD_PANE_HEIGHT__ || 420;
+    height += blockHeight(els.todoCard) + blockHeight(panel);
+    height = Math.ceil(height);
     // Before the first render the panel is a stub: reporting it would shrink the
     // window to the clamp and flash.
     if (height < 160 || Math.abs(height - reportedHeight) < 2) return;
@@ -1219,6 +1228,18 @@
       toast(t('bar.reloaded'));
     });
 
+    // Diagnostic: what the send button actually resolves to in this window.
+    setTimeout(function () {
+      var button = document.querySelector('#composerHost .qd-send');
+      if (!button) {
+        report('send button: not found');
+        return;
+      }
+      var style = window.getComputedStyle(button);
+      report('send button: bg=' + style.backgroundColor + ' color=' + style.color
+        + ' disabled=' + button.disabled + ' size=' + Math.round(button.getBoundingClientRect().width));
+    }, 1200);
+
     U.on(els.stopBtnRun, 'click', function () {
       api('stop', {}).catch(toastError);
     });
@@ -1422,7 +1443,9 @@
     }
     if (quickDock.setHitRegions) {
       try {
-        quickDock.setHitRegions(collectRects('.panel, .menu, .toast, .modal-backdrop'));
+        // The plan strip and the docked pane are interactive too: without them
+        // the window stays click-through there and the pane cannot be scrolled.
+        quickDock.setHitRegions(collectRects('.panel, .menu, .toast, .modal-backdrop, .todo-card, .display-pane'));
       } catch (error) {
         /* ignore */
       }

@@ -115,6 +115,23 @@ for (const key of enKeys) {
   warn('locale/en.json', 'unused key "' + key + '"')
 }
 
+/* 2b. Page attributes that a user can read or hover must be localized. */
+for (const file of files.filter((entry) => /^web\/[^/]+\.html$/.test(entry.rel))) {
+  const html = readFileSync(file.full, 'utf8')
+  for (const match of html.matchAll(/<[^>]*>/g)) {
+    const tag = match[0]
+    for (const [attr, dataAttr] of [['title', 'data-i18n-title'], ['placeholder', 'data-i18n-placeholder'], ['aria-label', 'data-i18n-aria-label']]) {
+      const direct = new RegExp('\\s' + attr + '="([^"]+)"').exec(tag)
+      if (!direct) continue
+      if (tag.includes(dataAttr)) continue
+      // A brand name is the same in every locale.
+      if (direct[1] === 'QuickDock') continue
+      const line = html.slice(0, match.index).split('\n').length
+      fail(file.rel + ':' + line, 'hardcoded ' + attr + '="' + direct[1] + '" (use ' + dataAttr + ')')
+    }
+  }
+}
+
 /* 3. Client bundle catalog must mirror the JSON files. */
 const clientFile = files.find((entry) => entry.rel === 'client.js')
 if (!clientFile) {

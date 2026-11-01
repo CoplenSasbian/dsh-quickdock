@@ -1,35 +1,28 @@
-# dsh-quickdock bundle patch: mounts the Host half into the profile plugin tree.
-# Keys must match the Config schema in index.js (stale keys silently do nothing).
+# QuickDock ships three rows in DSH's plugin list:
+#
+#   dsh-quickdock     - the package row. It mounts nothing, but it is the row
+#                       that carries the client bundle: DSH's client-modules
+#                       scan resolves `<row name>/package.json`, so a row whose
+#                       name is exactly the package name is the ONLY way the
+#                       header Dock button reaches the page. Delete this row and
+#                       the button silently disappears while everything else
+#                       keeps working.
+#   quickdock-service - the Host API: routes, SSE, folds, interactions. No Electron.
+#   quickdock-dock    - the windows, attached to that service.
+#
+# The package row must come first: it is what the two component rows hang off,
+# and it is the switch that hides the button for every session.
+#
+# Disabling the dock leaves a headless API server (IDE clients, scripts, no
+# Electron). Disabling the service takes the API away; the dock row then warns and
+# stays inert.
 - insert:
     - id: dsh-quickdock
       name: dsh-quickdock
-      config:
-        enabled: true
-        # On demand: Electron starts on the first Dock click and exits with the window.
-        # Set true to stay resident (close only hides; no start-up latency).
-        autoLaunch: false
-        # Fetch Electron in the background when the host mounts, so the first
-        # Dock click opens the window instead of waiting for ~100 MB.
-        prefetchElectron: true
-        # Content width shared by both windows.
-        width: 480
-        # Fixed heights: input window and run window are separate windows.
-        inputHeight: 172
-        displayHeight: 520
-        margin: 16
-        rememberGeometry: true
-        alwaysOnTop: false
-        focusOnSummon: false
-        hideOnEscape: true
-        followBoundOnly: true
-        defaultWorkspaceId: ""
-        agentPreset: ""
-        submitMode: queue
-        thinkMode: fold
-        showTiming: true
-        maxSteps: 200
-        theme: auto
-        locale: auto
-        headerButton: true
-        headerButtonOrder: 1010
-        approvalTimeoutMs: 300000
+      config: {}
+    - id: quickdock-service
+      name: dsh-quickdock/service
+      config: {}
+    - id: quickdock-dock
+      name: dsh-quickdock/dock
+      config: {}

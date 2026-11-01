@@ -1,4 +1,8 @@
-window.__ModuleLoader__.load({ id: "dsh-quickdock", factory: (require) => { var module = { exports: {} };
+// Module scope, not factory scope: DSH materializes this bundle once per graph
+// row, and every materialization must share the "already added the button" flag.
+var quickdockApplied = false
+
+var quickdockClientFactory = (require) => { var module = { exports: {} };
 // The loader contract passes an exports binding even when the plugin exports nothing.
 // eslint-disable-next-line no-unused-vars
 var exports = module.exports;
@@ -777,6 +781,10 @@ function DownloadBadge() {
 /* ---------------- apply ---------------- */
 
 function apply(ctx) {
+  // Registered under three entry ids; only the first materialization may add the
+  // header button, or DSH would show three of them.
+  if (quickdockApplied) return
+  quickdockApplied = true
   try {
     ctx.slots.inject(HEADER_SLOT, () => ctx.slots.register({
       name: HEADER_SLOT,
@@ -842,4 +850,11 @@ return {
   console.error('[dsh-quickdock] client factory failed (plugin disabled, web boot continues):', bootError);
   return { apply() {} };
 }
-} });
+}
+
+// The page resolves this bundle by the name of the entry that enabled it, so the
+// same factory is registered for the package and for both component entries.
+// Only the first materialization applies, so the header button stays single.
+;['dsh-quickdock', 'dsh-quickdock/service', 'dsh-quickdock/dock'].forEach(function (id) {
+  window.__ModuleLoader__.load({ id: id, factory: quickdockClientFactory })
+})

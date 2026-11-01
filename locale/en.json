@@ -89,6 +89,7 @@
   "display.noExitCode": "No exit code",
   "display.noOutput": "No output",
   "display.output": "Output",
+  "display.paneTitle": "Execution details",
   "display.readWindow": "{shown} of {total} lines",
   "display.running": "Running",
   "display.signal": "signal {signal}",

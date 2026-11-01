@@ -85,6 +85,9 @@ function parseConfig(argv, env) {
     // 'unified' keeps everything in one window (details above, composer below);
     // 'split' is the old two-window arrangement.
     layout: inline.layout === 'split' ? 'split' : 'unified',
+    // Two components: the Host API ('service') and the windows ('dock').
+    service: inline.service !== false,
+    dock: inline.dock !== false,
     // The dedicated task window is opt-in: the card also fits above the composer.
     todoWindow: inline.todoWindow === true,
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,

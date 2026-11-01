@@ -11,7 +11,7 @@
  *   QD_NO_ELECTRON=1 do not spawn Electron (API layer only)
  */
 import http from 'node:http'
-import { apply } from '../index.js'
+import { apply } from '../service.js'
 
 const listenPort = Number(process.env.QD_PORT || 0)
 

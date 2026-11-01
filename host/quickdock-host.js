@@ -25,13 +25,13 @@ import {
   STREAM_FLUSH_MS,
   VIEWS
 } from './constants.js'
-import { DockProcess } from './dock-process.js'
 import { DshFacade } from './dsh.js'
 import { ElectronResolver } from './electron-resolver.js'
 import { EventHub } from './event-hub.js'
 import { DELEGATE, InteractionBroker } from './interactions.js'
 import { LocaleController } from './locale.js'
 import { PageRenderer } from './page.js'
+import { createDockComponent } from './dock-component.js'
 import { readVersion } from './version.js'
 import { SessionIndex } from './session-index.js'
 import { createSnapshotBuilder } from './snapshot.js'
@@ -125,7 +125,7 @@ export class QuickDockHost {
       state: this.state,
       timeoutMs: Number(config.approvalTimeoutMs) || 300000,
       publish: () => this.publish(),
-      summon: () => this.dock.summon(),
+      summon: () => this.#summonDock(),
       trace: this.trace
     })
     this.catalogService = new CatalogService({
@@ -159,23 +159,25 @@ export class QuickDockHost {
     })
     this.lastDownloadPublishAt = 0
     this.resolver.onProgress = (event) => this.#onDownloadProgress(event)
-    this.dock = new DockProcess({
-      state: this.state,
+    // The window component owns the supervisor; a headless mount never creates one.
+    this.dockComponent = createDockComponent({
       config,
+      state: this.state,
+      dsh: this.dsh,
+      locale: this.locale,
+      resolver: this.resolver,
+      trace: this.trace,
+      tracePath: () => this.tracePath,
+      publish: () => this.publish(),
+      pageUrl: () => this.pageUrl(),
       rootDir: ROOT_DIR,
       token: this.token,
-      pageUrl: () => this.pageUrl(),
-      resolver: this.resolver,
-      logger: this.dsh.logger,
-      trace: this.trace,
-      t: (key, params) => this.locale.t(key, params),
-      publish: () => this.publish(),
       // A hidden/closed/crashed dock can no longer answer: hand the pending
       // approval back to DSH instead of waiting for the timeout.
       onInactive: () => this.broker.reset()
     })
-    this.dock.tracePath = this.tracePath
-
+    // Serving HTML needs no Electron, so the service owns the page renderer; the
+    // dock component only owns the window and its supervisor.
     this.page = new PageRenderer({
       rootDir: ROOT_DIR,
       theme: this.theme,
@@ -211,18 +213,82 @@ export class QuickDockHost {
   /* ------------------------------ lifecycle ------------------------------ */
 
   /** Subscribe, register routes and warm catalogs. */
-  start() {
-    this.#watchEvents()
-    this.#registerRoutes()
-    this.#registerBridge()
-    this.catalogService.refreshAll()
-    void this.index.refresh()
-    this.#startTimers()
+  /**
+   * Mount the requested components.
+   *
+   * 'service' is the client-agnostic API (routes, SSE, folds, interactions) and
+   * 'dock' is the window supervisor on top of it. They are mounted from the same
+   * Host object but can be enabled separately, so the API can run headless.
+   * @param {{service?: boolean, dock?: boolean}} [components] what to mount.
+   */
+  start(components) {
+    setTimeout(() => this.#probeClientModules(), 1200)
+    const service = components ? components.service !== false : true
+    const dock = service && (components ? components.dock !== false : true)
+    this.state.components = { service, dock }
+    if (this.dockComponent) this.dockComponent.mount({ dock })
+    if (service) {
+      this.#watchEvents()
+      this.#registerRoutes()
+      this.#registerBridge()
+      this.catalogService.refreshAll()
+      void this.index.refresh()
+      this.#startTimers()
+    }
     const version = readVersion(ROOT_DIR)
     this.state.version = version
     this.trace('host half loaded: version=' + (version.pkg || '?')
-      + ' commit=' + (version.hash || 'unknown') + ' startedAt=' + version.startedAt)
+      + ' commit=' + (version.hash || 'unknown') + ' startedAt=' + version.startedAt
+      + ' components=' + (service ? 'service' : '-') + (dock ? '+dock' : ''))
     this.dsh.logger?.info?.('quickdock: host half loaded ' + (version.hash || ''))
+  }
+
+  /** The Electron supervisor (null when the dock component is not mounted). */
+  get dock() {
+    return this.dockComponent ? this.dockComponent.dock : null
+  }
+
+/** Summon the windows, unless the dock component is disabled. */
+  #summonDock() {
+    if (!this.dockEnabled || !this.dockComponent) {
+      this.trace('dock component disabled: summon ignored')
+      return false
+    }
+    return this.dockComponent.summon()
+  }
+
+  /**
+   * Mount the window component on an already running Host.
+   *
+   * This is what `dsh-quickdock/dock` calls: the service entry owns the API and
+   * the dock entry only adds the windows.
+   * @returns {boolean} whether the component is mounted.
+   */
+  mountDock() {
+    if (!this.dockComponent) return false
+    if (this.state.components) this.state.components.dock = true
+    const mounted = this.dockComponent.mount({ dock: true })
+    // Mount only: the window appears when a session binds or the user asks for it.
+    if (mounted) {
+      const supervisor = this.dock
+      if (supervisor && typeof supervisor.applyWindow === 'function') {
+        supervisor.applyWindow({ alwaysOnTop: this.state.dock.alwaysOnTop })
+      }
+    }
+    this.publish()
+    return mounted
+  }
+
+  /** Remove the window component (the process goes with it). */
+  unmountDock() {
+    if (this.dockComponent) this.dockComponent.dispose()
+    if (this.state.components) this.state.components.dock = false
+    this.publish()
+  }
+
+  /** Whether the window component is mounted. */
+  get dockEnabled() {
+    return Boolean(this.state.components && this.state.components.dock)
   }
 
   /** Snapshot of the runtime download, polled by the Client footer badge. */
@@ -379,10 +445,10 @@ export class QuickDockHost {
     this.#disposeOn(() => clearTimeout(catalogTimer), 'quickdock: catalog timer')
 
     if (this.config.autoLaunch) {
-      const launchTimer = setTimeout(() => void this.dock.spawnDock(), 500)
+      const launchTimer = setTimeout(() => void this.dock?.spawnDock(), 500)
       this.#disposeOn(() => clearTimeout(launchTimer), 'quickdock: launch timer')
       const retryTimer = setInterval(() => {
-        if (!this.dock.child && !this.dock.stopping) void this.dock.spawnDock()
+        if (!this.dock?.child && !this.dock?.stopping) void this.dock?.spawnDock()
       }, 30000)
       if (retryTimer.unref) retryTimer.unref()
       this.#disposeOn(() => clearInterval(retryTimer), 'quickdock: dock retry timer')
@@ -392,7 +458,7 @@ export class QuickDockHost {
       if (this.streamFlushTimer) clearTimeout(this.streamFlushTimer)
       this.hub.dispose()
       this.broker.reset()
-      this.dock.stop()
+      this.dock?.stop()
     }, 'quickdock: dock lifecycle')
   }
 
@@ -541,6 +607,9 @@ export class QuickDockHost {
     return {
       name: 'dsh-quickdock',
       apiVersion: API_VERSION,
+      // Which components this instance mounted: a headless client can tell an
+      // API-only server from one that also owns the windows.
+      components: Object.assign({ service: true, dock: false }, this.state.components || {}),
       capabilities: [
         'state', 'stream', 'workspaces', 'sessions', 'select', 'bind', 'task',
         'stop', 'turns', 'turn', 'step-detail', 'catalogs', 'settings', 'answer',
@@ -702,6 +771,37 @@ export class QuickDockHost {
       } catch (_) { /* try the next candidate */ }
     }
     return null
+  }
+
+  /**
+   * Ask DSH's client-module registry what it thinks this package contributes.
+   *
+   * The Dock button lives in client.js, and DSH serves a package's client bundle
+   * for the entry named after the package. When the button goes missing this is
+   * the only place that says why, so it runs once per Host.
+   */
+  #probeClientModules() {
+    if (this.probedModules) return
+    this.probedModules = true
+    try {
+      const registry = this.ctx.get('clientModules')
+      if (!registry) {
+        this.trace('clientModules service = missing')
+        return
+      }
+      for (const method of ['entries', 'roster', 'describe', 'list']) {
+        const fn = registry[method]
+        if (typeof fn !== 'function') continue
+        try {
+          const value = fn.call(registry)
+          this.trace('clientModules.' + method + ' = ' + JSON.stringify(value).slice(0, 900))
+        } catch (error) {
+          this.trace('clientModules.' + method + ' threw: ' + String(error && error.message || error))
+        }
+      }
+    } catch (error) {
+      this.trace('clientModules probe failed: ' + String((error && error.message) || error))
+    }
   }
 
   #probeGoal() {
@@ -943,10 +1043,10 @@ export class QuickDockHost {
     this.state.folders.clear()
     this.stream.clear()
     this.broker.reset()
-    this.dock.stop()
+    this.dock?.stop()
     const timer = setTimeout(() => {
       this.#seedHistory(this.state.sessionId)
-      void this.dock.summon()
+      void this.#summonDock()
     }, 500)
     this.#disposeOn(() => clearTimeout(timer), 'quickdock: service restart timer')
     return { dropped }
@@ -958,8 +1058,8 @@ export class QuickDockHost {
    */
   restartDock() {
     this.trace('restart requested from the main window')
-    this.dock.stop()
-    const timer = setTimeout(() => { void this.dock.summon() }, 500)
+    this.dock?.stop()
+    const timer = setTimeout(() => { void this.#summonDock() }, 500)
     this.#disposeOn(() => clearTimeout(timer), 'quickdock: restart timer')
   }
 
@@ -1180,13 +1280,13 @@ export class QuickDockHost {
     this.catalogService.refreshPermissions()
     this.publish()
     // On-demand mode: creating the dock here is the expected transition.
-    this.dock.summon()
-    this.dock.notifyAttach(sessionId)
+    this.#summonDock()
+    this.dock?.notifyAttach(sessionId)
     return {
       ok: true,
-      dockRunning: this.dock.alive,
+      dockRunning: Boolean(this.dock && this.dock.alive),
       // A just-spawned dock is not ready yet; the Client keeps polling.
-      starting: this.dock.starting,
+      starting: Boolean(this.dock && this.dock.starting),
       error: this.state.dock.error || undefined
     }
   }
@@ -1194,7 +1294,7 @@ export class QuickDockHost {
   /** Window-level settings from either page. */
   postWindow(body) {
     if (body?.alwaysOnTop !== undefined) this.state.dock.alwaysOnTop = Boolean(body.alwaysOnTop)
-    this.dock.applyWindow({ alwaysOnTop: this.state.dock.alwaysOnTop })
+    this.dock?.applyWindow({ alwaysOnTop: this.state.dock.alwaysOnTop })
     // Both pin buttons read runtime.alwaysOnTop.
     this.publish()
     return { ok: true, ...this.state.dock }

@@ -9,7 +9,10 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const INDEX = pathToFileURL(path.join(__dirname, '..', '..', 'index.js')).href;
+// The package row mounts nothing: the components live in service.js/dock.js.
+// Tests exercise the service component through this alias, so `dock: true` can
+// still mount both when a test needs the windows.
+const INDEX = pathToFileURL(path.join(__dirname, '..', '..', 'service.js')).href;
 
 /** Build a mock ctx that records routes, listeners and listener options. */
 function createContext() {

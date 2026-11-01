@@ -6,6 +6,12 @@
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
+    "./service": {
+      "default": "./service.js"
+    },
+    "./dock": {
+      "default": "./dock.js"
+    },
     "./client": "./client.js",
     "./package.json": "./package.json"
   },
@@ -41,7 +47,7 @@
     "client": {
       "platform": "web",
       "inject": [
-        "slots"
+        "@deepseek-ai/dsh-client-ui-conversation"
       ]
     }
   },
