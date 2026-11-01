@@ -393,9 +393,14 @@ class DockRuntime {
 
     await this.win.loadURL(this.config.url);
     trace('loadURL done: ' + this.config.url);
+    const sep = this.config.url.indexOf('?') >= 0 ? '&' : '?';
     if (this.displayWin) {
-      await this.displayWin.loadURL(this.config.url + (this.config.url.indexOf('?') >= 0 ? '&' : '?') + 'view=display');
+      await this.displayWin.loadURL(this.config.url + sep + 'view=display');
       trace('display loadURL done');
+    }
+    if (this.todoWin) {
+      await this.todoWin.loadURL(this.config.url + sep + 'view=todo');
+      trace('todo loadURL done');
     }
     this.status('ready', { pid: this.process.pid, bounds: this.win.getBounds(), controlPort: this.controlPort });
     trace('status(ready) written to stdout, controlPort=' + this.controlPort);
@@ -431,6 +436,7 @@ class DockRuntime {
       title: 'QuickDock Tasks',
     }));
     prepareWindow(win, this.store);
+    trace('todo window created: ' + JSON.stringify(win.getBounds()));
     win.on('close', (event) => {
       if (this.quitting) return;
       event.preventDefault();
