@@ -673,6 +673,20 @@ export class QuickDockHost {
    */
   sessionGoal() {
     if (!this.state.sessionId) return null
+    // The projection is the real source: 'goal' answers with {goal: {...}} once a
+    // goal exists (probed in host.log), while no goal service is registered.
+    try {
+      const live = this.dsh.session(this.state.sessionId)
+      if (live && typeof this.dsh.projectionValues === 'function') {
+        const values = this.dsh.projectionValues(live, ['goal', 'sessionGoal', 'goalState'])
+        const raw = values && values.goal
+        const goal = raw && raw.goal ? raw.goal : raw
+        const objective = goal && typeof goal.objective === 'string' ? goal.objective.trim() : ''
+        if (objective) {
+          return { objective, phase: String(goal.phase || 'active') }
+        }
+      }
+    } catch (_) { /* fall through to the services */ }
     for (const name of ['goals', 'goal', 'sessionGoals', 'goalService']) {
       try {
         const service = this.ctx.get(name)
@@ -807,9 +821,10 @@ export class QuickDockHost {
         if (isTodo && !todos && scanned.todos && scanned.todos.length) todos = scanned.todos
         if (!goal && scanned.goal) goal = scanned.goal
       }
+      goal = goal || this.sessionGoal()
       return { todos: todos || [], goal, source: todos || goal ? 'snapshot' : 'empty' }
     }
-    return { todos: [], goal: folder ? folder.goal || null : null, source: 'empty' }
+    return { todos: [], goal: (folder && folder.goal) || this.sessionGoal(), source: 'empty' }
   }
 
   turnDetail(value, sessionId) {
@@ -1078,6 +1093,14 @@ export class QuickDockHost {
 
   /** Seed goal + plan from the events a freshly attached session already has. */
   #seedHistory(sessionId) {
+    try {
+      this.#seedHistoryInner(sessionId)
+    } catch (error) {
+      this.trace('seed history failed: ' + String((error && error.stack) || error))
+    }
+  }
+
+  #seedHistoryInner(sessionId) {
     const live = this.dsh.session(sessionId)
     const events = live && Array.isArray(live.eventsSnapshot) ? live.eventsSnapshot : null
     if (!events || !events.length) return
