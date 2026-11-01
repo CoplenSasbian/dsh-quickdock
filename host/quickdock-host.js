@@ -41,6 +41,9 @@ import { createTrace, traceLogPath } from './trace.js'
 
 const require = createRequire(import.meta.url)
 const { StepFolder } = require('../runtime/step-folder.js')
+
+/** Tools whose result body is the session goal. */
+const GOAL_TOOLS = /^(create_goal|get_goal|update_goal)$/i
 const { EventLog } = require('./event-log.js')
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -787,15 +790,22 @@ export class QuickDockHost {
     const events = live && Array.isArray(live.eventsSnapshot) ? live.eventsSnapshot : null
     if (events && events.length) {
       // Scan backwards: the newest write wins, no need to fold everything.
-      const found = new StepFolder(this.config.maxSteps)
-      for (let index = events.length - 1; index >= 0; index -= 1) {
+      const scanned = new StepFolder(this.config.maxSteps)
+      let todos = folder && folder.todos && folder.todos.length ? folder.todos : null
+      let goal = (folder && folder.goal) || null
+      for (let index = events.length - 1; index >= 0 && (!todos || !goal); index -= 1) {
         const event = events[index]
-        if (!event || event.type !== 'todo/write') continue
-        found.apply(event)
-        if (found.todos && found.todos.length) {
-          return { todos: found.todos, goal: folder ? folder.goal || null : null, source: 'snapshot' }
-        }
+        if (!event || typeof event.type !== 'string') continue
+        const isTodo = event.type === 'todo/write'
+        const isGoal = event.type === 'tool/ptc-dispatch'
+          ? GOAL_TOOLS.test(String((event.data && event.data.name) || ''))
+          : event.type === 'tool/result'
+        if (!isTodo && !isGoal) continue
+        scanned.apply(event)
+        if (isTodo && !todos && scanned.todos && scanned.todos.length) todos = scanned.todos
+        if (!goal && scanned.goal) goal = scanned.goal
       }
+      return { todos: todos || [], goal, source: todos || goal ? 'snapshot' : 'empty' }
     }
     return { todos: [], goal: folder ? folder.goal || null : null, source: 'empty' }
   }

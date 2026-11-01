@@ -376,6 +376,11 @@ const EVENT_HANDLERS = {
     if (!data || !data.subCallId) return
     const id = 'tool-' + data.subCallId
     const row = folder.byId.get(id) || pushPtcRow(folder, data, time ?? '', seq, 'done')
+    // A goal tool dispatched through run_code carries its result the same way,
+    // so the goal line works for both call styles.
+    if (GOAL_TOOL.test(String(data.name || ''))) {
+      captureGoal(folder, { message: { content: data.content } })
+    }
     if (!row) return
     settleTool(folder, row, {
       text: resultText({ content: data.content }),
@@ -650,6 +655,11 @@ class StepFolder {
       }
       if (event.type === 'tool/call' && event.data && GOAL_TOOL.test(String(event.data.name || ''))) {
         goalCalls.set(String(event.data.callId), true)
+        continue
+      }
+      if (event.type === 'tool/ptc-dispatch' && event.data && GOAL_TOOL.test(String(event.data.name || ''))) {
+        captureGoal(this, { message: { content: event.data.content } })
+        found = true
         continue
       }
       if (event.type === 'tool/result' && event.data && event.data.message) {

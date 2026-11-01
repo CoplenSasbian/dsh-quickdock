@@ -62,3 +62,28 @@ test('seed: goal and plan come from history', () => {
   assert.deepStrictEqual(folder.todos.map((row) => row.status), ['pending', 'completed']);
   assert.strictEqual(folder.rows(1).length, 0, 'seeding must not fabricate rows');
 });
+
+test('goal: captured from a PTC dispatch (tools run inside run_code)', () => {
+  const folder = new StepFolder(200);
+  folder.apply({ type: 'turn/start', seq: 1, data: { turn: 1 }, time: '2026-11-01T00:00:00Z' });
+  folder.apply({
+    type: 'tool/ptc-dispatch',
+    seq: 2,
+    data: {
+      name: 'get_goal',
+      subCallId: 'p1',
+      content: [{ type: 'text', text: JSON.stringify({ goal: { objective: 'ptc goal', phase: 'active' } }) }]
+    }
+  });
+  assert.deepStrictEqual(folder.goal, { objective: 'ptc goal', phase: 'active' });
+});
+
+test('seed: the goal is found when history used a PTC dispatch', () => {
+  const folder = new StepFolder(200);
+  const events = [
+    { type: 'turn/start', seq: 1, data: { turn: 1 }, time: '2026-11-01T00:00:00Z' },
+    { type: 'tool/ptc-dispatch', seq: 2, data: { name: 'get_goal', subCallId: 'p2', content: [{ type: 'text', text: '{"goal":{"objective":"history ptc"}}' }] } }
+  ];
+  folder.seedFromHistory(events);
+  assert.strictEqual(folder.goal && folder.goal.objective, 'history ptc');
+});
