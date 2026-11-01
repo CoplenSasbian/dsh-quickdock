@@ -596,6 +596,36 @@ class StepFolder {
   }
 
   /**
+   * Rebuild the whole fold from a session's history.
+   *
+   * Attaching mid-session otherwise leaves the window empty until the next
+   * event arrives, and old turns can only be read by folding the snapshot again
+   * per request. One pass here fixes both: every turn is readable through
+   * rows(turn) and the newest turn has rows immediately.
+   * @param {object[]} events session events, oldest first.
+   * @returns {number} rows folded, 0 when the input is unusable.
+   */
+  adoptHistory(events) {
+    if (!Array.isArray(events) || !events.length) return 0
+    const saved = this.list.length
+    this.reset()
+    let folded = 0
+    for (const event of events) {
+      if (!event || typeof event.type !== 'string') continue
+      try {
+        this.apply(event)
+        folded += 1
+      } catch (_) { /* one bad event must not lose the rest */ }
+    }
+    if (!this.list.length) {
+      // Nothing usable: keep whatever the live feed had.
+      if (saved) this.traceMissed = true
+      return 0
+    }
+    return folded
+  }
+
+  /**
    * Seed the goal and the task list from events that happened before the dock
    * attached. Folding the whole history would be wasteful; these two only care
    * about their own event types, so one pass is enough.

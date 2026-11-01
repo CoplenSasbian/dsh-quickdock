@@ -1023,8 +1023,13 @@ export class QuickDockHost {
     const events = live && Array.isArray(live.eventsSnapshot) ? live.eventsSnapshot : null
     if (!events || !events.length) return
     const folder = this.#ensureFolder(sessionId)
+    // Fold the history first: the window then has the newest turn on its very
+    // first state push instead of waiting for the next event, and every older
+    // turn is already readable through /turn.
+    const folded = folder.adoptHistory(events)
     const found = folder.seedFromHistory(events)
-    this.trace('seed history(' + sessionId + '): events=' + events.length + ' found=' + found)
+    this.trace('seed history(' + sessionId + '): events=' + events.length
+      + ' folded=' + folded + ' rows=' + folder.rows().length + ' found=' + found)
   }
 
   postBind(body) {

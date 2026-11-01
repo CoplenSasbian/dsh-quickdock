@@ -52,6 +52,9 @@
     /** How many each click of the button adds. */
     var MORE_BATCH = 5;
 
+    /** Bounded retry: the host may still be seeding when the page asks. */
+    var retriedEmpty = false;
+
     /** The first painted column drops to its newest turn once. */
     var didInitialScroll = false;
 
@@ -267,6 +270,14 @@
       var next = function (index) {
         if (index >= batch.length) {
           loadingHistory = false;
+          // An empty read right after a bind is usually a race with the host's
+          // history fold; retry once before showing "nothing has run".
+          if (!turnList.length && outline.length && !retriedEmpty) {
+            retriedEmpty = true;
+            report('history empty after a read, retrying once');
+            setTimeout(function () { loadMoreTurns(count); }, 700);
+            return;
+          }
           // Everything fetched lands above the current view: keep the reader where
           // they were instead of jumping to the top.
           anchorAbove = true;
