@@ -18,6 +18,7 @@ const outbound = Object.freeze({
   setDisplayEmpty: 'dock:set-display-empty',
   setMenuSpace: 'dock:set-menu-space',
   setContentHeight: 'dock:content-height',
+  setDisplayCollapsed: 'dock:display-collapsed',
   hide: 'dock:hide',
   getState: 'dock:get-state',
 });
@@ -87,6 +88,11 @@ const api = Object.freeze({
     }
     return ipcRenderer.invoke(outbound.setContentHeight, Math.round(height));
   },
+  /** Collapse the docked window to one line, or restore it. */
+  setDisplayCollapsed(collapsed) {
+    if (typeof collapsed !== 'boolean') return Promise.reject(new TypeError('collapsed must be boolean'));
+    return ipcRenderer.invoke(outbound.setDisplayCollapsed, collapsed);
+  },
   hide() {
     ipcRenderer.send(outbound.hide);
   },
@@ -100,6 +106,8 @@ const api = Object.freeze({
   },
   /** Subscribe to window state changes (always-on-top, side of the run window). */
   onStateChanged(callback) { return subscribe('dock:state', callback); },
+  /** The docked window was folded/unfolded by the runtime. */
+  onCollapsed(callback) { return subscribe('dock:collapsed', callback); },
 });
 
 contextBridge.exposeInMainWorld('quickDock', api);

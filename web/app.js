@@ -281,8 +281,13 @@
    *  - closed: never shown
    */
   var DETAIL_KEY = 'qd-detail-mode';
-  var DETAIL_MODES = ['auto', 'open', 'closed'];
-  var DETAIL_LABELS = { auto: 'detail.auto', open: 'detail.open', closed: 'detail.closed' };
+  var DETAIL_MODES = ['auto', 'open', 'collapsed', 'closed'];
+  var DETAIL_LABELS = {
+    auto: 'detail.auto',
+    open: 'detail.open',
+    collapsed: 'detail.collapsed',
+    closed: 'detail.closed'
+  };
   var detailMode = readDetailMode();
 
   function readDetailMode() {
@@ -339,13 +344,15 @@
     var hasContent = Boolean(steps.length || hasInter
       || (stream && (stream.text || stream.thinking || (stream.tools && stream.tools.length))));
     var busy = Boolean(state && isBusy(state.status));
-    var show = detailMode === 'open' ? hasContent
-      : detailMode === 'closed' ? false
-        : (busy && hasContent);
+    var show = detailMode === 'closed' ? false
+      : detailMode === 'auto' ? (busy && hasContent)
+        : hasContent;
     var quickDock = window.quickDock;
-    if (!quickDock || !quickDock.setDisplayEmpty) return;
+    if (!quickDock) return;
     try {
-      quickDock.setDisplayEmpty(!show);
+      if (quickDock.setDisplayEmpty) quickDock.setDisplayEmpty(!show);
+      // Collapsed keeps the window but folds it to its header line.
+      if (quickDock.setDisplayCollapsed) quickDock.setDisplayCollapsed(detailMode === 'collapsed' && show);
     } catch (error) {
       /* IPC is optional outside Electron */
     }
@@ -410,27 +417,10 @@
       });
     }
 
-    var status = state.status;
-    if (els.statusDot) {
-      els.statusDot.className = 'status-dot ' + ({
-        running: 'running', done: 'done', error: 'error', ask: 'ask', idle: '', offline: 'offline'
-      }[status] || '');
-      els.statusDot.title = statusTitle(status);
-    }
 
-    // Input form vs run panel: while the agent works the form has no use.
-    applyRunMode(status);
+    applyRunMode(state.status);
     updatePin();
     refreshDisplayVisibility();
-  }
-
-  var STATUS_KEYS = {
-    running: 'status.running', done: 'status.done', error: 'status.failed',
-    ask: 'status.ask', idle: 'status.idle', offline: 'status.offline'
-  };
-
-  function statusTitle(status) {
-    return t(STATUS_KEYS[status] || 'status.idle');
   }
 
   /** Whether the agent is busy (the composer would be meaningless). */
@@ -1027,6 +1017,12 @@
   if (!isDisplay) syncListButton();
 
   if (isDisplay && displayView) {
+    var dock = window.quickDock;
+    if (dock && dock.onCollapsed) {
+      dock.onCollapsed(function (collapsed) {
+        document.body.classList.toggle('collapsed', Boolean(collapsed));
+      });
+    }
     // Content grows towards the input window depending on which side it sits.
     displayView.bindAutoScroll();
     displayView.initialScroll();
