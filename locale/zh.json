@@ -84,6 +84,7 @@
   "display.loading": "加载中…",
   "display.loadMore": "加载更早的对话（还有 {count} 轮）",
   "display.loadMoreHint": "向上滚动即可加载更早的对话",
+  "display.loadMoreLoading": "正在加载更早的对话…",
   "display.logLabel": "执行过程",
   "display.more": "{title}等",
   "display.noDetail": "（这一步没有更多细节）",

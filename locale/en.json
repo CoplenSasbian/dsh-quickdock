@@ -84,6 +84,7 @@
   "display.loading": "Loading…",
   "display.loadMore": "Load earlier turns ({count})",
   "display.loadMoreHint": "Scroll up to load older turns",
+  "display.loadMoreLoading": "Loading earlier turns…",
   "display.logLabel": "Run log",
   "display.more": "{title}, etc.",
   "display.noDetail": "(no further detail for this step)",

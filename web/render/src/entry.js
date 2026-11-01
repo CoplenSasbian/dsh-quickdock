@@ -441,7 +441,7 @@ function LiveRows({ stream, t, labels }) {
   return h('div', { className: 'qd-live' }, rows)
 }
 
-function RowList({ turns, stream, turn, running, t, loadDetail, onGrowth, detailMode, moreCount, onLoadMore }) {
+function RowList({ turns, stream, turn, running, t, loadDetail, onGrowth, detailMode, moreCount, onLoadMore, moreLoading }) {
   const [openIds, setOpenIds] = useState(() => new Set())
   const [details, setDetails] = useState({})
   const [turnOpenMap, setTurnOpenMap] = useState({})
@@ -517,9 +517,20 @@ function RowList({ turns, stream, turn, running, t, loadDetail, onGrowth, detail
         h('button', {
           type: 'button',
           className: 'qd-more-btn',
-          onClick: onLoadMore,
-          title: t('display.loadMoreHint', { count: moreCount })
-        }, t('display.loadMore', { count: moreCount })))
+          // A batch in flight is visible: the reader must see that the click did
+          // something, and a second click must not start a second batch.
+          disabled: moreLoading ? true : undefined,
+          'aria-busy': moreLoading ? 'true' : undefined,
+          onClick: moreLoading ? undefined : onLoadMore,
+          title: moreLoading
+            ? t('display.loadMoreLoading')
+            : t('display.loadMoreHint', { count: moreCount })
+        }, moreLoading
+          ? [
+            h('span', { key: 'spin', className: 'qd-more-spin', 'aria-hidden': true }),
+            t('display.loadMoreLoading')
+          ]
+          : t('display.loadMore', { count: moreCount })))
       : null,
     list.map((entry) => h(TurnGroup, {
       key: 'turn-' + entry.number,
@@ -644,6 +655,7 @@ function create(options) {
       root.render(h(RowList, {
         turns: (state && state.turns) || [],
         moreCount: (state && state.moreCount) || 0,
+        moreLoading: Boolean(state && state.moreLoading),
         onLoadMore: state && state.onLoadMore,
         steps: (state && state.steps) || [],
         stream: state && state.stream,

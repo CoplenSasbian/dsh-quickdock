@@ -56,9 +56,6 @@
     /** The first painted column drops to its newest turn once. */
     var didInitialScroll = false;
 
-    /** True while older turns are being inserted above the viewport. */
-    var anchorAbove = false;
-
     /** Set once the column had content; the window then stays up. */
     var seenContent = false;
     var turnList = [];
@@ -304,6 +301,9 @@
       loadingHistory = true
       loadingSince = Date.now()
       report('load more: batch=' + batch.length + ' have=' + turnList.length + ' pending=' + pendingTurns().length)
+      // Paint the pill's "loading" state right away: a click that looks dead for
+      // a second gets clicked again, which is exactly what started extra batches.
+      paintRows()
       // The batch is fetched in parallel: a long session would otherwise spend one
       // round trip per turn and the button would look dead.
       Promise.all(batch.map(function (row) {
@@ -324,17 +324,20 @@
         if (turnList.length === hadTurns) {
           report('batch produced no rows (have=' + turnList.length + ', pending=' + pendingTurns().length + ')')
         }
-        // Everything fetched lands above the current view: keep the reader where
-        // they were instead of jumping to the top.
-        anchorAbove = true
+        // Everything fetched lands above the current view: show it. The reader
+        // asked for older turns, so the column jumps to where the batch starts
+        // instead of staying on the content that was already there.
         autoScroll = false
         if (latestState) render(latestState)
         else render()
+        if (turnList.length > hadTurns) showLoadedHistory()
       }).catch(function (error) {
         // Never leave the loader wedged by a throw inside the render above.
         loadingHistory = false
         window.clearTimeout(loadingWatchdog)
         report('history batch failed: ' + String((error && error.message) || error))
+        // The pill must not keep its spinner after a failed batch.
+        paintRows()
       })
     }
 
@@ -367,8 +370,28 @@
         steps: blank ? [] : ((state && state.steps) || []),
         stream: blank ? null : (state && state.stream),
         turn: blank ? null : (state && state.turn),
-        running: Boolean(state && state.status === 'running')
+        running: Boolean(state && state.status === 'running'),
+        // The pill paints "loading" from the moment a batch starts (see
+        // paintRows), and again when it settles through render().
+        moreLoading: loadingHistory
       })
+    }
+
+    /**
+     * Repaint the island only.
+     *
+     * A batch start/end must not go through render(): that would re-run history
+     * absorption and scroll anchoring while the reader is between batches. This
+     * is what makes the pill's "loading" state appear the moment it is clicked.
+     */
+    function paintRows() {
+      var state = latestState || getState();
+      if (!island || !state) return;
+      try {
+        renderRows(state);
+      } catch (error) {
+        report('repaint failed: ' + String((error && error.message) || error));
+      }
     }
 
     /** Drop the island (locale change rebuilds every label). */
@@ -424,12 +447,12 @@
     /**
      * Restore the reading position after a render.
      *
-     * Older turns are inserted ABOVE the viewport, so the scroll offset must grow
-     * by however much the content grew - otherwise the reader is thrown to the
-     * top of the conversation on every "load earlier turns".
+     * A reader who is not following keeps the offset they had; a reader who is
+     * following stays pinned to the newest row. A loaded history batch does not
+     * go through here: showLoadedHistory() takes the column to the top, where
+     * the new turns start.
      * @param {number} prevTop offset before the render.
      * @param {boolean} wasAuto whether the list was following the bottom.
-     * @param {number} prevHeight scrollHeight before the render.
      */
     /** Diagnostic line in dock.log; silent outside Electron. */
     function report(message) {
@@ -447,32 +470,26 @@
       } catch (error) { /* ignore */ }
     }
 
-    function applyAutoScroll(prevTop, wasAuto, prevHeight) {
+    function applyAutoScroll(prevTop, wasAuto) {
       var scroller = scrollHost();
       if (!scroller) {
         report('restore skipped: no scroll host');
         return;
       }
-      if (wasAuto && !anchorAbove) {
+      if (wasAuto) {
         scroller.scrollTop = scroller.scrollHeight;
         return;
       }
-      // Older turns land above the reader: the column grows, so the scroll
-      // position has to grow with it or the view slides up to the oldest turn.
       // The island commits asynchronously, so the height is only trustworthy a
-      // frame later - apply the correction now and again once layout settled.
+      // frame later: clamp against it now and again once layout settled.
       var settled = false;
-      var anchor = anchorAbove;
       function place() {
         if (!scroller.isConnected) return;
-        var grown = Math.max(0, scroller.scrollHeight - (prevHeight || 0));
-        var target = anchor ? prevTop + grown : prevTop;
         var max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-        scroller.scrollTop = Math.max(0, Math.min(max, target));
+        scroller.scrollTop = Math.max(0, Math.min(max, prevTop));
         if (!settled) {
           settled = true;
-          report('restore prevTop=' + Math.round(prevTop) + ' prevHeight=' + Math.round(prevHeight || 0)
-            + ' grown=' + Math.round(grown) + ' anchor=' + anchor
+          report('restore prevTop=' + Math.round(prevTop)
             + ' -> top=' + Math.round(scroller.scrollTop)
             + ' height=' + Math.round(scroller.scrollHeight)
             + ' client=' + Math.round(scroller.clientHeight));
@@ -481,7 +498,6 @@
       place();
       window.requestAnimationFrame(place);
       setTimeout(place, 80);
-      anchorAbove = false;
     }
 
     function bindAutoScroll() {
@@ -503,13 +519,12 @@
       // Older turns load themselves when the reader reaches the top: a button that
       // has to be hunted for is the wrong affordance here.
       scroller.addEventListener('scroll', function () {
-        if (scroller.scrollTop < 90 && !loadingHistory && pendingTurns().length) {
-          anchorAbove = true
+        // Only a real gesture may pull another batch. The jump to the top after a
+        // load is programmatic, and without this guard it would chain into an
+        // endless auto-load of the whole history.
+        if (gestureActive && scroller.scrollTop < 90 && !loadingHistory && pendingTurns().length) {
           autoScroll = false
-          window.clearTimeout(topLoadTimer)
-          topLoadTimer = window.setTimeout(function () {
-            if (scroller.scrollTop < 90) loadMoreTurns(MORE_BATCH)
-          }, 120)
+          scheduleTopLoad(scroller)
         }
         if (gestureActive) {
           // Keep the window alive through momentum / drag events, then adopt.
@@ -521,11 +536,52 @@
         // mode must not change; when following, re-pin so growth is never missed.
         if (autoScroll) scroller.scrollTop = scroller.scrollHeight;
       }, { passive: true });
+      // At the very top a wheel up has nothing left to scroll, so no scroll event
+      // follows it: that gesture is the clearest "more history" signal there is.
+      // A downward wheel is the reader leaving the top, not asking for more.
+      scroller.addEventListener('wheel', function (event) {
+        if ((event.deltaY || 0) >= 0) return;
+        if (scroller.scrollTop < 90 && !loadingHistory && pendingTurns().length) {
+          autoScroll = false
+          scheduleTopLoad(scroller)
+        }
+      }, { passive: true });
+    }
+
+    /** Pull the next batch once the reader rests at the top (debounced). */
+    function scheduleTopLoad(scroller) {
+      window.clearTimeout(topLoadTimer)
+      topLoadTimer = window.setTimeout(function () {
+        if (scroller.scrollTop < 90 && !loadingHistory && pendingTurns().length) loadMoreTurns(MORE_BATCH)
+      }, 120)
     }
 
     function initialScroll() {
       var scroller = scrollHost();
       if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    }
+
+    /**
+     * Show a freshly loaded batch from its first row.
+     *
+     * Older turns are inserted above the viewport, so keeping the offset would
+     * hide the batch and make the load look like nothing happened. The reader
+     * asked for older turns, so the column goes to the very top - where the
+     * batch starts - and pins it across the island's asynchronous commit (the
+     * height is only final a frame later, and again after fonts/images settle).
+     */
+    function showLoadedHistory() {
+      var scroller = scrollHost();
+      if (!scroller) return;
+      autoScroll = false;
+      function place() {
+        if (!scroller.isConnected) return;
+        scroller.scrollTop = 0;
+      }
+      place();
+      window.requestAnimationFrame(place);
+      window.setTimeout(place, 80);
+      report('history shown from the top: have=' + turnList.length + ' pending=' + pendingTurns().length);
     }
 
     /* -------------------------------- reconcile -------------------------------- */
@@ -603,10 +659,9 @@
 
       var scroller = scrollHost();
       var prevTop = scroller ? scroller.scrollTop : 0;
-      var prevHeight = scroller ? scroller.scrollHeight : 0;
       var wasAuto = autoScroll;
       syncRows(state, interaction, hasInter);
-      applyAutoScroll(prevTop, wasAuto, prevHeight);
+      applyAutoScroll(prevTop, wasAuto);
       // The session opens on the newest turn, not on whatever the first paint
       // happened to leave in view.
       if (!didInitialScroll) {

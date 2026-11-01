@@ -7,6 +7,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Added
 
+- `npm run clean-dsh-cookies`: removes the Desktop app's stale per-launch
+  `dsh-auth-*` cookies. Frequent restarts (one random Host port per launch)
+  eventually push the Cookie header past the 16 KB request limit, which shows
+  up as `desktop welcome: Web authentication failed` and DSH refusing to open.
 - A client-agnostic Host API for IDE plugins: `GET /api/meta` (capability manifest with
   `apiVersion`), `GET /api/workspaces`, `GET /api/sessions`, `GET /api/turns` and
   `GET /api/turn`. The dock UI keeps its read-only workspace chip and newest-turn
@@ -17,6 +21,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Changed
 
+- "Load earlier turns" now shows what it is doing and where it landed: the pill
+  turns into a disabled `Loading earlier turns…` with a spinner while the batch
+  is in flight, and the column scrolls to the very top when the batch arrives so
+  the new turns are visible from their first row instead of being inserted above
+  the reader. Reaching the top (scroll or wheel up) still pulls a batch, but the
+  jump back to the top cannot chain into an endless auto-load.
 - Approvals are answered only in the input window's run panel; the run-list window
   no longer renders a second Allow/Deny card (questions keep their card, and a
   hidden list is no longer force-shown for an approval).
