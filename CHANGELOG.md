@@ -21,12 +21,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Changed
 
-- "Load earlier turns" now shows what it is doing and where it landed: the pill
-  turns into a disabled `Loading earlier turns…` with a spinner while the batch
-  is in flight, and the column scrolls to the very top when the batch arrives so
-  the new turns are visible from their first row instead of being inserted above
-  the reader. Reaching the top (scroll or wheel up) still pulls a batch, but the
-  jump back to the top cannot chain into an endless auto-load.
+- "Load earlier turns" now shows what it is doing: the pill turns into a disabled
+  `Loading earlier turns…` with a spinner while the batch is in flight, and back
+  with the new count when it lands. The batch is still inserted above the reader
+  and the scroll offset grows with it, so the content being read does not move.
 - Approvals are answered only in the input window's run panel; the run-list window
   no longer renders a second Allow/Deny card (questions keep their card, and a
   hidden list is no longer force-shown for an approval).
