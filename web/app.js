@@ -611,7 +611,11 @@
    */
   function renderAsk() {
     if (!els.askCard || !state) {
-      report('ask: no card or no state (card=' + Boolean(els.askCard) + ' state=' + Boolean(state) + ')');
+      // Log once: this runs on every render and would otherwise flood dock.log.
+      if (!ask.reportedMissing) {
+        ask.reportedMissing = true;
+        report('ask: no card or no state (card=' + Boolean(els.askCard) + ' state=' + Boolean(state) + ')');
+      }
       return;
     }
     var interaction = state.interaction;

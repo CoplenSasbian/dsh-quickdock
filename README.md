@@ -127,6 +127,14 @@ live rows only under the running one. Older turns are read through
 `/turns` + `/turn?turn=N` the first time a session is opened and then kept, so
 nothing is cleared when a turn ends.
 
+## Questions
+
+The agent's questions are answered in the input window, never in the docked one
+(that window can be hidden, and a pending question must not disappear with it).
+The card replaces the composer while a request is open and walks it one question
+at a time - options or free text, Back/Next, a "2 / 4" counter - and only the
+last step sends every collected answer in a single `/answer` call.
+
 ## Composer rendering
 
 The dock is a single window: a title bar and the composer. While the agent works the bar
