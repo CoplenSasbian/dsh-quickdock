@@ -29,17 +29,12 @@ export const Config = Schema.object(configSchema)
  */
 export function apply(ctx, config) {
   if (!config.enabled) return undefined
-  // The package row mounts the service and stays active. Two reasons, both
-  // learned the hard way:
-  //  - DSH serves a package's client bundle (the header Dock button) for the row
-  //    named after the package, so this row must activate;
-  //  - a row that mounted nothing left the Host unregistered at start-up, so the
-  //    dock only worked after reloading the plugin.
-  // The windows are their own inserted row (dsh-quickdock/dock) and switch
-  // independently.
   const host = new QuickDockHost(ctx, config)
-  host.start({ service: true, dock: config.dock === true })
-  if (config.dock === true) host.prefetchElectron()
+  // Both components from this one row: the API and the windows. A subpath row
+  // (dsh-quickdock/dock) was tried for a separate switch, but DSH's client-module
+  // scan then lost the package's bundle and the header Dock button with it.
+  host.start()
+  host.prefetchElectron()
   setHost(host)
   return host
 }
