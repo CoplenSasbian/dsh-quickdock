@@ -183,7 +183,7 @@ class DockRuntime {
 
     // Display window: separate from the input window, sticks to its top or bottom edge.
     this.displayWin = this.createDisplayWindow(restored.display);
-    this.todoWin = this.createTodoWindow(restored.display);
+    this.todoWin = this.config.todoWindow === true ? this.createTodoWindow(restored.display) : null;
     trace('display window created: bounds=' + JSON.stringify(this.displayWin.getBounds()));
     // Keep the creation-time content size as the reference: moving drifts the client area, use it to correct.
     const initialSize = this.displayWin.getContentSize();
@@ -436,6 +436,8 @@ class DockRuntime {
     if (this.todoWin) {
       await this.todoWin.loadURL(this.config.url + sep + 'view=todo');
       trace('todo loadURL done');
+    } else {
+      trace('task window disabled (todoWindow=false): the card lives in the input window');
     }
     this.status('ready', { pid: this.process.pid, bounds: this.win.getBounds(), controlPort: this.controlPort });
     trace('status(ready) written to stdout, controlPort=' + this.controlPort);

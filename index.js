@@ -39,6 +39,7 @@ export const Config = Schema.object({
   /** Fixed height of the run window (content scrolls inside it). */
   displayHeight: Schema.number().default(520),
   todoHeight: Schema.number().default(180),
+  todoWindow: Schema.boolean().default(false),
   margin: Schema.number().default(16),
   rememberGeometry: Schema.boolean().default(true),
   alwaysOnTop: Schema.boolean().default(false),

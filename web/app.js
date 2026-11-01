@@ -24,8 +24,8 @@
    * the run window and the composer.
    */
   function renderTodos() {
-    // The plan has its own window now; the input window keeps only the composer.
-    if (!isTodo) {
+    // Shown in the input window (and in the dedicated one when enabled).
+    if (isDisplay) {
       if (els.todoCard) els.todoCard.hidden = true;
       return;
     }
@@ -35,7 +35,7 @@
     }
     // The task window is up whenever it has a state: an empty plan still shows
     // the placeholder instead of a window that never appears.
-    if (todoReported !== true) {
+    if (isTodo && todoReported !== true) {
       todoReported = true;
       var todoBridge = window.quickDock;
       if (todoBridge && todoBridge.setTodoEmpty) {
@@ -152,7 +152,7 @@
    * the current list through the API instead of showing "no steps yet" forever.
    */
   function queryPlan() {
-    if (!isTodo) return;
+    if (isDisplay) return;
     if (planQueries >= 20) return;
     planQueries += 1;
     api('plan').then(function (plan) {
@@ -171,7 +171,7 @@
 
   /** Poll while the plan is missing: the host may still be seeding. */
   function watchPlan() {
-    if (!isTodo) return;
+    if (isDisplay) return;
     if (planTimer) return;
     planTimer = setInterval(function () {
       var empty = !state || !Array.isArray(state.todos) || !state.todos.length;
@@ -454,7 +454,7 @@
     // The task card sits above the panel as its own block, so both count.
     var stackHeight = Math.ceil(panel.getBoundingClientRect().height);
     // The task card lives in its own window now; only count it if it is here.
-    if (!isTodo && els.todoCard && !els.todoCard.hidden) {
+    if (els.todoCard && !els.todoCard.hidden) {
       var box = els.todoCard.getBoundingClientRect();
       stackHeight += Math.ceil(box.height) + 8;
     }
