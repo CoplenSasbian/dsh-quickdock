@@ -21,7 +21,13 @@ const SOURCE_EXT = new Set(['.js', '.cjs', '.mjs', '.css', '.html', '.json', '.y
 const TEXT_EXT = new Set([...SOURCE_EXT, '.svg', '.txt'])
 const SKIP_DIRS = new Set(['node_modules', '.git', 'tmp', '.electron-test'])
 // The prototype and the packed default app are artifacts, kept as-is.
-const SKIP_FILES = new Set(['dock-prototype.html', 'default_app_test.asar'])
+const SKIP_FILES = new Set([
+  'dock-prototype.html',
+  'default_app_test.asar',
+  // Build artifacts of web/render/src (minified; rebuilt by npm run build:render).
+  'web/render/bundle.js',
+  'web/render/bundle.css'
+])
 const DYNAMIC_PREFIXES = ['reasoning.']
 
 const problems = []

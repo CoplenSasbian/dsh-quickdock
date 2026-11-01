@@ -58,7 +58,16 @@ const commonRules = {
 
 export default [
   {
-    ignores: ['node_modules/**', 'tmp/**', '*.asar', 'dock-prototype.html', 'package-lock.json']
+    ignores: [
+      'node_modules/**',
+      'tmp/**',
+      '*.asar',
+      'dock-prototype.html',
+      'package-lock.json',
+      // Built by scripts/build-render.mjs from web/render/src.
+      'web/render/bundle.js',
+      'web/render/bundle.css'
+    ]
   },
   {
     files: ['**/*.js', '**/*.mjs'],
@@ -104,5 +113,15 @@ export default [
         React: 'readonly'
       }
     }
-  }
+  },
+  {
+    // The render island is bundled (ES modules, React, JSX-free createElement).
+    files: ['web/render/src/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      globals: browserGlobals
+    },
+    rules: commonRules
+  },
 ]

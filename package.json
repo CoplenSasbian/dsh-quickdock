@@ -28,7 +28,8 @@
     "dev": "node --import ./scripts/register-hook.mjs scripts/dev-harness.mjs",
     "ensure-electron": "node scripts/ensure-electron.mjs",
     "lint": "eslint .",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "build:render": "node scripts/build-render.mjs"
   },
   "engines": {
     "dsh": ">=0.2.0"
@@ -45,8 +46,8 @@
     }
   },
   "dependencies": {
-    "@electron/get": "^5.1.0",
-    "@electron-internal/extract-zip": "^1.0.5"
+    "@electron-internal/extract-zip": "^1.0.5",
+    "@electron/get": "^5.1.0"
   },
   "optionalDependencies": {
     "electron": "44.7.0"
@@ -63,6 +64,38 @@
     "i18n"
   ],
   "devDependencies": {
-    "eslint": "^9.14.0"
+    "@deepseek-ai/dsh-client-store": "^0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.1-rc.5",
+    "@deepseek-ai/dsh-util-code-language": "^0.2.1-rc.5",
+    "@deepseek-ai/dsh-util-workspace-path": "^0.2.1-rc.5",
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-replace": "^6.0.3",
+    "@shikijs/engine-javascript": "^4.5.0",
+    "@shikijs/langs": "^4.5.0",
+    "anser": "^2.3.5",
+    "clsx": "^2.1.1",
+    "diff": "^9.0.0",
+    "eslint": "^9.14.0",
+    "katex": "^0.19.1",
+    "mdast-util-from-markdown": "^2.1.0",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-math": "^3.0.0",
+    "micromark-core-commonmark": "^2.0.4",
+    "micromark-extension-gfm": "^3.0.0",
+    "micromark-extension-math": "^3.1.0",
+    "micromark-factory-space": "^2.1.0",
+    "micromark-util-character": "^2.1.1",
+    "micromark-util-classify-character": "^2.0.1",
+    "micromark-util-sanitize-uri": "^2.0.1",
+    "micromark-util-symbol": "^2.0.1",
+    "postcss": "^8.5.32",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "rollup": "^4.67.3",
+    "rollup-plugin-postcss": "^4.0.2",
+    "shiki": "^4.5.0",
+    "simple-icons": "^15.22.0",
+    "terser": "^5.51.2"
   }
 }

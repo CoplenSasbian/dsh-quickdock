@@ -1,0 +1,86 @@
+/* Dock render island: page-level spacing that DSH's own stylesheets expect. */
+.qd-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.qd-row {
+  min-width: 0;
+}
+
+/* Reasoning row: the collapsed summary beside the title, as in DSH. */
+.qd-dot {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  margin: 0 8px;
+  border-radius: 1px;
+  background: var(--dsw-alias-label-caption);
+}
+
+.qd-summary {
+  min-width: 0;
+  flex: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.qd-think-body {
+  padding: 4px 0 4px 22px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: 1.65;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Assistant prose: no card, plain reading column. */
+.qd-prose {
+  margin: 6px 0;
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: 1.7;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+
+.qd-prose > :first-child { margin-top: 0; }
+.qd-prose > :last-child { margin-bottom: 0; }
+.qd-prose p { margin: 0 0 0.6em; }
+.qd-prose pre { margin: 0.5em 0; }
+.qd-prose code { font-family: var(--ds-font-family-code); font-size: 12.5px; }
+
+.qd-body {
+  padding: 4px 0 2px 22px;
+  min-width: 0;
+}
+
+.qd-pre {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 180px;
+  overflow: auto;
+  border-radius: var(--dsw-radius-md, 8px);
+  background: var(--dsw-alias-markdown-code-block, rgba(255, 255, 255, 0.04));
+  color: var(--dsw-alias-label-tertiary);
+  font: 400 11px/16px var(--ds-font-family-code, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.qd-status {
+  padding: 2px 0 2px 22px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.qd-error {
+  color: var(--dsw-alias-state-error-primary);
+}

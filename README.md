@@ -108,6 +108,24 @@ All UI strings live in `locale/en.json` and `locale/zh.json` (flat dotted keys,
 Adding a language: add `locale/<id>.json`, extend `SUPPORTED_LOCALES` in
 `runtime/i18n.js` (and the client catalog), then run `npm run check`.
 
+## Run window rendering
+
+The run window draws its rows with the **DSH web UI primitives**
+(`@deepseek-ai/dsh-client-ui-primitives`, MIT) instead of re-implementing them: the same
+`DisclosureRow` / `TextShimmer` / `TerminalBlock` / `DiffBlock` components the main window
+uses, so typography, spacing, dots, chevrons and expanded cards match by construction.
+
+The island is a small React app in `web/render/src`; `display.js` keeps everything that is
+not a row (live stream block, question card, scroll following, hit regions) and hands the
+step list over. Artifacts are committed, so installing the plugin needs no build:
+
+```bash
+npm run build:render   # rebuild web/render/bundle.js + bundle.css after editing src/
+```
+
+The build resolves only the three shiki grammars the primitives pre-warm and stubs the
+brand-glyph barrel, keeping the inlined page bundle under ~1 MB.
+
 ## Project layout
 
 ```
@@ -144,10 +162,13 @@ web/                   page assets, inlined by the Host (manifest.json order)
   locale.js            page i18n runtime (data-i18n + t)
   markdown.js          escaping-first Markdown renderer
   util.js              DOM/text helpers
-  display.js           run window view (rows, live block, cards)
+  display.js           run window view (island mount, live block, cards)
   menu.js              dropdown menu (search, keyboard, window growth)
   app.js               page bootstrap: SSE, render, pickers, hit regions
   styles.css           dock styles (theme variables only)
+  render/              run window render island (see below)
+    src/entry.js       steps -> DSH web UI primitive rows (React)
+    bundle.js/.css     built artifact, committed and inlined by the Host
 locale/                en.json, zh.json message catalogs
 scripts/               tooling: tests, checks, smoke test, dev harness, Electron
 ```

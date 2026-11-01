@@ -51,12 +51,6 @@
     var isListHidden = options.isListHidden || function () { return false; };
     var scheduleHitReport = options.scheduleHitReport || function () {};
 
-    /** Row id -> explicit expand choice (overrides "open while running"). */
-    var expandedSteps = {};
-    /** "id@status" -> { args, result } loaded on demand. */
-    var stepDetails = {};
-    /** Row id -> live DOM record; reconciled on every render. */
-    var records = Object.create(null);
     var liveRow = null;
     var cardNode = null;
     var cardKey = '';
@@ -114,377 +108,57 @@
       window.requestAnimationFrame(step);
     }
 
-    /* ---------------------------- step details ---------------------------- */
-
-    function rawPre(text) {
-      return U.el('pre', 'sd-pre', text);
-    }
+    /* ----------------------------- render island ----------------------------- */
 
     /**
-     * Arguments panel: short values stay inline, long text gets its own row
-     * with internal scrolling so one edit cannot stretch the whole list.
-     */
-    function argsBlock(raw) {
-      var box = U.el('div', 'sd-args');
-      var parsed = null;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (error) {
-        parsed = null;
-      }
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        box.appendChild(rawPre(parsed === null ? raw : U.prettyArgs(raw)));
-        return box;
-      }
-
-      var shown = 0;
-      var keys = Object.keys(parsed).filter(function (key) {
-        var value = parsed[key];
-        return !(value === null || value === undefined || value === '');
-      });
-      // A lone description has nothing else to show, so it is not a duplicate.
-      var onlyDescription = keys.length === 1 && keys[0] === 'description';
-      keys.forEach(function (key) {
-        if (key === 'description' && !onlyDescription) return; // already the row title
-        var value = parsed[key];
-        var text = typeof value === 'string' ? value : U.stringifyValue(value);
-        if (!text) return;
-        var row = U.el('div', 'sd-arg');
-        var name = U.el('span', 'sd-key', key);
-        var cell = U.el('span', 'sd-val', text);
-        if (text.indexOf('\n') < 0 && text.length <= 56) {
-          row.classList.add('inline');
-          cell.title = text;
-        }
-        row.appendChild(name);
-        row.appendChild(cell);
-        box.appendChild(row);
-        shown += 1;
-      });
-      if (!shown) box.appendChild(rawPre(U.prettyArgs(raw)));
-      return box;
-    }
-
-    function renderStepDetail(box, detail) {
-      var args = String(detail.args || '');
-      var result = String(detail.result || '');
-      box.textContent = '';
-      box.classList.toggle('empty', !args && !result);
-      if (!args && !result) {
-        box.textContent = t('display.noDetail');
-        return;
-      }
-      if (args) box.appendChild(argsBlock(args));
-      if (result) {
-        var wrap = U.el('div', 'sd-result');
-        wrap.appendChild(U.el('span', 'sd-label', t('display.output')));
-        wrap.appendChild(U.el('pre', 'sd-out', result));
-        box.appendChild(wrap);
-      }
-    }
-
-    /**
-     * Load one row's full detail on first expand. The cache key includes the
-     * status because a tool's result only exists once the call finished.
-     */
-    function fillStepDetail(box, id, status) {
-      var key = id + '@' + (status || '');
-      if (box.dataset.key === key || box.dataset.failed === key) return;
-      if (stepDetails[key]) {
-        delete box.dataset.loading;
-        box.dataset.key = key;
-        renderStepDetail(box, stepDetails[key]);
-        return;
-      }
-      if (box.dataset.loading === key) return;
-      box.dataset.loading = key;
-      box.dataset.key = '';
-      box.classList.remove('empty');
-      box.textContent = t('display.loading');
-      api('step-detail?id=' + encodeURIComponent(id)).then(function (detail) {
-        stepDetails[key] = detail || {};
-        if (!box.isConnected || box.dataset.loading !== key) return;
-        delete box.dataset.loading;
-        delete box.dataset.failed;
-        box.dataset.key = key;
-        renderStepDetail(box, stepDetails[key]);
-      }).catch(function (error) {
-        if (!box.isConnected || box.dataset.loading !== key) return;
-        delete box.dataset.loading;
-        box.dataset.failed = key;
-        box.textContent = t('display.loadFailed', { message: String(error && error.message || error) });
-      });
-    }
-
-    /**
-     * Open or close a tool row's detail. The classes drive the CSS transition;
-     * the content stays mounted so collapsing animates instead of snapping.
+     * Rows are drawn by the React island in web/render (DSH web UI primitives),
+     * so the run window shares the main window's typography, spacing and cards
+     * instead of re-implementing them here. This view keeps the parts that are
+     * not rows: the live stream block, the question card and scrolling.
      *
-     * @param {object} rec row record.
-     * @param {boolean} open target state.
-     * @param {string} status row status (keys the detail cache).
-     * @param {boolean} follow keep the list pinned to the bottom while an
-     *   automatically opened running row grows.
+     * @type {{render: Function, unmount: Function}|null}
      */
-    function setDetailOpen(rec, open, status, follow) {
-      if (rec.isOpen === open) {
-        if (open) fillStepDetail(rec.detailBox, rec.id, status);
-        return;
-      }
-      rec.isOpen = open;
-      rec.row.classList.toggle('open', open);
-      rec.detail.classList.toggle('open', open);
-      rec.row.setAttribute('aria-expanded', open ? 'true' : 'false');
-      if (rec.chevron) rec.chevron.title = open ? t('display.collapse') : t('display.expand');
-      if (open) {
-        fillStepDetail(rec.detailBox, rec.id, status);
-        if (follow) followGrowth(320);
-      }
-      scheduleHitReport();
+    var island = null
+
+    /** The island's container: first child of the list, before card and live row. */
+    function rowsHost() {
+      var existing = host.querySelector('.qd-rows')
+      if (existing) return existing
+      var rows = U.el('div', 'qd-rows')
+      host.insertBefore(rows, host.firstChild)
+      return rows
     }
 
-    /**
-     * Manual toggles must not fight the user's scroll position. Opening a
-     * detail pauses follow mode; closing it resumes only when the list is at
-     * the bottom again (otherwise the next step tick would yank the view).
-     */
-    function pauseFollowOnToggle(open) {
-      if (open) {
-        autoScroll = false;
-        return;
+    /** Create the island once and hand it the newest step list. */
+    function renderRows(steps) {
+      var rows = rowsHost()
+      if (!island) {
+        island = window.QD.render.create({
+          root: rows,
+          t: t,
+          markdown: mdHtml,
+          loadDetail: function (id) {
+            return api('step-detail?id=' + encodeURIComponent(id))
+          },
+          onGrowth: function () {
+            followGrowth(320)
+            scheduleHitReport()
+          }
+        })
       }
-      var scroller = scrollHost();
-      autoScroll = !scroller || U.isNearBottom(scroller, 24);
+      island.render(steps)
     }
 
-    /** Toggle one row in place (no list rebuild). */
-    function toggleStepDetail(rec) {
-      if (!rec || !rec.expandable) return;
-      var open = !rec.isOpen;
-      expandedSteps[rec.id] = open;
-      pauseFollowOnToggle(open);
-      // A manual toggle keeps the row anchored: the user reads from the top.
-      setDetailOpen(rec, open, rec.status, false);
-    }
-
-    /* ------------------------------ row builders ------------------------------ */
-
-    /** Set text on an optional row part and hide it when empty (no flex gap). */
-    function setOptional(node, text) {
-      var value = text || '';
-      node.hidden = !value;
-      if (node.textContent !== value) node.textContent = value;
-    }
-
-    /** One tool row plus its lazily loaded detail block. */
-    function buildToolRow(step, isRunning) {
-      var rec = { id: String(step.id), kind: 'tool', status: null, isOpen: false };
-      var row = U.el('div', 'step');
-      rec.iconEl = U.el('span', 'step-icon');
-      rec.labelEl = U.el('span', 'step-label');
-      rec.subEl = U.el('span', 'step-sub');
-      rec.linesEl = U.el('span', 'step-lines');
-      rec.diffEl = U.el('span', 'step-diff');
-      rec.timeEl = U.el('span', 'step-time');
-      rec.subEl.hidden = true;
-      rec.linesEl.hidden = true;
-      rec.diffEl.hidden = true;
-      row.appendChild(rec.iconEl);
-      row.appendChild(rec.labelEl);
-      row.appendChild(rec.subEl);
-      row.appendChild(rec.linesEl);
-      row.appendChild(rec.diffEl);
-      row.appendChild(rec.timeEl);
-
-      var block = U.el('div', 'drow');
-      block.appendChild(row);
-      rec.block = block;
-      rec.row = row;
-
-      // Only real tool calls expand (approval rows share kind:'tool' but have no args).
-      if (rec.id.indexOf('tool-') === 0) {
-        rec.expandable = true;
-        row.classList.add('expandable');
-        row.setAttribute('role', 'button');
-        row.setAttribute('tabindex', '0');
-        row.setAttribute('aria-expanded', 'false');
-        rec.chevron = U.el('span', 'step-chev', '▸');
-        rec.chevron.title = t('display.expand');
-        row.appendChild(rec.chevron);
-
-        var detail = U.el('div', 'step-detail');
-        var clip = U.el('div', 'sd-clip');
-        rec.detailBox = U.el('div', 'sd-box');
-        clip.appendChild(rec.detailBox);
-        detail.appendChild(clip);
-        rec.detail = detail;
-        block.appendChild(detail);
-
-        row.addEventListener('click', function () {
-          toggleStepDetail(rec);
-        });
-        row.addEventListener('keydown', function (event) {
-          if (event.key !== 'Enter' && event.key !== ' ') return;
-          event.preventDefault();
-          toggleStepDetail(rec);
-        });
-        detail.addEventListener('transitionend', function (event) {
-          if (event.target === detail) scheduleHitReport();
-        });
-      }
-
-      updateToolRow(rec, step, isRunning);
-      return rec;
-    }
-
-    /** Update a tool row in place: status classes, text parts, open state. */
-    function updateToolRow(rec, step, isRunning) {
-      var stateName = isRunning ? 'run'
-        : step.status === 'fail' ? 'fail'
-        : step.status === 'done' ? 'done'
-        : 'todo';
-      if (rec.stateName !== stateName) {
-        if (rec.stateName) rec.row.classList.remove(rec.stateName);
-        rec.row.classList.add(stateName);
-        rec.stateName = stateName;
-      }
-
-      // Icons express the action kind; color expresses status.
-      var icon = isRunning ? '' : U.toolIcon(step.tool);
-      if (rec.iconEl.textContent !== icon) rec.iconEl.textContent = icon;
-
-      var primary = String(step.description || '').trim();
-      var sub = U.rowSub(step.command);
-      // With line numbers the path only keeps two segments, or the file name
-      // itself gets truncated.
-      if ((step.lines || step.delta) && /[\\/]/.test(sub)) sub = U.tailSegments(sub, 2);
-      if (!primary) {
-        primary = sub;
-        sub = '';
-      }
-      if (primary === sub) sub = '';
-
-      setOptional(rec.labelEl, primary || step.tool || step.label || step.text || '');
-      if (primary || sub) rec.labelEl.title = (primary + ' ' + sub).trim();
-      else rec.labelEl.removeAttribute('title');
-      setOptional(rec.subEl, sub);
-
-      if (step.lines && step.lines[0] && step.lines[1]) {
-        setOptional(rec.linesEl, t('display.lines', { from: step.lines[0], to: step.lines[1] }));
-        rec.linesEl.title = t('display.linesTitle', { from: step.lines[0], to: step.lines[1] });
-      } else {
-        setOptional(rec.linesEl, '');
-        rec.linesEl.removeAttribute('title');
-      }
-
-      var added = Number(step.delta && step.delta[0]) || 0;
-      var removed = Number(step.delta && step.delta[1]) || 0;
-      if (added || removed) {
-        var diffKey = added + ':' + removed;
-        rec.diffEl.hidden = false;
-        if (rec.diffEl.dataset.key !== diffKey) {
-          rec.diffEl.dataset.key = diffKey;
-          rec.diffEl.textContent = '';
-          if (added) rec.diffEl.appendChild(U.el('span', 'add', '+' + added));
-          if (removed) rec.diffEl.appendChild(U.el('span', 'del', '−' + removed));
+    /** Drop the island (locale change rebuilds every label). */
+    function destroyIsland() {
+      if (island) {
+        try {
+          island.unmount()
+        } catch (error) {
+          console.warn('[QuickDock] render island unmount failed:', error)
         }
-        rec.diffEl.title = t('display.diffTitle', { added: added, removed: removed });
-      } else {
-        rec.diffEl.hidden = true;
-        rec.diffEl.textContent = '';
-        delete rec.diffEl.dataset.key;
+        island = null
       }
-
-      var config = getState() && getState().config;
-      var showTiming = !config || config.showTiming !== false;
-      var time = showTiming && step.time ? String(step.time).slice(11, 19) : '';
-      if (rec.timeEl.textContent !== time) rec.timeEl.textContent = time;
-
-      var status = step.status || '';
-      var statusChanged = rec.status !== status;
-      rec.status = status;
-      if (rec.expandable) {
-        var explicit = typeof expandedSteps[rec.id] === 'boolean';
-        var open = explicit ? expandedSteps[rec.id] : isRunning;
-        // A finished call gains its result: refresh the open detail first, then
-        // collapse it if it was only open because the call was running.
-        if (statusChanged && rec.isOpen) fillStepDetail(rec.detailBox, rec.id, status);
-        setDetailOpen(rec, open, status, !explicit && isRunning);
-      }
-    }
-
-    /** Thinking row: a folded summary that expands to the full text. */
-    function buildThink(step) {
-      var rec = { id: String(step.id), kind: 'think', text: null };
-      var box = U.el('div', 'think');
-      var head = U.el('button', 'think-head');
-      head.type = 'button';
-      head.setAttribute('aria-expanded', 'false');
-      head.appendChild(U.el('span', 'th-icon', '✦'));
-      rec.preview = U.el('span', 'th-preview');
-      head.appendChild(rec.preview);
-      head.appendChild(U.el('span', 'th-chev', '▶'));
-
-      var body = U.el('div', 'think-body');
-      var clip = U.el('div', 'tb-clip');
-      rec.textEl = U.el('div', 'tb-box');
-      clip.appendChild(rec.textEl);
-      body.appendChild(clip);
-      box.appendChild(head);
-      box.appendChild(body);
-
-      head.addEventListener('click', function () {
-        var open = !box.classList.contains('open');
-        box.classList.toggle('open', open);
-        head.setAttribute('aria-expanded', open ? 'true' : 'false');
-        pauseFollowOnToggle(open);
-        scheduleHitReport();
-      });
-
-      var block = U.el('div', 'drow');
-      block.appendChild(box);
-      rec.block = block;
-      updateThink(rec, step);
-      return rec;
-    }
-
-    /**
-     * Upper bound for the one-line summary. The CSS ellipsis draws the "…" at
-     * the right edge of the row; slicing at the visible width (as before) put
-     * the ellipsis in the middle of an otherwise empty row. The cap only keeps
-     * layout work bounded for very long thinking text.
-     */
-    var THINK_PREVIEW_LIMIT = 600;
-
-    function updateThink(rec, step) {
-      var text = String(step.text || '');
-      if (rec.text === text) return;
-      rec.text = text;
-      var one = text.replace(/\s+/g, ' ').trim();
-      if (one.length > THINK_PREVIEW_LIMIT) one = one.slice(0, THINK_PREVIEW_LIMIT) + '…';
-      rec.preview.textContent = one;
-      if (rec.preview.title !== one) rec.preview.title = one;
-      if (rec.textEl.textContent !== text) rec.textEl.textContent = text;
-    }
-
-    /** Prose row: rendered Markdown, updated only when the text changed. */
-    function buildSay(step, isRunning) {
-      var rec = { id: String(step.id), kind: 'say', text: null };
-      var block = U.el('div', 'drow');
-      rec.sayEl = U.el('div', 'say md');
-      block.appendChild(rec.sayEl);
-      rec.block = block;
-      updateSay(rec, step, isRunning);
-      return rec;
-    }
-
-    function updateSay(rec, step, isRunning) {
-      var text = String(step.text || '');
-      if (rec.text !== text) {
-        rec.text = text;
-        rec.sayEl.innerHTML = mdHtml(text);
-      }
-      rec.sayEl.classList.toggle('streaming', Boolean(isRunning));
     }
 
     function cardHead(text, tag) {
@@ -681,18 +355,6 @@
 
     /* -------------------------------- reconcile -------------------------------- */
 
-    function destroyRecord(rec) {
-      if (rec.block && rec.block.parentNode === host) host.removeChild(rec.block);
-    }
-
-    /** Insert a new row before the card / live row, keeping the tail order. */
-    function insertBlock(node) {
-      var anchor = liveRow && liveRow.parentNode === host ? liveRow : null;
-      if (cardNode && cardNode.parentNode === host) anchor = cardNode;
-      if (anchor) host.insertBefore(node, anchor);
-      else host.appendChild(node);
-    }
-
     function ensureLiveRow() {
       if (!liveRow) {
         liveRow = U.el('div', 'drow');
@@ -721,8 +383,8 @@
     }
 
     function resetHost() {
+      destroyIsland();
       host.textContent = '';
-      records = Object.create(null);
       liveRow = null;
       cardNode = null;
       cardKey = '';
@@ -745,47 +407,9 @@
       return parts.join('|');
     }
 
-    /** Reconcile the step list with the snapshot, reusing nodes by row id. */
+    /** Hand the newest step list to the island; card and live row stay here. */
     function syncRows(steps, interaction, hasInter) {
-      var seen = Object.create(null);
-      // Only the last running row is "in progress": an interrupted session can
-      // leave several rows in run state, and a wall of spinners reads as broken.
-      var lastRun = -1;
-      steps.forEach(function (step, index) {
-        if (step && step.status === 'run') lastRun = index;
-      });
-
-      steps.forEach(function (step, index) {
-        if (!step || !step.id) return;
-        var id = String(step.id);
-        seen[id] = true;
-        var rec = records[id];
-        if (rec && rec.kind !== step.kind) {
-          destroyRecord(rec);
-          rec = null;
-        }
-        if (!rec) {
-          var running = index === lastRun;
-          rec = step.kind === 'think' ? buildThink(step)
-            : step.kind === 'say' ? buildSay(step, running)
-              : buildToolRow(step, running);
-          records[id] = rec;
-          insertBlock(rec.block);
-        } else if (step.kind === 'think') {
-          updateThink(rec, step);
-        } else if (step.kind === 'say') {
-          updateSay(rec, step, index === lastRun);
-        } else {
-          updateToolRow(rec, step, index === lastRun);
-        }
-      });
-
-      Object.keys(records).forEach(function (id) {
-        if (seen[id]) return;
-        destroyRecord(records[id]);
-        delete records[id];
-      });
-
+      renderRows(steps);
       syncCard(interaction, hasInter);
       ensureLiveRow();
     }
