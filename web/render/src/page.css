@@ -88,6 +88,16 @@ html[data-theme="light"] {
   font-variant-numeric: tabular-nums;
 }
 
+/* Sub-calls nest under their parent row, like the main window's call tree. */
+.qd-subcalls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 2px 22px;
+  padding-left: 8px;
+  border-left: 0.5px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.08));
+}
+
 /* Process rows of the open turn, and the live stream under them. */
 .qd-process,
 .qd-live {

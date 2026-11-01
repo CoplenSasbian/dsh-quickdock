@@ -14,7 +14,7 @@ import {
 } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-  DisclosureRow, TerminalBlock, DiffBlock, MarkdownText, ReadBlock,
+  DisclosureRow, TerminalBlock, DiffBlock, CodeBlock, MarkdownText, ReadBlock,
   IconAgentPresetOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
   IconCodeOutlineRegular, IconEditOutlineRegular, IconGlobeOutlineRegular,
   IconSearchOutlineRegular, IconThinkOutlineRegular
@@ -45,7 +45,57 @@ const TOOL_ICONS = {
   web_fetch: IconGlobeOutlineRegular
 }
 
-const TERMINAL_TOOLS = /^(bash|pwsh|shell|terminal|run_code)$/i
+/** Tool name -> DSH activity category, in the order DSH classifies them. */
+const CATEGORIES = [
+  [/^(read)$/i, 'read'],
+  [/^(read_image)$/i, 'readImage'],
+  [/^(write)$/i, 'write'],
+  [/^(edit|edit_file|str_replace_editor)$/i, 'edit'],
+  [/^(grep|glob|fs_search)$/i, 'search'],
+  [/^(bash|pwsh|shell|terminal)$/i, 'commands'],
+  [/^(run_code|ptc|workflow)$/i, 'code'],
+  [/^(web_search)$/i, 'webSearch'],
+  [/^(web_fetch)$/i, 'webFetch']
+]
+
+/** Category -> catalog key; literals so the repository check can see every key. */
+const ACT_KEYS = {
+  read: 'display.act.read',
+  readImage: 'display.act.readImage',
+  write: 'display.act.write',
+  edit: 'display.act.edit',
+  search: 'display.act.search',
+  commands: 'display.act.commands',
+  code: 'display.act.code',
+  webSearch: 'display.act.webSearch',
+  webFetch: 'display.act.webFetch',
+  tools: 'display.act.tools'
+}
+
+function categoryOf(tool) {
+  const name = String(tool || '')
+  for (const [pattern, category] of CATEGORIES) if (pattern.test(name)) return category
+  return 'tools'
+}
+
+/** "Read files, searched code and ran commands" — DSH's process-group title. */
+function summarize(rows, t) {
+  const counts = new Map()
+  rows.forEach((row) => {
+    const category = categoryOf(row.tool)
+    counts.set(category, (counts.get(category) || 0) + 1)
+  })
+  const parts = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([category]) => t(ACT_KEYS[category] || ACT_KEYS.tools))
+  if (parts.length === 0) return t('display.act.tools')
+  if (parts.length === 1) return parts[0]
+  if (parts.length === 2) return t('display.joinTwo', { first: parts[0], second: parts[1] })
+  return t('display.more', { title: parts.slice(0, 2).join(t('display.comma')) })
+}
+
+const TERMINAL_TOOLS = /^(bash|pwsh|shell|terminal)$/i
+const CODE_TOOLS = /^(run_code|ptc|workflow)$/i
 const EDIT_TOOLS = /^(edit|edit_file|write|str_replace_editor)$/i
 const READ_TOOLS = /^(read|read_file)$/i
 
@@ -128,7 +178,7 @@ function elapsedOf(turn, running, now) {
 }
 
 /** One tool call: title, one-line summary, optional metadata, expandable body. */
-function ToolRow({ step, open, running, labels, detail, onToggle, t }) {
+function ToolRow({ step, open, running, labels, detail, onToggle, t, subRows }) {
   const Icon = TOOL_ICONS[String(step.tool || '').toLowerCase()] || IconAgentPresetOutlineRegular
   const title = String(step.description || '').trim() || String(step.tool || '') || t('display.toolFallback')
   const summary = String(step.command || '').trim()
@@ -161,7 +211,8 @@ function ToolRow({ step, open, running, labels, detail, onToggle, t }) {
       leadingClassName: rowCss.leading,
       titleClassName: rowCss.title,
       collapsedContent: collapsed
-    }, open && expandable ? h(ToolBody, { step: step, detail: detail, labels: labels, t: t }) : null)
+    }, open && expandable ? h(ToolBody, { step: step, detail: detail, labels: labels, t: t }) : null),
+    subRows || null
   )
 }
 
@@ -186,6 +237,16 @@ function ToolBody({ step, detail, labels, t }) {
           diffs: [{ path: path || String(args.path || ''), oldText: oldText, newText: newText }],
           labels: labels.diff
         })
+      )
+    }
+  }
+
+  if (CODE_TOOLS.test(tool)) {
+    const code = args && typeof args.code === 'string' ? args.code
+      : args && typeof args.program === 'string' ? args.program : ''
+    if (code) {
+      return h('div', { className: 'qd-body' },
+        h(CodeBlock, { code: code, lang: 'javascript' })
       )
     }
   }
@@ -254,7 +315,7 @@ function ProseRow({ text, streaming, labels }) {
 }
 
 /** The turn control: DSH's process header with a step count and a duration. */
-function TurnHeader({ turn, count, open, running, onToggle, t }) {
+function TurnHeader({ turn, title, open, running, onToggle, t }) {
   const [now, setNow] = useState(() => Date.now())
   const number = turn ? turn.number : null
   useEffect(() => {
@@ -263,9 +324,6 @@ function TurnHeader({ turn, count, open, running, onToggle, t }) {
     return () => clearInterval(timer)
   }, [running, number])
 
-  const label = running
-    ? t('display.turnRunning', { count: count })
-    : t('display.turnDone', { count: count })
   const duration = formatDuration(elapsedOf(turn, running, now))
 
   return h('button', {
@@ -276,7 +334,7 @@ function TurnHeader({ turn, count, open, running, onToggle, t }) {
     onClick: onToggle
   },
     h(IconChevronDownOutlineRegular, { className: 'qd-turn-chevron' }),
-    h('span', { className: 'qd-turn-label' }, label),
+    h('span', { className: 'qd-turn-label' }, title),
     duration ? h('span', { className: 'qd-turn-meta' }, duration) : null
   )
 }
@@ -329,7 +387,6 @@ function LiveRows({ stream, t, labels }) {
 function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth }) {
   const [openIds, setOpenIds] = useState(() => new Set())
   const [details, setDetails] = useState({})
-  const pending = useRef(new Set())
   const [turnChoice, setTurnChoice] = useState(null)
   const seenTurn = useRef(null)
   const live = runningId(steps)
@@ -339,14 +396,17 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth }) {
     if (turnChoice !== null) setTurnChoice(null)
   }
 
-  const request = useCallback((id) => {
-    if (pending.current.has(id)) return
-    pending.current.add(id)
+  const requested = useRef(new Map())
+
+  /** Load one row's detail once per (row, status): a result only exists after it settles. */
+  const request = useCallback((id, status) => {
+    const key = id + '@' + (status || '')
+    if (requested.current.get(id) === key) return
+    requested.current.set(id, key)
     loadDetail(id).then((detail) => {
-      pending.current.delete(id)
       setDetails((prev) => ({ ...prev, [id]: detail || {} }))
     }).catch((error) => {
-      pending.current.delete(id)
+      requested.current.delete(id)
       setDetails((prev) => ({ ...prev, [id]: { error: String((error && error.message) || error) } }))
     })
   }, [loadDetail])
@@ -355,19 +415,28 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth }) {
     setOpenIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
-      else {
-        next.add(id)
-        request(id)
-      }
+      else next.add(id)
       return next
     })
     if (onGrowth) onGrowth()
-  }, [request, onGrowth])
+  }, [onGrowth])
+
+  // Every open row (auto-opened running rows included) loads its detail, and a
+  // settled row refetches once so its result replaces the running view.
+  const openSignature = useMemo(() => {
+    const ids = [...openIds]
+    steps.forEach((step) => { if (step.status === 'run') ids.push(String(step.id)) })
+    return ids.sort().join(',')
+  }, [openIds, steps])
 
   useEffect(() => {
-    if (!live) return
-    request(live)
-  }, [live, request])
+    const wanted = new Set(openIds)
+    steps.forEach((step) => { if (step.status === 'run') wanted.add(String(step.id)) })
+    steps.forEach((step) => {
+      const id = String(step.id)
+      if (wanted.has(id)) request(id, step.status)
+    })
+  }, [openSignature, steps, openIds, request])
 
   const labels = useMemo(() => makeLabels(t), [t])
   const markdownLabels = useMemo(() => ({
@@ -380,6 +449,38 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth }) {
     if (onGrowth) onGrowth()
   }, [running, onGrowth])
 
+  // Sub-calls name their parent call id; nest them the way the main window's
+  // call tree does instead of leaving them as siblings.
+  const ids = new Set(steps.map((step) => String(step.id)))
+  const childrenOf = new Map()
+  steps.forEach((step) => {
+    if (!step.parent) return
+    const parentId = 'tool-' + step.parent
+    if (!ids.has(parentId)) return
+    const list = childrenOf.get(parentId)
+    if (list) list.push(step)
+    else childrenOf.set(parentId, [step])
+  })
+
+  const renderRow = (step, depth) => {
+    const id = String(step.id)
+    const subRows = depth < 4 && childrenOf.has(id)
+      ? h('div', { className: 'qd-subcalls' }, childrenOf.get(id).map((child) => renderRow(child, depth + 1)))
+      : null
+    return h(ToolRow, {
+      key: id,
+      step: step,
+      open: openIds.has(id) || step.status === 'run',
+      running: id === live,
+      labels: labels,
+      detail: details[id],
+      onToggle: () => toggle(id),
+      t: t,
+      subRows: subRows
+    })
+  }
+
+  const toolRows = []
   const process = []
   const replies = []
   steps.forEach((step) => {
@@ -395,23 +496,17 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth }) {
       }))
       return
     }
-    const autoOpen = step.status === 'run'
-    process.push(h(ToolRow, {
-      key: id,
-      step: step,
-      open: openIds.has(id) || autoOpen,
-      running: id === live,
-      labels: labels,
-      detail: details[id],
-      onToggle: () => toggle(id),
-      t: t
-    }))
+    toolRows.push(step)
+    if (step.parent && ids.has('tool-' + step.parent)) return
+    process.push(renderRow(step, 0))
   })
+
+  const summary = summarize(toolRows, t)
 
   const hasProcess = process.length > 0
   return h('div', { className: 'qd-flow' },
     hasProcess ? h(TurnHeader, {
-      turn: turn, count: process.length, open: turnOpen,
+      turn: turn, title: summary, open: turnOpen,
       running: Boolean(running), onToggle: toggleTurn, t: t
     }) : null,
     hasProcess && turnOpen ? h('div', { className: 'qd-process' }, process) : null,

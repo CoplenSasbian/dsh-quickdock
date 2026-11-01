@@ -78,6 +78,23 @@ set DSH_QUICKDOCK_ELECTRON_PATH=D:\path\to\electron.exe
 新增语言：添加 `locale/<id>.json`，在 `runtime/i18n.js` 的
 `SUPPORTED_LOCALES`（以及 client 内嵌目录）里登记，然后跑 `npm run check`。
 
+## 执行过程的渲染方式
+
+执行过程窗口的行由 **DSH Web UI 图元**（`@deepseek-ai/dsh-client-ui-primitives`，MIT）
+绘制，而不是自己重写：主窗口用的同一批 `DisclosureRow` / `TextShimmer` / `TerminalBlock` /
+`DiffBlock` / `ReadBlock` / `MarkdownText`，所以字号、间距、点分隔、chevron 和展开卡片是
+同一份实现。
+
+渲染岛是 `web/render/src` 里的小 React 应用；`display.js` 只保留不是行的部分（提问卡片、
+滚动跟随、命中区），把状态整体交给它。产物已提交，安装插件不需要构建：
+
+```bash
+npm run build:render   # 改完 web/render/src 后重新生成 bundle.js + bundle.css
+```
+
+构建只解析图元预热的那三个 shiki 语法、并把品牌图标桶替换为空实现，因此内联进页面的
+bundle 控制在 1 MB 以内。
+
 ## 目录结构
 
 ```
@@ -112,11 +129,13 @@ runtime/               Electron 主进程（CommonJS，无构建步骤）
   test/                单元测试（node:test）与测试夹具
 web/                   页面资源，由宿主按 manifest.json 顺序内联
   locale.js            页面 i18n 运行时（data-i18n + t）
-  markdown.js          先转义再渲染的 Markdown
   util.js              DOM / 文本工具
-  display.js           执行过程窗口视图（行、流式块、卡片）
+  display.js           执行过程窗口视图（挂载渲染岛、滚轮、命中区）
   menu.js              下拉菜单（搜索、键盘、窗口长高）
   app.js               页面引导：SSE、渲染、功能键、命中区
+  render/              执行过程渲染岛（见下）
+    src/entry.js       steps → DSH Web UI 图元的行（React）
+    bundle.js/.css     构建产物，提交进仓库、由宿主内联
   styles.css           样式（只引用主题变量）
 locale/                en.json、zh.json 文案目录
 scripts/               工具：测试、检查、冒烟、调试宿主、Electron

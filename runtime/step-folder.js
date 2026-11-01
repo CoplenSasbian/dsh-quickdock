@@ -218,6 +218,9 @@ const EVENT_HANDLERS = {
       && parsed && typeof parsed.old_string === 'string' && typeof parsed.new_string === 'string'
       ? lineDiffStats(parsed.old_string, parsed.new_string)
       : null
+    // Sub-calls name their parent: the dock nests them like the call tree the
+    // main window draws, instead of flattening them into sibling rows.
+    const parent = data.parentCallId ? String(data.parentCallId) : ''
     folder.pushRow(seq, {
       id: 'tool-' + data.callId,
       kind: 'tool',
@@ -226,6 +229,7 @@ const EVENT_HANDLERS = {
       command: summarizeArgs(parsed, raw),
       status: 'run',
       time: time ?? '',
+      ...parent ? { parent } : {},
       ...delta ? { delta } : {},
     })
     // Full arguments live in details only (keeps the state snapshot small).
