@@ -456,6 +456,12 @@ export class QuickDockHost {
   }
 
   #sessionIdOf(request) {
+    if (!this.probedAgent) {
+      this.probedAgent = true
+      try {
+        this.trace('agent shape: ' + JSON.stringify(request && request.agent).slice(0, 220))
+      } catch (_) { /* ignore */ }
+    }
     return request?.agent?.session?.id ?? request?.agent?.id ?? null
   }
 
@@ -466,8 +472,14 @@ export class QuickDockHost {
    */
   #dockCanAnswer(request) {
     const sessionId = this.#sessionIdOf(request)
-    if (!sessionId || !this.state.sessionId || sessionId !== this.state.sessionId) return false
-    return Boolean(this.state.dock.running && this.state.dock.visible)
+    const bound = this.state.sessionId
+    const live = Boolean(this.state.dock.running && this.state.dock.visible)
+    const sameSession = Boolean(sessionId && bound && sessionId === bound)
+    // Questions and approvals are only ours while the dock is up and looking at
+    // this very session; everything else is delegated back to DSH.
+    this.trace('delegate check: request=' + JSON.stringify(sessionId) + ' bound=' + JSON.stringify(bound)
+      + ' dock=' + live + ' -> ' + (sameSession && live ? 'dock' : 'DSH'))
+    return sameSession && live
   }
 
   /* ------------------------------ api actions ------------------------------ */
