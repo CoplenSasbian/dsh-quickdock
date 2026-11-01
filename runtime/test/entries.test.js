@@ -52,14 +52,14 @@ test('entries: the service mounts the API and no windows', async () => {
   assert.strictEqual(app.dock, null, 'no supervisor in the service entry');
 });
 
-test('entries: the package row stays active and mounts nothing', async () => {
+test('entries: the package row mounts the service and stays active', async () => {
   const { app } = await mountEntry(INDEX, {});
-  // Active on purpose: DSH serves the client bundle (the Dock button) for the
-  // entry named after the package, and an entry that never activated serves
-  // nothing. The components are the inserted rows.
-  assert.ok(app, 'the package row must activate');
-  assert.strictEqual(app.components[0], 'quickdock-service');
-  assert.strictEqual(app.state, undefined, 'it mounts no host of its own');
+  // Active *and* mounting: DSH serves the client bundle (the Dock button) for the
+  // row named after the package, and a row that mounted nothing left the Host
+  // unregistered at start-up, so the dock only worked after a plugin reload.
+  assert.ok(app, 'the package row must mount');
+  assert.strictEqual(app.state.components.service, true);
+  assert.strictEqual(app.state.components.dock, false, 'the windows are their own row');
 });
 
 test('entries: the dock entry attaches to the running service', async () => {

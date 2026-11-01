@@ -67,12 +67,12 @@ test('components: a headless mount never builds a supervisor', async () => {
   assert.ok(app.page, 'the service still renders pages');
 });
 
-test('components: the package row activates without mounting a host', async () => {
+test('components: the package row mounts the service', async () => {
   const { apply } = await import(ROOT);
   const { ctx } = createContext();
   const app = apply(ctx, config({}));
-  assert.ok(app, 'the row must activate so its client bundle is served');
-  assert.strictEqual(app.state, undefined, 'monting nothing: the components do the work');
+  assert.ok(app, 'the row must mount so the API exists from start-up');
+  assert.deepStrictEqual(app.state.components, { service: true, dock: false });
 });
 
 test('components: the dock row attaches to the service', async () => {
