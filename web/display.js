@@ -338,7 +338,10 @@
         detail: readDetailMode(),
         turns: turnList,
         moreCount: pendingTurns().length,
-        onLoadMore: function () { loadMoreTurns(MORE_BATCH); },
+        onLoadMore: function () {
+        report('load more clicked (have=' + turnList.length + ', pending=' + pendingTurns().length + ')')
+        loadMoreTurns(MORE_BATCH)
+      },
         steps: blank ? [] : ((state && state.steps) || []),
         stream: blank ? null : (state && state.stream),
         turn: blank ? null : (state && state.turn),

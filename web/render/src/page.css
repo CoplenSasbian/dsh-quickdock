@@ -253,10 +253,17 @@ html[data-theme="light"] {
 }
 
 /* Older turns load on demand: one quiet pill above the column. */
+/* Sticky: after a batch the pill would otherwise sit above the viewport (the
+   anchor keeps the reader in place), and the next click had nothing to hit. */
 .qd-more {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   justify-content: center;
-  padding: 4px 0 8px;
+  padding: 4px 0 6px;
+  margin: 0 0 2px;
+  background: linear-gradient(to bottom, var(--qd-pane-bg, rgba(20, 20, 22, 0.92)) 70%, transparent);
 }
 
 .qd-more-btn {
