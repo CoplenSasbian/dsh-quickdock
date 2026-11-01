@@ -281,6 +281,9 @@
    *  - closed: never shown
    */
   var DETAIL_KEY = 'qd-detail-mode';
+  // Whether the docked window has ever had something to show this session.
+  var displaySeen = false;
+  var displaySession = null;
   var DETAIL_MODES = ['auto', 'open', 'closed', 'hidden'];
   var DETAIL_LABELS = {
     auto: 'detail.auto',
@@ -331,10 +334,10 @@
 
   /**
    * Show or hide the docked execution window.
-   * The button decides what it does:
-   *  auto   - open while a turn runs, closed once it settles
-   *  open   - keep it whenever there is anything to show
-   *  closed - never
+   *
+   * Once a session has produced content the window stays up until the user
+   * hides it: the gap between sending a message and the first row (a new turn
+   * has no steps yet) used to make it blink out.
    */
   function refreshDisplayVisibility() {
     var steps = (state && state.steps) || [];
@@ -344,9 +347,15 @@
     var hasContent = Boolean(steps.length || hasInter
       || (stream && (stream.text || stream.thinking || (stream.tools && stream.tools.length))));
     var busy = Boolean(state && isBusy(state.status));
+    // A new session starts the memory over.
+    if (state && state.sessionId !== displaySession) {
+      displaySession = state.sessionId;
+      displaySeen = false;
+    }
+    if (hasContent || busy) displaySeen = true;
     // Only "hidden" closes the window; the other modes decide how the rows
     // inside it are folded, which the docked page handles itself.
-    var show = detailMode !== 'hidden' && (hasContent || busy);
+    var show = detailMode !== 'hidden' && displaySeen;
     var quickDock = window.quickDock;
     if (!quickDock || !quickDock.setDisplayEmpty) return;
     try {

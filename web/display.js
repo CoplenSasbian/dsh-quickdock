@@ -47,6 +47,8 @@
   function create(options) {
     var latestState = null;
     /** Turns shown in the column, oldest first: { number, turn, steps }. */
+    /** Set once the column had content; the window then stays up. */
+    var seenContent = false;
     var turnList = [];
     var loadingHistory = false;
     var loadedFor = 0;
@@ -90,7 +92,10 @@
       var quickDock = window.quickDock;
       if (!quickDock || !quickDock.setDisplayEmpty) return;
       try {
-        quickDock.setDisplayEmpty(force ? false : (isListHidden() || !hasContent));
+        if (hasContent) seenContent = true;
+      // Same rule as the input window: a fresh turn must not blink the window
+      // away while its first row is still being written.
+      quickDock.setDisplayEmpty(force ? false : (isListHidden() || (!hasContent && !seenContent)));
       } catch (error) {
         /* IPC is optional outside Electron */
       }
