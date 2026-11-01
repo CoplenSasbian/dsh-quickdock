@@ -136,8 +136,9 @@ npm run build:render   # rebuild web/render/bundle.js + bundle.css after editing
 The build resolves only the three shiki grammars the primitives pre-warm and stubs the
 brand-glyph barrel, keeping the inlined page bundle under ~1 MB.
 
-The input window's composer is a second island (web/render/src/composer.js): the text
-box, the function marks and the send button are the primitives' Pill and Button, and the
+The input window's composer is a second island (web/render/src/composer.js). Its layout
+and metrics are copied from DSH's own composer (ui-conversation InputBar.module.css): one
+card surface, the text, then a row of borderless selects with a round primary button. The
 page keeps the behaviour (submit, menus, drafts) behind a small imperative handle. Both
 islands read the DSH palette directly, because the Host forwards every --dsw-* token and
 not only the ones its own stylesheet uses.

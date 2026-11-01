@@ -1,23 +1,20 @@
 /**
  * Composer island for the input window.
  *
- * The dock's text box is drawn with the primitives the main window's composer
- * uses (Pill chips, Button), so the two windows share one look instead of
- * drifting apart. Behaviour stays with the page: the island owns the text and
- * the marks, and calls back — it never talks to the API itself.
+ * The layout mirrors DSH's own composer (ui-conversation InputBar): one card
+ * surface, the text, then a row whose left cluster holds the borderless selects
+ * and whose right end holds the round primary button. The styles live in
+ * page.css, copied from InputBar.module.css so the two windows drift together.
+ *
+ * Behaviour stays with the page: the island owns the text and calls back.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Button, Pill } from '@deepseek-ai/dsh-client-ui-primitives'
 
 const h = React.createElement
 
-const KEYS = [
-  { kind: 'permission', icon: '▣' },
-  { kind: 'model', icon: '◈' },
-  { kind: 'thinking', icon: '✦' },
-  { kind: 'agent', icon: '◎' }
-]
+/** Left cluster in order of importance; the agent mark only exists for a new session. */
+const MARKS = ['permission', 'model', 'thinking', 'agent']
 
 function Composer({ bridge }) {
   const inputRef = useRef(null)
@@ -27,13 +24,12 @@ function Composer({ bridge }) {
   const [disabled, setDisabled] = useState(false)
   const api = useRef(null)
 
-  /** Grow to the text, up to six lines, then scroll. */
+  /** Grow with the text: DSH's composer does the same up to a cap. */
   const grow = useCallback(() => {
     const node = inputRef.current
     if (!node) return
     node.style.height = 'auto'
-    const line = 18
-    node.style.height = Math.min(node.scrollHeight, line * 6 + 12) + 'px'
+    node.style.height = Math.min(node.scrollHeight, 24 * 6 + 12) + 'px'
   }, [])
 
   api.current = {
@@ -59,13 +55,12 @@ function Composer({ bridge }) {
       setMarks((prev) => ({ ...prev, ...next }))
       if (next.agentVisible !== undefined) setAgentVisible(Boolean(next.agentVisible))
     },
-    setDisabled: (value) => setDisabled(Boolean(value)),
-    canSend: () => Boolean(api.current.getValue().trim()) && !disabled
+    setDisabled: (value) => setDisabled(Boolean(value))
   }
 
+  // The page keeps a handle to the live instance for setMarks/clear/focus.
   useEffect(() => {
-    if (bridge.ready) bridge.ready(api.current)
-    else bridge.api = api.current
+    bridge.api = api.current
   }, [bridge])
 
   const submit = useCallback(() => {
@@ -100,30 +95,30 @@ function Composer({ bridge }) {
       onKeyDown,
       disabled
     }),
-    h('div', { className: 'qd-composer-bar' },
-      KEYS.map((key) => {
-        if (key.kind === 'agent' && !agentVisible) return null
-        return h(Pill, {
-          key: key.kind,
-          className: 'qd-key',
-          onClick: (event) => bridge.onOpenMenu(key.kind, event.currentTarget),
-          'aria-haspopup': 'menu',
-          title: marks[key.kind] || ''
-        },
-        h('span', { className: 'qd-key-icon', 'aria-hidden': 'true' }, key.icon),
-        h('span', { className: 'qd-key-text' }, marks[key.kind] || bridge.placeholderKey || '')
-        )
-      }),
-      h('span', { className: 'qd-composer-spacer' }),
-      h(Button, {
-        variant: 'primary',
-        size: 'sm',
-        className: 'qd-send',
-        disabled: !canSend || disabled,
-        onClick: submit,
-        title: bridge.sendTitle || 'Send',
-        'aria-label': bridge.sendTitle || 'Send'
-      }, '↑')
+    h('div', { className: 'qd-composer-row' },
+      h('div', { className: 'qd-marks' },
+        MARKS.map((kind) => {
+          if (kind === 'agent' && !agentVisible) return null
+          return h('button', {
+            key: kind,
+            type: 'button',
+            className: 'qd-mark',
+            onClick: (event) => bridge.onOpenMenu(kind, event.currentTarget),
+            'aria-haspopup': 'menu',
+            title: marks[kind] || ''
+          }, marks[kind] || '')
+        })
+      ),
+      h('div', { className: 'qd-trailing' },
+        h('button', {
+          type: 'button',
+          className: 'qd-send',
+          disabled: !canSend || disabled,
+          onClick: submit,
+          title: bridge.sendTitle || 'Send',
+          'aria-label': bridge.sendTitle || 'Send'
+        }, '↑')
+      )
     )
   )
 }
@@ -144,17 +139,11 @@ export function createComposer(options) {
     sendTitle: options.sendTitle || '',
     onSubmit: options.onSubmit,
     onOpenMenu: options.onOpenMenu,
-    api: null,
-    ready: (api) => { bridge.api = api }
+    api: null
   }
   host.classList.add('qd-composer-host')
-  const root = createRoot(host)
-  root.render(h(Composer, { bridge }))
-  // The page talks to the live instance; before the first commit it is a stub.
-  const forward = (name) => (...args) => {
-    if (bridge.api) return bridge.api[name](...args)
-    return undefined
-  }
+  createRoot(host).render(h(Composer, { bridge }))
+  const forward = (name) => (...args) => (bridge.api ? bridge.api[name](...args) : undefined)
   return {
     setValue: forward('setValue'),
     getValue: forward('getValue'),

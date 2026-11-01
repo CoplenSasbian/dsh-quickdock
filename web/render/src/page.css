@@ -92,34 +92,36 @@ html[data-theme="light"] {
 
 /* ---------- Composer (input window) ---------- */
 
-/* The box the main window draws: one surface holding the text and the marks. */
+/* Copied from DSH's InputBar.module.css (ui-conversation): one card surface,
+ * the text, then a row of borderless selects with a round primary button. */
 .qd-composer {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 6px 6px 6px 10px;
-  border: 0.5px solid var(--dsw-alias-border-l3, rgba(255, 255, 255, 0.1));
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-1, rgba(255, 255, 255, 0.04));
-  transition: border-color 0.16s, background 0.16s;
-}
-
-.qd-composer:focus-within {
-  border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.22));
-  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.06));
+  gap: 12px;
+  padding-top: 8px;
+  border-radius: var(--dsw-radius-panel, 12px);
+  background: var(--dsw-specific-input-major, var(--dsw-alias-bg-layer-1, #232324));
+  box-shadow: var(--dsw-elevation-soft, 0 1px 2px rgba(0, 0, 0, 0.2));
 }
 
 .qd-composer-input {
-  padding: 4px 0 2px;
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: 4px 8px 0 14px;
   border: none;
   outline: none;
   background: transparent;
   color: var(--dsw-alias-label-primary, inherit);
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 18px;
+  caret-color: var(--dsw-alias-state-business-primary, var(--dsw-alias-brand-primary, #4d8eff));
+  font-family: var(--dsw-font-family, inherit);
+  font-size: 14px;
+  line-height: 24px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   resize: none;
-  max-height: 120px;
+  max-height: 156px;
   overflow-y: auto;
 }
 
@@ -127,38 +129,87 @@ html[data-theme="light"] {
   color: var(--dsw-alias-label-tertiary, rgba(255, 255, 255, 0.38));
 }
 
-.qd-composer-bar {
+.qd-composer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 2px 8px 6px;
+}
+
+.qd-marks {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
+  min-width: 0;
 }
 
-.qd-composer-spacer {
-  flex: 1;
-}
-
-/* Pills carry the function keys: the main window's chip, not a fake button. */
-.qd-key {
-  gap: 5px;
-}
-
-.qd-key-icon {
-  font-size: 10px;
-  opacity: 0.6;
-}
-
-.qd-key-text {
-  max-width: 128px;
+/* DSH's .select: borderless, 13px/500 secondary text with a chevron. */
+.qd-mark {
+  height: 28px;
+  max-width: 220px;
+  padding: 0 20px 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: right 4px center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+  color: var(--dsw-alias-label-secondary, #9a9a9d);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  cursor: pointer;
 }
 
+.qd-mark:hover:not(:disabled) {
+  background-color: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.07));
+}
+
+.qd-mark:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.qd-trailing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  margin-left: auto;
+}
+
+/* DSH's .primary: 34px round, info fill, white glyph, lifted 2px. */
 .qd-send {
-  width: 28px;
-  padding: 0;
-  border-radius: 8px;
-  font-size: 15px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: none;
+  border-radius: 999px;
+  background: var(--dsw-alias-button-info-fill, var(--dsw-alias-brand-primary, #4d8eff));
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transform: translateY(-2px);
+  transition: background-color 0.1s;
+}
+
+.qd-send:hover:not(:disabled) {
+  background: var(--dsw-alias-button-info-hover, var(--dsw-alias-brand-primary, #4d8eff));
+}
+
+.qd-send:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* Sub-calls nest under their parent row, like the main window's call tree. */
