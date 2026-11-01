@@ -52,8 +52,6 @@
     /** How many each click of the button adds. */
     var MORE_BATCH = 10;
 
-    /** Bounded retry: the host may still be seeding when the page asks. */
-    var retriedEmpty = false;
 
     /** The first painted column drops to its newest turn once. */
     var didInitialScroll = false;
@@ -69,6 +67,8 @@
     var loadingHistory = false
     /** Watchdog for a history fetch that never settles. */
     var loadingWatchdog = null;
+    /** When the running history batch started (stale-flag recovery). */
+    var loadingSince = 0;
     var loadedFor = 0;
     var loadedSession = null;
     var outlineRequested = false;
@@ -260,57 +260,60 @@
      * @param {number} count how many to fetch.
      */
     function loadMoreTurns(count) {
-      if (loadingHistory) return;
-      var batch = pendingTurns().slice(0, count);
-      if (!batch.length) report('history exhausted: have=' + turnList.length + ' outline=' + outline.length);
-      // A fetch that never settles would wedge every later click, so the flag is
-      // both cleared in the callbacks and watched here.
-      window.clearTimeout(loadingWatchdog);
-      loadingWatchdog = window.setTimeout(function () {
-        if (!loadingHistory) return;
-        loadingHistory = false;
-        report('history load timed out, releasing the loader');
-      }, 6000);
-      if (!batch.length) {
-        if (latestState) render(latestState);
-        else render();
-        return;
-      }
-      loadingHistory = true;
-      report('load more: batch=' + batch.length + ' have=' + turnList.length + ' pending=' + pendingTurns().length)
-      var next = function (index) {
-        if (index >= batch.length) {
-          loadingHistory = false;
-          // An empty read right after a bind is usually a race with the host's
-          // history fold; retry once before showing "nothing has run".
-          if (!turnList.length && outline.length && !retriedEmpty) {
-            retriedEmpty = true;
-            report('history empty after a read, retrying once');
-            setTimeout(function () { loadMoreTurns(count); }, 700);
-            return;
-          }
-          // Everything fetched lands above the current view: keep the reader where
-          // they were instead of jumping to the top.
-          anchorAbove = true;
-          autoScroll = false;
-          if (latestState) render(latestState);
-          else render();
-          return;
+      var hadTurns = turnList.length
+      if (loadingHistory) {
+        // A click is a user decision: if the previous batch is taking too long,
+        // take over instead of silently ignoring it.
+        var waited = Date.now() - loadingSince
+        if (waited < 2500) {
+          report('history load still running (' + waited + 'ms), click ignored')
+          return
         }
-        var row = batch[index];
-        var meta = { number: row.turn, startedAt: row.startedAt, endedAt: row.endedAt };
-        api('turn?turn=' + row.turn).then(function (detail) {
+        report('history load stuck for ' + waited + 'ms, taking over')
+        loadingHistory = false
+      }
+      var batch = pendingTurns().slice(0, count)
+      if (!batch.length) report('history exhausted: have=' + turnList.length + ' outline=' + outline.length)
+      if (!batch.length) {
+        if (latestState) render(latestState)
+        else render()
+        return
+      }
+      loadingHistory = true
+      loadingSince = Date.now()
+      report('load more: batch=' + batch.length + ' have=' + turnList.length + ' pending=' + pendingTurns().length)
+      // The batch is fetched in parallel: a long session would otherwise spend one
+      // round trip per turn and the button would look dead.
+      Promise.all(batch.map(function (row) {
+        var meta = { number: row.turn, startedAt: row.startedAt, endedAt: row.endedAt }
+        return api('turn?turn=' + row.turn).then(function (detail) {
           report('turn ' + row.turn + ': observed=' + Boolean(detail && detail.observed)
             + ' steps=' + ((detail && detail.steps && detail.steps.length) || 0))
           if (detail && detail.observed && detail.steps && detail.steps.length) {
-            turnList.push({ number: row.turn, turn: meta, steps: detail.steps });
-            turnList.sort(function (a, b) { return a.number - b.number; });
+            turnList.push({ number: row.turn, turn: meta, steps: detail.steps })
+            turnList.sort(function (a, b) { return a.number - b.number })
           }
         }).catch(function (error) {
           report('turn ' + row.turn + ' failed: ' + String((error && error.message) || error))
-        }).then(function () { next(index + 1); });
-      };
-      next(0);
+        })
+      })).then(function () {
+        loadingHistory = false
+        window.clearTimeout(loadingWatchdog)
+        if (turnList.length === hadTurns) {
+          report('batch produced no rows (have=' + turnList.length + ', pending=' + pendingTurns().length + ')')
+        }
+        // Everything fetched lands above the current view: keep the reader where
+        // they were instead of jumping to the top.
+        anchorAbove = true
+        autoScroll = false
+        if (latestState) render(latestState)
+        else render()
+      }).catch(function (error) {
+        // Never leave the loader wedged by a throw inside the render above.
+        loadingHistory = false
+        window.clearTimeout(loadingWatchdog)
+        report('history batch failed: ' + String((error && error.message) || error))
+      })
     }
 
     function renderRows(state) {
