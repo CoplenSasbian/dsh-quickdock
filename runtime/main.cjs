@@ -618,6 +618,10 @@ class DockRuntime {
 
   setDisplayVisible(visible) {
     if (!this.displayWin || this.displayWin.isDestroyed()) return;
+    // Two pages answer this question (input + docked); a hide that lands right
+    // after a show is a race, not a decision. Ignore it so the window cannot
+    // flicker between shown and hidden on every state push.
+    if (!visible && this.displayShownAt && Date.now() - this.displayShownAt < 500) return;
     if (!this.displayWin) return;
     if (visible) {
       this.placeDisplayWindow(true);
@@ -626,6 +630,7 @@ class DockRuntime {
         this.releaseClickThrough(this.displayWin);
         this.healDisplaySize();
         this.displayWin.showInactive();
+        this.displayShownAt = Date.now();
         this.ensurePainted();
         trace('display shown: bounds=' + JSON.stringify(this.displayWin.getBounds())
           + ' contentSize=' + JSON.stringify(this.displayWin.getContentSize())

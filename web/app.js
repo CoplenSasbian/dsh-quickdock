@@ -352,7 +352,9 @@
       displaySession = state.sessionId;
       displaySeen = false;
     }
-    if (hasContent || busy) displaySeen = true;
+    // A bound session counts: the window is the only place its history can
+    // appear, so it must be up before the first row exists.
+    if (hasContent || busy || (state && state.sessionId)) displaySeen = true;
     // Only "hidden" closes the window; the other modes decide how the rows
     // inside it are folded, which the docked page handles itself.
     var show = detailMode !== 'hidden' && displaySeen;
