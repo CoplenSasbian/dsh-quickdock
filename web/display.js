@@ -50,7 +50,7 @@
     /** How many older turns arrive on their own: none - the reader asks. */
     var FIRST_BATCH = 0;
     /** How many each click of the button adds. */
-    var MORE_BATCH = 5;
+    var MORE_BATCH = 10;
 
     /** Bounded retry: the host may still be seeding when the page asks. */
     var retriedEmpty = false;
@@ -66,7 +66,9 @@
     var turnList = [];
     /** Turns the session has on disk, taken once from /turns. */
     var outline = [];
-    var loadingHistory = false;
+    var loadingHistory = false
+    /** Watchdog for a history fetch that never settles. */
+    var loadingWatchdog = null;
     var loadedFor = 0;
     var loadedSession = null;
     var outlineRequested = false;
@@ -260,6 +262,15 @@
     function loadMoreTurns(count) {
       if (loadingHistory) return;
       var batch = pendingTurns().slice(0, count);
+      if (!batch.length) report('history exhausted: have=' + turnList.length + ' outline=' + outline.length);
+      // A fetch that never settles would wedge every later click, so the flag is
+      // both cleared in the callbacks and watched here.
+      window.clearTimeout(loadingWatchdog);
+      loadingWatchdog = window.setTimeout(function () {
+        if (!loadingHistory) return;
+        loadingHistory = false;
+        report('history load timed out, releasing the loader');
+      }, 6000);
       if (!batch.length) {
         if (latestState) render(latestState);
         else render();
@@ -281,6 +292,7 @@
           // Everything fetched lands above the current view: keep the reader where
           // they were instead of jumping to the top.
           anchorAbove = true;
+          autoScroll = false;
           if (latestState) render(latestState);
           else render();
           return;
@@ -405,17 +417,34 @@
         report('restore skipped: no scroll host');
         return;
       }
-      if (wasAuto) {
+      if (wasAuto && !anchorAbove) {
         scroller.scrollTop = scroller.scrollHeight;
         return;
       }
-      var grown = Math.max(0, scroller.scrollHeight - (prevHeight || 0));
-      scroller.scrollTop = anchorAbove ? prevTop + grown : prevTop;
-      report('restore prevTop=' + Math.round(prevTop) + ' prevHeight=' + Math.round(prevHeight || 0)
-        + ' grown=' + Math.round(grown) + ' anchor=' + anchorAbove
-        + ' -> top=' + Math.round(scroller.scrollTop)
-        + ' height=' + Math.round(scroller.scrollHeight)
-        + ' client=' + Math.round(scroller.clientHeight));
+      // Older turns land above the reader: the column grows, so the scroll
+      // position has to grow with it or the view slides up to the oldest turn.
+      // The island commits asynchronously, so the height is only trustworthy a
+      // frame later - apply the correction now and again once layout settled.
+      var settled = false;
+      var anchor = anchorAbove;
+      function place() {
+        if (!scroller.isConnected) return;
+        var grown = Math.max(0, scroller.scrollHeight - (prevHeight || 0));
+        var target = anchor ? prevTop + grown : prevTop;
+        var max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        scroller.scrollTop = Math.max(0, Math.min(max, target));
+        if (!settled) {
+          settled = true;
+          report('restore prevTop=' + Math.round(prevTop) + ' prevHeight=' + Math.round(prevHeight || 0)
+            + ' grown=' + Math.round(grown) + ' anchor=' + anchor
+            + ' -> top=' + Math.round(scroller.scrollTop)
+            + ' height=' + Math.round(scroller.scrollHeight)
+            + ' client=' + Math.round(scroller.clientHeight));
+        }
+      }
+      place();
+      window.requestAnimationFrame(place);
+      setTimeout(place, 80);
       anchorAbove = false;
     }
 
