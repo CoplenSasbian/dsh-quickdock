@@ -47,10 +47,13 @@
   function create(options) {
     var latestState = null;
     /** Turns shown in the column, oldest first: { number, turn, steps }. */
-    /** How many older turns arrive on the first read. */
-    var FIRST_BATCH = 3;
+    /** How many older turns arrive on their own: none - the reader asks. */
+    var FIRST_BATCH = 0;
     /** How many each click of the button adds. */
     var MORE_BATCH = 5;
+
+    /** The first painted column drops to its newest turn once. */
+    var didInitialScroll = false;
 
     /** True while older turns are being inserted above the viewport. */
     var anchorAbove = false;
@@ -546,6 +549,14 @@
       var wasAuto = autoScroll;
       syncRows(state, interaction, hasInter);
       applyAutoScroll(prevTop, wasAuto, prevHeight);
+      // The session opens on the newest turn, not on whatever the first paint
+      // happened to leave in view.
+      if (!didInitialScroll) {
+        didInitialScroll = true;
+        autoScroll = true;
+        var scroller = scrollHost();
+        if (scroller) scroller.scrollTop = scroller.scrollHeight;
+      }
       scheduleHitReport();
     }
 
