@@ -333,6 +333,29 @@ class DockRuntime {
       }
     });
     ipcMain.on('dock:hide', (event) => { if (sendAllowed(event)) this.hide(); });
+    /**
+     * Size the task window to the height its page reports. The edge that faces
+     * the input window stays put, so the panel grows away from the composer.
+     */
+    ipcMain.handle('dock:todo-height', (event, height) => {
+      if (!sendAllowed(event) || this.quitting) return 0;
+      const win = this.todoWin;
+      if (!win || win.isDestroyed()) return 0;
+      const wanted = Math.round(Number(height) || 0);
+      if (wanted <= 0) return 0;
+      const bounds = win.getBounds();
+      const area = currentDisplay(this.electron.screen, bounds).workArea;
+      const target = Math.max(80, Math.min(wanted, Math.floor(area.height * 0.6)));
+      if (Math.abs(target - bounds.height) < 2) return bounds.height;
+      // Above the input window the panel grows upward (top edge fixed);
+      // below it the top edge stays and the window grows down.
+      const top = this.displayAbove ? bounds.y : bounds.y;
+      win.setBounds({ x: bounds.x, y: top, width: bounds.width, height: target });
+      this.todoWantH = target;
+      trace('todo height: ' + bounds.height + ' -> ' + target);
+      this.placeDisplayWindow(true);
+      return target;
+    });
     ipcMain.on('dock:set-todo-empty', (event, empty) => {
       if (!sendAllowed(event) || typeof empty !== 'boolean') return;
       trace('set-todo-empty: ' + empty);

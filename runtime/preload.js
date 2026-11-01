@@ -18,6 +18,7 @@ const outbound = Object.freeze({
   setAlwaysOnTop: 'dock:set-always-on-top',
   setDisplayEmpty: 'dock:set-display-empty',
   setTodoEmpty: 'dock:set-todo-empty',
+  setTodoHeight: 'dock:todo-height',
   setMenuSpace: 'dock:set-menu-space',
   setContentHeight: 'dock:content-height',
   hide: 'dock:hide',
@@ -98,6 +99,12 @@ const api = Object.freeze({
     ipcRenderer.send(outbound.hide);
   },
   /** Show or hide the run window (no content = hidden). */
+  /** Size the task window to the height the page reports. */
+  setTodoHeight(height) {
+    if (typeof height !== 'number' || !Number.isFinite(height)) return Promise.resolve(0);
+    return ipcRenderer.invoke(outbound.setTodoHeight, height);
+  },
+
   /** Show or hide the task window. */
   setTodoEmpty(empty) {
     if (typeof empty !== 'boolean') return;

@@ -63,6 +63,7 @@
     todos.forEach(function (row) { if (row.status === 'completed') done += 1; });
     els.todoCard.hidden = false;
     els.todoCard.classList.toggle('open', todoOpen);
+    syncTodoHeight();
     els.todoCount.textContent = todos.length ? done + '/' + todos.length : '';
     if (els.todoBuild) {
       var build = state.version;
@@ -112,6 +113,34 @@
       item.appendChild(text);
       els.todoList.appendChild(item);
     });
+  }
+
+  /** Last height reported to the host (the task window sizes itself). */
+  var reportedTodoHeight = 0;
+
+  /**
+   * Report the task card's height so its window can shrink or grow with it.
+   * The window keeps the edge that faces the input window, so the panel grows
+   * away from the composer.
+   */
+  function syncTodoHeight() {
+    if (!isTodo || !els.todoCard) return;
+    var bridge = window.quickDock;
+    if (!bridge || !bridge.setTodoHeight) return;
+    // .stack pads 10px top and bottom around the card.
+    var height = Math.ceil(els.todoCard.getBoundingClientRect().height) + 20;
+    if (height < 60 || Math.abs(height - reportedTodoHeight) < 2) return;
+    reportedTodoHeight = height;
+    try {
+      var pending = bridge.setTodoHeight(height);
+      if (pending && typeof pending.catch === 'function') pending.catch(function () {});
+    } catch (error) {
+      /* the bridge is optional outside Electron */
+    }
+  }
+
+  if (window.ResizeObserver && els.todoCard) {
+    new window.ResizeObserver(function () { syncTodoHeight(); }).observe(els.todoCard);
   }
 
   /** Question stepper state: which interaction, which question, answers so far. */
