@@ -1,8 +1,22 @@
-# QuickDock runs as a single plugin row.
+# QuickDock is a bundle: this file inserts the plugin rows DSH mounts.
 #
-# A component row (dsh-quickdock/dock) was tried so DSH could switch the windows
-# on their own, but DSH's client-module roster is built from the bundle's rows and
-# a subpath row is not a package specifier: the header Dock button then vanished.
-# The split stays in code (host/dock-component.js, config.service/config.dock) for
-# a future attempt; the shipped arrangement is one row again.
-[]
+# The row named after the package is mandatory, not decoration. DSH builds the
+# Web page's client-module roster from the rows a bundle declares, and the client
+# bundle (the header Dock button) is resolved from the row whose name is the
+# package name. An empty patch mounts nothing: no Host API, no client module, no
+# button. That is why this list is `[]` only when the plugin is meant to be off.
+#
+# One row mounts both components (Host API + Electron windows); set
+# `config.dock: false` to serve the API headlessly without windows.
+- insert:
+    - id: dsh-quickdock
+      name: dsh-quickdock
+      config:
+        enabled: true
+        # Keep the dock on demand: Electron starts on the first click.
+        autoLaunch: false
+        # Fetch the desktop runtime at mount so the first click is instant.
+        prefetchElectron: true
+        # The header button this row's client bundle registers.
+        headerButton: true
+        headerButtonOrder: 1010

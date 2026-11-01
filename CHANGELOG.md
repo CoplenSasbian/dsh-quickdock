@@ -34,6 +34,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Fixed
 
+- The header Dock button is back after the bundle patch was emptied: DSH builds the
+  page's client-module roster from the rows a bundle declares and resolves the
+  client bundle from the row named after the package, so a patch of `[]` mounted
+  nothing - no Host API, no client module, no button. `cordis.patch.yml` declares
+  the `dsh-quickdock` row again, and `runtime/test/bundle-patch.test.js` pins that
+  row, the client manifest and the module id together.
 - An approval claimed by the dock is handed back to DSH when the dock hides, closes
   or crashes: the pending request resolves through `next()` so DSH's own dialog
   takes over instead of waiting for the five-minute approval timeout. A stale
