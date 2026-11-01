@@ -178,7 +178,9 @@ export class QuickDockHost {
       rootDir: ROOT_DIR,
       theme: this.theme,
       locale: this.locale,
-      trace: this.trace
+      trace: this.trace,
+      // Height of the docked pane when the unified layout shares one window.
+      displayHeight: this.config.displayHeight
     })
     this.api = createApiRouter({
       app: this,

@@ -82,6 +82,9 @@ function parseConfig(argv, env) {
     // Run window: fixed height, attached above or below the input window.
     displayHeight: positiveInteger(inline.displayHeight, 520),
     todoHeight: positiveInteger(inline.todoHeight, 180),
+    // 'unified' keeps everything in one window (details above, composer below);
+    // 'split' is the old two-window arrangement.
+    layout: inline.layout === 'split' ? 'split' : 'unified',
     // The dedicated task window is opt-in: the card also fits above the composer.
     todoWindow: inline.todoWindow === true,
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,

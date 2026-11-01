@@ -227,6 +227,9 @@
       : 'input';
   var isDisplay = VIEW === 'display';
   var isTodo = VIEW === 'todo';
+  /** 'unified' keeps the docked pane inside this window (three panes, one window). */
+  var unified = /(?:^|[?&])layout=unified(?:&|$)/.test(window.location.search);
+  if (unified) document.body.dataset.layout = 'unified';
   // CSS keys off the view (the task window hides the composer and the bar).
   document.body.dataset.view = VIEW;
   var displayView = null;
@@ -252,6 +255,8 @@
     todoCard: U.$('todoCard'), todoHead: U.$('todoHead'), todoCount: U.$('todoCount'),
     todoList: U.$('todoList'), todoGoal: U.$('todoGoal'), todoGoalText: U.$('todoGoalText'),
     todoBuild: U.$('todoBuild'),
+    displayPane: U.$('displayPane'),
+    displayFrame: U.$('displayFrame'),
     reloadBtn: U.$('reloadBtn'),
     askCard: U.$('askCard'), askTitle: U.$('askTitle'), askStep: U.$('askStep'),
     askQuestionText: U.$('askQuestionText'), askOptions: U.$('askOptions'),
@@ -265,6 +270,7 @@
       'stopBtnRun', 'runApproval',
       'runApprovalTool', 'runApprovalReason', 'runAllow', 'runDeny',
       'todoCard', 'todoHead', 'todoCount', 'todoList', 'todoGoal', 'todoGoalText', 'todoBuild', 'reloadBtn',
+      'displayPane', 'displayFrame',
       'askCard', 'askTitle', 'askStep', 'askQuestionText', 'askOptions',
       'askInput', 'askBack', 'askNext'].forEach(function (key) {
       els[key] = null;
@@ -317,6 +323,16 @@
       '--qd-state-warn': '#d98300', '--qd-state-idle': '#96989e'
     }
   };
+
+  // The embedded pane is the display page itself: same origin, same token, so
+  // history loading, scrolling and the empty state all keep working untouched.
+  if (unified && els.displayFrame) {
+    var params = new URLSearchParams(window.location.search);
+    params.set('view', 'display');
+    params.delete('layout');
+    els.displayFrame.src = window.location.pathname + '?' + params.toString();
+  }
+
 
   var appliedTokenKeys = [];
 
@@ -453,6 +469,12 @@
     if (!panel || !quickDock || !quickDock.setContentHeight) return;
     // The task card sits above the panel as its own block, so both count.
     var stackHeight = Math.ceil(panel.getBoundingClientRect().height);
+    if (unified && els.displayPane) {
+      // One window, three panes: the details take displayHeight, the rest is
+      // measured. The runtime clamps the whole thing to the work area.
+      var paneBox = els.displayPane.getBoundingClientRect();
+      stackHeight += Math.ceil(paneBox.height) + 8;
+    }
     // The task card lives in its own window now; only count it if it is here.
     if (els.todoCard && !els.todoCard.hidden) {
       var box = els.todoCard.getBoundingClientRect();

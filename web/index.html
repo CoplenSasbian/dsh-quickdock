@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src data:;">
   <title>QuickDock</title>
   <!-- Host-inlined assets: theme tokens, style sheet, locale catalog, scripts. -->
   <!--QD_STYLES-->
@@ -21,6 +21,10 @@
       The agent's task list, docked to the top of this window: it sits between
       the run window and the composer, so progress is visible while typing.
     -->
+    <!-- Unified layout: the docked pane lives inside this window. -->
+    <div class="display-pane" id="displayPane">
+      <iframe id="displayFrame" title="Execution"></iframe>
+    </div>
     <div class="todo-card" id="todoCard" hidden>
       <div class="todo-head" id="todoHead" role="button" tabindex="0">
         <span class="todo-icon" aria-hidden="true">☰</span>

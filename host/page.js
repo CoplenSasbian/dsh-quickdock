@@ -33,6 +33,8 @@ export class PageRenderer {
     this.locale = deps.locale
     this.trace = deps.trace || (() => {})
     this.assets = null
+    // Height of the docked pane when everything shares one window.
+    this.displayHeight = deps.displayHeight || 420
   }
 
   /**
@@ -128,6 +130,7 @@ export class PageRenderer {
       .replace('<!--QD_THEME-->', put(shell.theme))
       .replace('<!--QD_I18N-->', put(shell.i18n))
       .replace('<!--QD_STYLES-->', put('<style>' + assets.styles + '</style>'))
+      .replace('</head>', put('<style>body .display-pane{height:' + Math.round(this.displayHeight || 420) + 'px}</style></head>'))
       .replace('<!--QD_SCRIPT-->', put('<script>' + assets.scripts + '</script>'))
       .replace(/<html[^>]*>/, put('<html lang="' + shell.lang + '" data-theme="' + shell.scheme + '">'))
       // One page serves three windows: tell it which one it is.

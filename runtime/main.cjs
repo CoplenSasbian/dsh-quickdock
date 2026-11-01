@@ -182,7 +182,9 @@ class DockRuntime {
       + ' contentSize=' + JSON.stringify(this.win.getContentSize()));
 
     // Display window: separate from the input window, sticks to its top or bottom edge.
-    this.displayWin = this.createDisplayWindow(restored.display);
+    const unified = this.config.layout === 'unified';
+    this.displayWin = unified ? null : this.createDisplayWindow(restored.display);
+    if (unified) trace('unified layout: one window, the docked pane lives inside it');
     this.todoWin = this.config.todoWindow === true ? this.createTodoWindow(restored.display) : null;
     trace('display window created: bounds=' + JSON.stringify(this.displayWin.getBounds()));
     // Keep the creation-time content size as the reference: moving drifts the client area, use it to correct.
@@ -426,7 +428,7 @@ class DockRuntime {
     this.later(() => this.pollHost(), this.config.hostPollMs);
     this.later(() => this.pollHitTest(), this.config.hitPollMs);
 
-    await this.win.loadURL(this.config.url);
+    await this.win.loadURL(this.config.url + (this.config.layout === 'unified' ? '&layout=unified' : ''));
     trace('loadURL done: ' + this.config.url);
     const sep = this.config.url.indexOf('?') >= 0 ? '&' : '?';
     if (this.displayWin) {
