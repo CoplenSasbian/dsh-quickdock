@@ -12,7 +12,7 @@ export const API_PREFIX = '/quickdock/api/'
 /** Bridge route used by the browser Client half (cookie-authenticated). */
 export const BRIDGE_PATH = '/api/quickdock'
 /** HTML view names, also used as query values. */
-export const VIEWS = Object.freeze({ input: 'input', display: 'display' })
+export const VIEWS = Object.freeze({ input: 'input', display: 'display', todo: 'todo' })
 
 /** Client protocol version reported by GET /quickdock/api/meta. */
 export const API_VERSION = 1

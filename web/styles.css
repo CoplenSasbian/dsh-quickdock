@@ -450,6 +450,15 @@ html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
 
 
 /* ---------- Task list: the agent's own steps ---------- */
+/* The task window shows the card alone, flush to the window edges. */
+body[data-view="todo"] .bar,
+body[data-view="todo"] .run-line,
+body[data-view="todo"] .composer-wrap,
+body[data-view="todo"] .run-approval,
+body[data-view="todo"] .ask-card{display:none!important}
+body[data-view="todo"] .stack{padding:10px}
+body[data-view="todo"] .panel{display:none}
+body[data-view="todo"] .todo-card{margin:0;max-height:100%;overflow:auto}
 /* Its own card, outside the panel: the window background shows between them, so
    the task list reads as a separate strip above the input window. */
 .todo-card{

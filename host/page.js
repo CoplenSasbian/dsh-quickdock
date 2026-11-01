@@ -52,7 +52,10 @@ export class PageRenderer {
       scripts: (manifest.scripts || []).map(read).join('\n'),
       html: {
         [VIEWS.input]: read('index.html'),
-        [VIEWS.display]: read('display.html')
+        [VIEWS.display]: read('display.html'),
+    // The task window reuses the input page: the view attribute hides the
+    // composer and leaves only the task card.
+    [VIEWS.todo]: read('index.html')
       }
     }
     return this.assets
@@ -81,5 +84,8 @@ export class PageRenderer {
       .replace('<!--QD_STYLES-->', put('<style>' + assets.styles + '</style>'))
       .replace('<!--QD_SCRIPT-->', put('<script>' + assets.scripts + '</script>'))
       .replace(/<html[^>]*>/, put('<html lang="' + shell.lang + '" data-theme="' + shell.scheme + '">'))
+      // One page serves three windows: tell it which one it is.
+      .replace("window.__QD_VIEW__ = 'input'", put("window.__QD_VIEW__ = '" + view + "'"))
+      .replace("window.__QD_VIEW__ = 'display'", put("window.__QD_VIEW__ = '" + view + "'"))
   }
 }

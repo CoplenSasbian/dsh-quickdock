@@ -327,7 +327,10 @@ export class QuickDockHost {
             res.end('invalid token')
             return
           }
-          const view = url.searchParams.get('view') === VIEWS.display ? VIEWS.display : VIEWS.input
+          const wanted = url.searchParams.get('view')
+          const view = wanted === VIEWS.display ? VIEWS.display
+            : wanted === VIEWS.todo ? VIEWS.todo
+              : VIEWS.input
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
           res.end(this.page.render(view))
           return

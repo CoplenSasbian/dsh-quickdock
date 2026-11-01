@@ -183,6 +183,7 @@ class DockRuntime {
 
     // Display window: separate from the input window, sticks to its top or bottom edge.
     this.displayWin = this.createDisplayWindow(restored.display);
+    this.todoWin = this.createTodoWindow(restored.display);
     trace('display window created: bounds=' + JSON.stringify(this.displayWin.getBounds()));
     // Keep the creation-time content size as the reference: moving drifts the client area, use it to correct.
     const initialSize = this.displayWin.getContentSize();
@@ -332,6 +333,10 @@ class DockRuntime {
       }
     });
     ipcMain.on('dock:hide', (event) => { if (sendAllowed(event)) this.hide(); });
+    ipcMain.on('dock:set-todo-empty', (event, empty) => {
+      if (!sendAllowed(event) || typeof empty !== 'boolean') return;
+      this.setTodoVisible(!empty);
+    });
     ipcMain.on('dock:set-display-empty', (event, empty) => {
       if (!sendAllowed(event) || typeof empty !== 'boolean') return;
       this.setDisplayVisible(!empty);
@@ -406,6 +411,34 @@ class DockRuntime {
    * content. The display window keeps a fixed size (height = config.displayHeight)
    * and scrolls its content.
    */
+  /**
+   * The task window: a third window that sits between the input window and the
+   * run window, so the agent's plan has its own place instead of squeezing the
+   * composer.
+   * @param {object} display display info from the store.
+   * @returns {BrowserWindow} the created window.
+   */
+  createTodoWindow(display) {
+    const { BrowserWindow } = this.electron;
+    const area = (display && display.workArea) || { x: 0, y: 0, width: 1920, height: 1040 };
+    const width = this.config.width;
+    const height = Math.min(this.config.todoHeight || 180, area.height);
+    const win = new BrowserWindow(sharedWindowOptions({
+      width,
+      height,
+      x: Math.round(area.x + area.width - width - (this.config.margin || 16)),
+      y: Math.round(area.y + area.height - height - 120),
+      title: 'QuickDock Tasks',
+    }));
+    prepareWindow(win, this.store);
+    win.on('close', (event) => {
+      if (this.quitting) return;
+      event.preventDefault();
+      this.hideTodo();
+    });
+    return win;
+  }
+
   createDisplayWindow(display) {
     const { BrowserWindow } = this.electron;
     const area = (display && display.workArea) || { x: 0, y: 0, width: 1920, height: 1040 };
@@ -498,8 +531,13 @@ class DockRuntime {
     const PANEL_GAP = 6;     // desired panel gap
     const gap = PANEL_GAP - 2 * EDGE_PAD;   // = -14, i.e. the two windows overlap by 14px
 
-    const below = input.y + input.height + gap;
-    const above = input.y - height - gap;
+    // The task window takes the slot next to the input window; the run window
+    // moves out by its height so the order stays input - tasks - run.
+    const todoHeight = this.todoWin && !this.todoWin.isDestroyed() ? this.todoWantH || (this.config.todoHeight || 180) : 0;
+    const todoShown = Boolean(this.todoWin && !this.todoWin.isDestroyed() && this.todoWin.isVisible());
+    const shift = todoShown ? todoHeight + Math.abs(gap) : 0;
+    const below = input.y + input.height + gap + shift;
+    const above = input.y - height - gap - shift;
     const spaceBelow = area.y + area.height - below;
     const spaceAbove = above - area.y;
 
@@ -533,7 +571,31 @@ class DockRuntime {
     }
     // Notify the page when above/below flips: content grows from the top when placed
     // below and from the bottom when above (so it always hugs the input window).
+    if (todoShown) this.placeTodoWindow(input, area, this.displayAbove);
     if (wasAbove !== this.displayAbove) this.sendState();
+  }
+
+  /**
+   * Park the task window next to the input window, on the side the run window is.
+   * @param {object} input input window bounds.
+   * @param {object} area work area.
+   * @param {boolean} above whether the run window sits above the input.
+   */
+  placeTodoWindow(input, area, above) {
+    const win = this.todoWin;
+    if (!win || win.isDestroyed()) return;
+    const height = this.todoWantH || (this.config.todoHeight || 180);
+    const width = this.displayWidth();
+    const gap = -14;
+    const y = above ? input.y - height - gap : input.y + input.height + gap;
+    const clamped = Math.round(Math.max(area.y, Math.min(area.y + area.height - height, y)));
+    const x = Math.round(Math.max(area.x, Math.min(area.x + area.width - width, input.x)));
+    const current = win.getBounds();
+    if (current.x === x && current.y === clamped && current.width === width && current.height === height) return;
+    win.setBounds({ x, y: clamped, width, height });
+    this.todoWantW = width;
+    this.todoWantH = height;
+    trace('todo placed: x=' + x + ' y=' + clamped + ' size=' + width + 'x' + height);
   }
 
   /**
@@ -649,6 +711,35 @@ class DockRuntime {
   hideDisplay() {
     if (!this.displayWin || this.displayWin.isDestroyed()) return;
     if (this.displayWin && this.displayWin.isVisible()) this.displayWin.hide();
+  }
+
+  /**
+   * Show or hide the task window.
+   * @param {boolean} visible whether it should be on screen.
+   */
+  setTodoVisible(visible) {
+    const win = this.todoWin;
+    if (!win || win.isDestroyed()) return;
+    if (visible) {
+      this.placeTodoWindow(this.win.getBounds(), currentDisplay(this.electron.screen, this.win.getBounds()).workArea, this.displayAbove);
+      if (!win.isVisible()) {
+        this.releaseClickThrough(win);
+        win.showInactive();
+        this.ensurePainted();
+        trace('todo shown');
+      }
+      this.placeDisplayWindow(true);
+      return;
+    }
+    if (win.isVisible()) {
+      win.hide();
+      trace('todo hidden');
+      this.placeDisplayWindow(true);
+    }
+  }
+
+  hideTodo() {
+    if (this.todoWin && !this.todoWin.isDestroyed() && this.todoWin.isVisible()) this.todoWin.hide();
   }
 
   /**
@@ -932,6 +1023,7 @@ class DockRuntime {
     if (this.menuSpace) this.setMenuSpace(0);
     this.remember();
     this.hideDisplay();
+    this.hideTodo();
     // On-demand mode: hiding equals exiting, otherwise the process lingers (the user expects click-and-go).
     if (this.exitOnClose) {
       this.quitting = true;

@@ -17,6 +17,7 @@ const outbound = Object.freeze({
   setDragZones: 'dock:set-drag-zones',
   setAlwaysOnTop: 'dock:set-always-on-top',
   setDisplayEmpty: 'dock:set-display-empty',
+  setTodoEmpty: 'dock:set-todo-empty',
   setMenuSpace: 'dock:set-menu-space',
   setContentHeight: 'dock:content-height',
   hide: 'dock:hide',
@@ -97,6 +98,12 @@ const api = Object.freeze({
     ipcRenderer.send(outbound.hide);
   },
   /** Show or hide the run window (no content = hidden). */
+  /** Show or hide the task window. */
+  setTodoEmpty(empty) {
+    if (typeof empty !== 'boolean') return;
+    ipcRenderer.send(outbound.setTodoEmpty, empty);
+  },
+
   setDisplayEmpty(empty) {
     if (typeof empty !== 'boolean') return;
     ipcRenderer.send(outbound.setDisplayEmpty, empty);

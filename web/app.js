@@ -15,13 +15,20 @@
   var t = i18n.t;
 
   /** Whether the task list is expanded; it starts collapsed to keep the window short. */
-  var todoOpen = false;
+  var todoOpen = true;
+  /** Whether the task window was asked to show; the host owns the window. */
+  var todoReported = null;
 
   /**
    * The agent's task list: a small card at the top of the input window, between
    * the run window and the composer.
    */
   function renderTodos() {
+    // The plan has its own window now; the input window keeps only the composer.
+    if (!isTodo) {
+      if (els.todoCard) els.todoCard.hidden = true;
+      return;
+    }
     if (!els.todoCard || !state) return;
     var todos = Array.isArray(state.todos) ? state.todos : [];
     var goal = state.goal && state.goal.objective ? state.goal : null;
@@ -31,6 +38,13 @@
     }
     if (!todos.length && !goal) {
       els.todoCard.hidden = true;
+      if (isTodo && todoReported !== false) {
+        todoReported = false;
+        var bridgeHide = window.quickDock;
+        if (bridgeHide && bridgeHide.setTodoEmpty) {
+          try { bridgeHide.setTodoEmpty(true); } catch (error) { /* optional */ }
+        }
+      }
       els.todoCard.classList.remove('open');
       renderTodoList(null);
       return;
@@ -40,6 +54,16 @@
     els.todoCard.hidden = false;
     els.todoCard.classList.toggle('open', todoOpen);
     els.todoCount.textContent = todos.length ? done + '/' + todos.length : '';
+    if (isTodo) {
+      var wantVisible = true;
+      if (todoReported !== wantVisible) {
+        todoReported = wantVisible;
+        var bridge = window.quickDock;
+        if (bridge && bridge.setTodoEmpty) {
+          try { bridge.setTodoEmpty(false); } catch (error) { /* optional */ }
+        }
+      }
+    }
     if (renderTodoList.lastTodos !== todos || renderTodoList.lastOpen !== todoOpen) {
       renderTodoList(todos);
       renderTodoList.lastTodos = todos;
@@ -104,8 +128,13 @@
 
   /* ---------------------------------- dom ---------------------------------- */
 
-  var VIEW = window.__QD_VIEW__ === 'display' ? 'display' : 'input';
+  var VIEW = window.__QD_VIEW__ === 'display' ? 'display'
+    : window.__QD_VIEW__ === 'todo' ? 'todo'
+      : 'input';
   var isDisplay = VIEW === 'display';
+  var isTodo = VIEW === 'todo';
+  // CSS keys off the view (the task window hides the composer and the bar).
+  document.body.dataset.view = VIEW;
   var displayView = null;
   // The <title> is static markup; the localized variant comes from the catalog.
   var titleKey = isDisplay ? 'app.displayTitle' : 'app.inputTitle';
@@ -328,7 +357,8 @@
     if (!panel || !quickDock || !quickDock.setContentHeight) return;
     // The task card sits above the panel as its own block, so both count.
     var stackHeight = Math.ceil(panel.getBoundingClientRect().height);
-    if (els.todoCard && !els.todoCard.hidden) {
+    // The task card lives in its own window now; only count it if it is here.
+    if (!isTodo && els.todoCard && !els.todoCard.hidden) {
       var box = els.todoCard.getBoundingClientRect();
       stackHeight += Math.ceil(box.height) + 8;
     }

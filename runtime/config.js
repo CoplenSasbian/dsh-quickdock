@@ -81,6 +81,7 @@ function parseConfig(argv, env) {
     inputHeight: positiveInteger(inline.inputHeight, 196),
     // Run window: fixed height, attached above or below the input window.
     displayHeight: positiveInteger(inline.displayHeight, 520),
+    todoHeight: positiveInteger(inline.todoHeight, 180),
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,
     focusOnSummon: inline.focusOnSummon === true,
     rememberGeometry: inline.rememberGeometry !== false,
