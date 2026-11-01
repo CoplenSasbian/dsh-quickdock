@@ -408,10 +408,18 @@
      */
     /** Diagnostic line in dock.log; silent outside Electron. */
     function report(message) {
-      var bridge = window.quickDock;
+      var bridge = window.quickDock
       if (bridge && bridge.debug) {
         try { bridge.debug(message); } catch (error) { /* ignore */ }
+        return
       }
+      // The docked pane is an iframe: its preload is not guaranteed, so the
+      // parent page (the one that does have it) writes the line instead.
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ qdReport: String(message) }, '*')
+        }
+      } catch (error) { /* ignore */ }
     }
 
     function applyAutoScroll(prevTop, wasAuto, prevHeight) {

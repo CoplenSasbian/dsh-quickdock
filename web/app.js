@@ -181,6 +181,8 @@
   /** How many times the task window asked for the plan on its own. */
   var planQueries = 0;
   var planTimer = null;
+  /** The projection answered: it is authoritative, so never poll again. */
+  var planSettled = false;
 
   /**
    * Ask the host for the plan when the pushed state has none.
@@ -198,9 +200,12 @@
       report('plan from api: todos=' + plan.todos.length + ' source=' + plan.source);
       // 'projection' is DSH's own answer: it is complete, so stop asking. New
       // writes still arrive over the state stream.
-      if (plan.source === 'projection' && planTimer) {
-        clearInterval(planTimer);
-        planTimer = null;
+      if (plan.source === 'projection') {
+        planSettled = true;
+        if (planTimer) {
+          clearInterval(planTimer);
+          planTimer = null;
+        }
       }
       // Feed the same renderer the pushed state would have fed.
       state.todos = plan.todos;
@@ -214,7 +219,7 @@
 
   /** Poll while the plan is missing: the host may still be seeding. */
   function watchPlan() {
-    if (isDisplay) return;
+    if (isDisplay || planSettled) return;
     if (planTimer) return;
     planTimer = setInterval(function () {
       var empty = !state || !Array.isArray(state.todos) || !state.todos.length;
@@ -230,6 +235,14 @@
 
   /** Question stepper state: which interaction, which question, answers so far. */
   var ask = { id: '', index: 0, answers: {} };
+
+  // The docked pane reports from inside an iframe, where the preload may be
+  // missing. It relays its lines here and the main frame writes them.
+  window.addEventListener('message', function (event) {
+    var data = event && event.data
+    if (!data || typeof data.qdReport !== 'string') return
+    report('pane: ' + data.qdReport)
+  })
 
   /* ------------------------------- transport ------------------------------- */
 
