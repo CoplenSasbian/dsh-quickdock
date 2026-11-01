@@ -39,6 +39,7 @@
     if (!todos.length && !goal) {
       els.todoCard.hidden = true;
       if (isTodo && todoReported !== false) {
+        report('todo page: empty (todos=' + todos.length + ' goal=' + Boolean(goal) + ')');
         todoReported = false;
         var bridgeHide = window.quickDock;
         if (bridgeHide && bridgeHide.setTodoEmpty) {
@@ -55,6 +56,7 @@
     els.todoCard.classList.toggle('open', todoOpen);
     els.todoCount.textContent = todos.length ? done + '/' + todos.length : '';
     if (isTodo) {
+      report('todo page: todos=' + todos.length + ' goal=' + Boolean(goal) + ' asked=' + todoReported);
       var wantVisible = true;
       if (todoReported !== wantVisible) {
         todoReported = wantVisible;

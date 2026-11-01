@@ -335,6 +335,7 @@ class DockRuntime {
     ipcMain.on('dock:hide', (event) => { if (sendAllowed(event)) this.hide(); });
     ipcMain.on('dock:set-todo-empty', (event, empty) => {
       if (!sendAllowed(event) || typeof empty !== 'boolean') return;
+      trace('set-todo-empty: ' + empty);
       this.setTodoVisible(!empty);
     });
     ipcMain.on('dock:set-display-empty', (event, empty) => {
@@ -732,7 +733,7 @@ class DockRuntime {
         this.releaseClickThrough(win);
         win.showInactive();
         this.ensurePainted();
-        trace('todo shown');
+        trace('todo shown: bounds=' + JSON.stringify(win.getBounds()) + ' visible=' + win.isVisible());
       }
       this.placeDisplayWindow(true);
       return;
