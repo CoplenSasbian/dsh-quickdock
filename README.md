@@ -9,7 +9,7 @@ Click **Dock** in a DSH session header and two frameless, transparent windows ap
 - **Run window** — attached above or below the input window, showing the current turn
   as rows (thinking, tool calls, replies)
 
-Both windows can be dragged; the run window follows. Approvals and structured
+The window can be dragged. Approvals and structured
 questions are answered in the dock, without going back to the main window.
 
 The UI is bilingual (English / Simplified Chinese) and follows the DSH language.
@@ -53,8 +53,10 @@ Register the plugin in the DSH profile (see `cordis.patch.yml`):
   next message goes.
 - **↗** opens the bound session in the DSH main window (dock -> Host API -> command
   bus -> Client half -> `ctx.uiWorkspace.openSession`).
-- **▤** shows/hides the run window. Hiding is temporary (restored after two hours).
-- **⤒** pins both windows together; the run window is never left behind.
+- **▤** cycles how the execution detail line behaves: auto (shown while a tool
+  runs, hidden once the turn settles), expanded (kept after the call finishes),
+  folded (never shown).
+- **⤒** keeps the window above other windows.
 - **The dock follows the DSH theme live**: light/dark switches and every
   `--dsw-*` palette change are read from the main window's computed styles and
   pushed over SSE, so both windows repaint without a reload.

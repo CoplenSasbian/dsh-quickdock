@@ -78,7 +78,8 @@ try {
   const page = await request('/quickdock?t=' + token)
   check('page renders', page.status === 200)
   check('page inlines the locale payload', page.text.includes('window.__QD_I18N__'))
-  check('page inlines all page scripts', page.text.includes('__QD_VIEW__') && page.text.includes('QD.display'))
+  check('page inlines all page scripts',
+    page.text.includes('__QD_VIEW__') && page.text.includes('QD.composer'))
   check('page inlines the stylesheet', page.text.includes('--qd-bg-base'))
 
   const state = JSON.parse((await request('/quickdock/api/state?t=' + token)).text)

@@ -100,7 +100,6 @@
   var state = null;
   var connected = false;
   var pendingFork = false;
-  var displayView = null;
 
   /* --------------------------------- theme --------------------------------- */
 
@@ -206,10 +205,6 @@
         if (!i18n.setPayload(payload)) return;
         if (menu && menu.isOpen()) menu.close();
         render();
-        if (displayView) {
-          displayView.invalidate();
-          displayView.render(state);
-        }
       } catch (error) {
         /* ignore */
       }
@@ -242,72 +237,56 @@
     render();
   }
 
-  /* ------------------------------ list visibility ------------------------------ */
+  /* ------------------------------ detail mode ------------------------------ */
 
-  // Two independent renderer processes share this through storage events only.
-  var LIST_KEY = 'qd-list-hidden';
-  var LIST_TTL = 2 * 60 * 60 * 1000; // hiding is temporary: it expires
-  var listHidden = readListHidden();
+  /**
+   * How the execution detail line behaves. One button cycles the modes:
+   *  - auto:   shown while a tool runs, hidden once the turn settles
+   *  - open:   always shown, so the last call stays readable after it finished
+   *  - closed: never shown
+   */
+  var DETAIL_KEY = 'qd-detail-mode';
+  var DETAIL_MODES = ['auto', 'open', 'closed'];
+  var DETAIL_LABELS = { auto: 'detail.auto', open: 'detail.open', closed: 'detail.closed' };
+  var detailMode = readDetailMode();
 
-  function readListHidden() {
+  function readDetailMode() {
     try {
-      var raw = localStorage.getItem(LIST_KEY);
-      if (!raw) return false;
-      var saved = JSON.parse(raw);
-      if (!saved || saved.hidden !== true) return false;
-      if (!Number.isFinite(saved.at) || Date.now() - saved.at > LIST_TTL) return false;
-      return true;
+      var saved = localStorage.getItem(DETAIL_KEY);
+      return DETAIL_MODES.indexOf(saved) >= 0 ? saved : 'auto';
     } catch (error) {
-      return false;
+      return 'auto';
     }
   }
 
-  function writeListHidden(value) {
-    listHidden = Boolean(value);
+  function writeDetailMode(value) {
+    detailMode = DETAIL_MODES.indexOf(value) >= 0 ? value : 'auto';
     try {
-      localStorage.setItem(LIST_KEY, JSON.stringify({ hidden: listHidden, at: Date.now() }));
+      localStorage.setItem(DETAIL_KEY, detailMode);
     } catch (error) {
       /* storage may be unavailable */
     }
   }
 
+  /** Reflect the mode on the button and re-render the line it controls. */
   function syncListButton() {
-    [els.listBtn].forEach(function (button) {
-      if (!button) return;
-      button.classList.toggle('off', listHidden);
-      button.setAttribute('aria-pressed', listHidden ? 'false' : 'true');
-      button.title = listHidden ? t('list.show') : t('list.hide');
-    });
+    var button = els.listBtn;
+    if (button) {
+      var closed = detailMode === 'closed';
+      button.classList.toggle('off', closed);
+      button.setAttribute('aria-pressed', closed ? 'false' : 'true');
+      var label = t(DETAIL_LABELS[detailMode]);
+      button.title = label;
+      button.setAttribute('aria-label', label);
+    }
+    renderRunLine();
   }
 
   window.addEventListener('storage', function (event) {
-    if (event.key !== LIST_KEY) return;
-    listHidden = readListHidden();
+    if (event.key !== DETAIL_KEY) return;
+    detailMode = readDetailMode();
     syncListButton();
-    if (isDisplay) {
-      if (displayView) displayView.render(state);
-    } else {
-      refreshDisplayVisibility();
-    }
   });
-
-  /** Input window: decide whether the run window should be visible. */
-  function refreshDisplayVisibility() {
-    var steps = (state && state.steps) || [];
-    var interaction = state && state.interaction;
-    var hasInter = Boolean(interaction && interaction.status === 'open');
-    var stream = state && state.stream;
-    var hasContent = Boolean(steps.length || hasInter
-      || (stream && (stream.text || stream.thinking || (stream.tools && stream.tools.length))));
-    var quickDock = window.quickDock;
-    if (!quickDock || !quickDock.setDisplayEmpty) return;
-    try {
-      // Approvals are answered in this window's run panel; a hidden list stays hidden.
-      quickDock.setDisplayEmpty(listHidden || !hasContent);
-    } catch (error) {
-      /* IPC is optional outside Electron */
-    }
-  }
 
   /* -------------------------------- rendering -------------------------------- */
 
@@ -340,10 +319,6 @@
 
   function render() {
     if (!state) return;
-    if (isDisplay) {
-      if (displayView) displayView.render(state);
-      return;
-    }
     var workspace = currentWorkspace();
 
     els.wsName.textContent = workspace ? workspace.name : t('bar.noWorkspace');
@@ -448,17 +423,36 @@
    */
   function renderRunLine() {
     if (!els.runLine || !state) return;
-    var current = null;
-    var stream = state.stream;
-    if (state.status === 'running' && stream && stream.tools && stream.tools.length) {
-      current = stream.tools[stream.tools.length - 1];
+    if (detailMode === 'closed') {
+      els.runLine.classList.add('hidden');
+      return;
     }
-    if (!current && state.status === 'running') {
-      var steps = state.steps || [];
-      for (var index = steps.length - 1; index >= 0; index -= 1) {
-        var step = steps[index];
-        if (step && step.kind === 'tool' && step.status === 'run') {
-          current = step;
+    var running = state.status === 'running';
+    var current = null;
+    var index = 0;
+    if (running) {
+      var stream = state.stream;
+      if (stream && stream.tools && stream.tools.length) {
+        current = stream.tools[stream.tools.length - 1];
+      }
+      if (!current) {
+        var steps = state.steps || [];
+        for (index = steps.length - 1; index >= 0; index -= 1) {
+          var step = steps[index];
+          if (step && step.kind === 'tool' && step.status === 'run') {
+            current = step;
+            break;
+          }
+        }
+      }
+    }
+    // Expanded mode keeps the last call readable after the turn settled.
+    if (!current && detailMode === 'open') {
+      var rows = state.steps || [];
+      for (index = rows.length - 1; index >= 0; index -= 1) {
+        var row = rows[index];
+        if (row && row.kind === 'tool') {
+          current = row;
           break;
         }
       }
@@ -529,28 +523,6 @@
       },
       t: t,
       onLayout: function () {
-        scheduleHitReport();
-      }
-    });
-  }
-
-  /* ------------------------------ display window ------------------------------ */
-
-  if (isDisplay && els.drows) {
-    displayView = window.QD.display.create({
-      root: els.drows,
-      api: api,
-      getState: function () {
-        return state;
-      },
-      isListHidden: function () {
-        return listHidden;
-      },
-      scheduleHitReport: function () {
-        scheduleHitReport();
-      },
-      toastError: toastError,
-      onAnswered: function () {
         scheduleHitReport();
       }
     });
@@ -781,9 +753,8 @@
   });
   U.on(els.listBtn, 'click', function (event) {
     event.stopPropagation();
-    writeListHidden(!listHidden);
+    writeDetailMode(DETAIL_MODES[(DETAIL_MODES.indexOf(detailMode) + 1) % DETAIL_MODES.length]);
     syncListButton();
-    refreshDisplayVisibility();
   });
   U.on(els.hideBtnA, 'click', hideWindow);
 
@@ -945,29 +916,4 @@
 
   if (!isDisplay) syncListButton();
 
-  if (isDisplay && displayView) {
-    // Content grows towards the input window depending on which side it sits.
-    displayView.bindAutoScroll();
-    displayView.initialScroll();
-    var applyAbove = function (value) {
-      document.body.classList.toggle('above', Boolean(value));
-    };
-    var quickDock = window.quickDock;
-    if (quickDock) {
-      if (quickDock.onStateChanged) {
-        quickDock.onStateChanged(function (next) {
-          if (next) applyAbove(next.displayAbove);
-        });
-      }
-      if (quickDock.getState) {
-        try {
-          quickDock.getState().then(function (next) {
-            if (next) applyAbove(next.displayAbove);
-          }).catch(function () {});
-        } catch (error) {
-          /* ignore */
-        }
-      }
-    }
-  }
 })();
