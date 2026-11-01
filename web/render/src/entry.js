@@ -508,6 +508,9 @@ function RowList({ turns, stream, turn, running, t, loadDetail, onGrowth, detail
     footnotes: t('display.footnotes')
   }), [t])
 
+  if (!list.length) {
+    return h('div', { className: 'qd-flow' }, h('div', { className: 'qd-empty' }, t('display.empty')))
+  }
   return h('div', { className: 'qd-flow' },
     moreCount > 0 && onLoadMore
       ? h('div', { className: 'qd-more' },

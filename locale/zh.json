@@ -66,6 +66,7 @@
   "display.copy": "复制",
   "display.diffTitle": "新增 {added} 行 · 删除 {removed} 行",
   "display.done": "完成",
+  "display.empty": "这个会话还没有执行记录",
   "display.exitCode": "退出码 {code}",
   "display.expand": "展开详情",
   "display.expandLines": "展开其余 {count} 行",

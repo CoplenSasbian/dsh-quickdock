@@ -36,6 +36,11 @@ button,textarea,input{font-family:inherit}button{-webkit-app-region:no-drag}butt
    panels are not aligned and the run panel looks wider than the input panel. */
 .display-body{background:transparent!important;overflow:hidden;display:flex;flex-direction:column;height:100%;padding:10px;box-sizing:border-box}
 
+/* The docked window keeps a full panel even with nothing in it: .blocks hugs
+   its content (a collapsed list would show as a 2px strip inside a 520px
+   transparent window). */
+.display-body .blocks{min-height:100%}
+
 /* #blocks is both panel and scroll container: it hugs short content and caps
    at max-height for long content. Corners live on this element, so they stay
    visible while the inner rows scroll.

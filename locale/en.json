@@ -66,6 +66,7 @@
   "display.copy": "Copy",
   "display.diffTitle": "+{added} / −{removed} lines",
   "display.done": "Done",
+  "display.empty": "Nothing has run in this session yet",
   "display.exitCode": "exit {code}",
   "display.expand": "Expand details",
   "display.expandLines": "Show {count} more lines",

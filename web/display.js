@@ -489,8 +489,11 @@
 
       // Approvals are answered in the input window, so a hidden list stays hidden.
       applyVisibility(hasContent);
+      // Nothing to show still renders: the island paints the "nothing has run"
+      // hint, and the panel keeps its full height instead of collapsing to a
+      // two-pixel strip inside a 520px window.
       if (!hasContent) {
-        if (host.firstChild) resetHost();
+        syncRows(state, interaction, hasInter);
         return;
       }
 
