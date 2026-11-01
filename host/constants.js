@@ -19,6 +19,12 @@ export const API_VERSION = 1
 /** How many sessions keep a folded turn history in memory (LRU when exceeded). */
 export const MAX_TRACKED_SESSIONS = 8
 
+/**
+ * Bounds for the pass-through session-event log. The log is complete for what it
+ * retains; these caps only decide how far back a client can read.
+ */
+export const EVENT_LOG = Object.freeze({ maxEvents: 2000, maxBytes: 8 * 1024 * 1024, maxSessions: 8 })
+
 /** A theme payload below this many tokens is treated as incomplete. */
 export const MIN_THEME_TOKENS = 6
 

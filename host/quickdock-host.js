@@ -40,6 +40,7 @@ import { createTrace, traceLogPath } from './trace.js'
 
 const require = createRequire(import.meta.url)
 const { StepFolder } = require('../runtime/step-folder.js')
+const { EventLog } = require('./event-log.js')
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -105,6 +106,8 @@ export class QuickDockHost {
       publish: () => this.publish()
     })
     this.stream = new StreamBuffer()
+    // Every event, not only the ones the dock renders (see host/event-log.js).
+    this.events = new EventLog()
     this.theme = new ThemeStore({
       // 'auto' keeps the built-in palette until the Client half reports one.
       fallback: config.theme,
@@ -392,6 +395,10 @@ export class QuickDockHost {
   #onSessionEvent(session, event) {
     // Titles change as the conversation grows; the index follows slowly.
     this.index.maybeRefresh()
+    // The pass-through log keeps every event of every session, whatever the dock
+    // renders: another client (an IDE plugin) filters on its own side.
+    const logged = this.events.append(session?.id, event)
+    if (logged && session?.id === this.state.sessionId) this.hub.publishEvent(logged)
     if (!this.state.sessionId || session?.id !== this.state.sessionId) return
     if (event?.type === 'turn/start') this.#clearStream()
     this.#ensureFolder(session.id)
@@ -509,11 +516,13 @@ export class QuickDockHost {
       capabilities: [
         'state', 'stream', 'workspaces', 'sessions', 'select', 'bind', 'task',
         'stop', 'turns', 'turn', 'step-detail', 'catalogs', 'settings', 'answer',
-        'theme', 'locale'
+        'theme', 'locale', 'events'
       ],
       // The dock UI binds the latest turn only; that is a client choice, not an
       // API limit. Turn history is read through the two endpoints below.
       turns: { latestInState: true, history: 'turns+turn', retention: 'maxSteps' },
+      // Complete per-session event stream; clients filter (see /events).
+      events: { replay: 'events', push: 'stream?events=1', retention: 'maxEvents+maxBytes' },
       interactions: { approvals: 'claim-and-delegate', questions: 'claim-and-delegate' }
     }
   }
@@ -631,11 +640,32 @@ export class QuickDockHost {
     return { sessionId: target, turn, observed: true, steps: folder.rows(turn) }
   }
 
-  openStateStream(req, res) {
+  /**
+   * Open the page's state stream.
+   * @param {object} req request (query carries `events=1` for raw event frames).
+   * @param {object} res response owned by the stream.
+   * @param {{events?: boolean}} [options] explicit opt-in from the router.
+   */
+  openStateStream(req, res, options = {}) {
     this.hub.openStateStream(req, res, {
       state: this.snapshot(),
       theme: this.theme.current(),
       locale: this.locale.snapshot()
+    }, { events: Boolean(options.events) })
+  }
+
+  /**
+   * Read the pass-through log. Clients filter; the Host never decides what is
+   * renderable.
+   * @param {{sessionId?: string, from?: string, limit?: string, type?: string}} query
+   */
+  listEvents(query = {}) {
+    const sessionId = query.sessionId || this.state.sessionId || ''
+    if (!sessionId) return { sessionId: '', events: [], latestSeq: 0, dropped: 0, retained: 0 }
+    return this.events.list(sessionId, {
+      from: query.from,
+      limit: query.limit,
+      type: query.type
     })
   }
 

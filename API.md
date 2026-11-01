@@ -36,8 +36,9 @@ GET /quickdock/api/meta
   "apiVersion": 1,
   "capabilities": ["state", "stream", "workspaces", "sessions", "select", "bind", "task",
                     "stop", "turns", "turn", "step-detail", "catalogs", "settings", "answer",
-                    "theme", "locale"],
+                    "theme", "locale", "events"],
   "turns": { "latestInState": true, "history": "turns+turn", "retention": "maxSteps" },
+  "events": { "replay": "events", "push": "stream?events=1", "retention": "maxEvents+maxBytes" },
   "interactions": { "approvals": "claim-and-delegate", "questions": "claim-and-delegate" }
 }
 ```
@@ -56,8 +57,26 @@ additive.
 | `GET turn?turn=<n>&sessionId=<id>` | `{ sessionId, turn, observed, steps }`; omitting `turn` reads the newest one, omitting `sessionId` uses the bound session. |
 | `GET step-detail?id=<rowId>&sessionId=<id>` | `{ args, result }` for one expandable row (bound session by default). |
 | `GET catalogs` | Permission / model / reasoning / agent catalogs (may refresh models first). |
+| `GET events?sessionId=<id>&from=<seq>&limit=<n>&type=<filter>` | **Every** session event, verbatim: `{ sessionId, events: [{ seq, time, type, data }], latestSeq, dropped, retained }`. `from` resumes after a sequence number, `limit` caps the page (default 200, max 1000), `type` filters on the client's terms (`tool/*`, `assistant/message`, `*`). |
 | `GET stream` | SSE: initial `state`, `theme`, `locale` frames, then updates. |
+| `GET stream?events=1` | The same stream plus a `session-event` frame per bound-session event (opt-in: the dock page does not subscribe). |
 | `GET bus` | SSE used by the dock for "open session in DSH" commands. |
+
+### Pass-through events
+
+The Host does not decide what a client may render. `steps` is the dock's folded
+view; `events` is the underlying stream, complete for what the bounded log still
+retains (`dropped` counts what the bound cut off). A client filters on its own
+side: an IDE plugin can read `todo/write`, `job/*` or `workspace/changes`, which
+the run window never draws.
+
+```json
+{ "sessionId": "s-1",
+  "events": [ { "seq": 42, "time": 1793492842070, "type": "tool/ptc-dispatch",
+                "data": { "parentCallId": "call_x", "subCallId": "call_x:ptc:1",
+                          "name": "ops_bash", "content": [ ... ] } } ],
+  "latestSeq": 97, "dropped": 0, "retained": 56 }
+```
 
 ### State snapshot
 

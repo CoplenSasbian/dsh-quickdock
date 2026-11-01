@@ -137,6 +137,16 @@ const ROUTES = [
   },
   {
     method: 'GET',
+    path: 'events',
+    handle: ({ app, url }) => app.listEvents({
+      sessionId: url.searchParams.get('sessionId') || '',
+      from: url.searchParams.get('from') || '',
+      limit: url.searchParams.get('limit') || '',
+      type: url.searchParams.get('type') || ''
+    })
+  },
+  {
+    method: 'GET',
     path: 'step-detail',
     handle: ({ app, url }) => app.stepDetail(
       url.searchParams.get('id') || '',
@@ -171,7 +181,7 @@ export function createApiRouter(deps) {
 
     // Streams own their response object and must be handled before the table.
     if (req.method === 'GET' && path === 'stream') {
-      app.openStateStream(req, res)
+      app.openStateStream(req, res, { events: url.searchParams.get('events') === '1' })
       return
     }
     if (req.method === 'GET' && path === 'bus') {

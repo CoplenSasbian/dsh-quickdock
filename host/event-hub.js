@@ -61,6 +61,26 @@ export class EventHub {
     this.broadcast('locale', payload)
   }
 
+  /**
+   * Push one raw session event to the streams that asked for them
+   * (`/api/stream?events=1`). The dock page does not ask; an IDE client does.
+   * @param {object} record stored session event.
+   * @returns {number} how many listeners received it.
+   */
+  publishEvent(record) {
+    let sent = 0
+    for (const res of this.stateClients) {
+      if (!res.__qdEvents) continue
+      try {
+        res.write(frame('session-event', record))
+        sent += 1
+      } catch (_) {
+        /* a dead socket is removed by its close handler */
+      }
+    }
+    return sent
+  }
+
   /** Send one command to the browser plugin; false when nobody listens. */
   sendCommand(command) {
     if (!this.busClients.size) return false
@@ -81,7 +101,8 @@ export class EventHub {
    * @param {import('node:http').ServerResponse} res response.
    * @param {{state: object, theme: object|null, locale: object}} initial first payloads.
    */
-  openStateStream(req, res, initial) {
+  openStateStream(req, res, initial, options = {}) {
+    if (options.events) res.__qdEvents = true
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-store',

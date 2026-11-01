@@ -80,11 +80,18 @@ POST /quickdock/api/select        # { workspaceId?, sessionId?, newSession? }
 GET  /quickdock/api/turns?sessionId=<id>   # whole-log turn outline
 GET  /quickdock/api/turn?turn=<n>          # folded rows of one turn
 GET  /quickdock/api/state         # steps = newest turn (what the dock renders)
+GET  /quickdock/api/events        # every session event, verbatim (clients filter)
 ```
 
 All routes take `Authorization: Bearer <token>` (or `?t=<token>` for SSE). The
 full contract — state snapshot, multi-turn retention, interaction rules, errors —
 lives in [API.md](API.md).
+
+**The Host passes events through, it does not pre-filter.** `state.steps` is the
+dock's folded view, but `GET events` (and `stream?events=1`) carries every
+session event verbatim — `tool/ptc-dispatch`, `todo/write`, `job/*`,
+`workspace/changes`, whatever the session emits. A client decides what to draw;
+an IDE plugin can build its own view without asking for new Host code.
 
 ## Internationalization
 

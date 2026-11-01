@@ -21,6 +21,13 @@ if (!files.length) {
   process.exitCode = 1
 } else {
   for (const file of files) {
-    await import(pathToFileURL(join(testDir, file)).href)
+    try {
+      await import(pathToFileURL(join(testDir, file)).href)
+    } catch (error) {
+      // A file that cannot load (a moved module, a syntax error) must fail the
+      // run instead of silently shrinking the suite.
+      console.error('failed to load ' + file + ': ' + String(error?.stack || error))
+      process.exitCode = 1
+    }
   }
 }

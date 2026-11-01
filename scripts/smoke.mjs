@@ -171,6 +171,22 @@ try {
     turnList.sessionId === 's-demo' && Array.isArray(turnList.turns))
   const turnDetail = JSON.parse((await request('/quickdock/api/turn?t=' + token)).text)
   check('turn endpoint reports an unobserved turn', turnDetail.observed === false)
+
+  // Pass-through events: the Host keeps what the run window never draws.
+  const postEvent = (type, seq, data) => request('/test/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: 's-demo', event: { type, seq, time: Date.now(), data } })
+  })
+  await postEvent('tool/call', 90, { callId: 'c9', name: 'bash', arguments: '{}' })
+  await postEvent('todo/write', 91, { todos: [{ content: 'test', status: 'pending' }] })
+  const backlog = JSON.parse((await request('/quickdock/api/events?t=' + token)).text)
+  check('events endpoint passes every type through',
+    backlog.events.some((row) => row.type === 'todo/write') && backlog.events.some((row) => row.type === 'tool/call'))
+  check('events endpoint reports the newest sequence', backlog.latestSeq >= 91)
+  const toolOnly = JSON.parse((await request('/quickdock/api/events?type=tool/*&t=' + token)).text)
+  check('events endpoint filters on the client terms',
+    toolOnly.events.length > 0 && toolOnly.events.every((row) => row.type.startsWith('tool/')))
 } catch (error) {
   failures.push(String(error && error.stack || error))
   console.error(error)
