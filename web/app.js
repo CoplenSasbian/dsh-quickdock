@@ -528,8 +528,9 @@
       ? U.compactArgs(current.args)
       : (current.command || current.args || current.description || '');
     els.runLineLabel.textContent = label.label;
-    els.runLineName.hidden = label.known || !name;
-    els.runLineName.textContent = label.known ? '' : name;
+    // Always say which tool ran: bash and pwsh, grep and glob share a label.
+    els.runLineName.hidden = !name;
+    els.runLineName.textContent = name;
     els.runLineArgs.hidden = !args;
     els.runLineArgs.textContent = String(args || '');
   }

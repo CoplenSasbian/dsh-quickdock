@@ -220,6 +220,14 @@ html[data-theme="light"] {
   cursor: default;
 }
 
+/* The wire name after the label: which tool actually ran. */
+.qd-tool-name {
+  margin-left: 6px;
+  font-family: var(--qd-font-code, monospace);
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary, rgba(255, 255, 255, 0.38));
+}
+
 /* Sub-calls nest under their parent row, like the main window's call tree. */
 .qd-subcalls {
   display: flex;

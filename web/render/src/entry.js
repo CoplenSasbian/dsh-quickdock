@@ -200,9 +200,13 @@ function elapsedOf(turn, running, now) {
 /** One tool call: title, one-line summary, optional metadata, expandable body. */
 function ToolRow({ step, open, running, labels, detail, onToggle, t, subRows }) {
   const Icon = TOOL_ICONS[baseTool(step.tool).toLowerCase()] || IconAgentPresetOutlineRegular
-  // DSH's row is "label · summary": the label names the kind of work, and the
-  // summary carries the telling argument (path, command) or the model's intent.
-  const title = t(TOOL_LABELS[categoryOf(step.tool)] || TOOL_LABELS.tools)
+  // DSH's row is "label · summary"; here the label names the kind of work, the
+  // wire name says which tool actually ran, and the summary carries the telling
+  // argument (path, command) or the model's intent.
+  const title = h('span', { className: 'qd-tool-title' },
+    h('span', null, t(TOOL_LABELS[categoryOf(step.tool)] || TOOL_LABELS.tools)),
+    h('span', { className: 'qd-tool-name' }, String(step.tool || '').trim())
+  )
   const intent = String(step.description || '').trim()
   const summary = String(step.command || '').trim() || intent
   const lines = step.lines && step.lines[0] && step.lines[1]
