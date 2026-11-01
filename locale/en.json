@@ -74,6 +74,7 @@
   "display.linesTitle": "Read lines {from}–{to}",
   "display.loadFailed": "Failed to load detail: {message}",
   "display.loading": "Loading…",
+  "display.loadMore": "Load earlier turns ({count})",
   "display.logLabel": "Run log",
   "display.more": "{title}, etc.",
   "display.noDetail": "(no further detail for this step)",

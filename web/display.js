@@ -47,9 +47,16 @@
   function create(options) {
     var latestState = null;
     /** Turns shown in the column, oldest first: { number, turn, steps }. */
+    /** How many older turns arrive on the first read. */
+    var FIRST_BATCH = 3;
+    /** How many each click of the button adds. */
+    var MORE_BATCH = 5;
+
     /** Set once the column had content; the window then stays up. */
     var seenContent = false;
     var turnList = [];
+    /** Turns the session has on disk, taken once from /turns. */
+    var outline = [];
     var loadingHistory = false;
     var loadedFor = 0;
     var loadedSession = null;
@@ -159,6 +166,7 @@
       if (sessionId !== loadedSession) {
         loadedSession = sessionId;
         turnList = [];
+        outline = [];
         loadedFor = 0;
       }
       var entry = { number: meta.number, turn: meta, steps: (state && state.steps) || [] };
@@ -179,33 +187,59 @@
       }
     }
 
-    /** Fetch the rows of the turns already on disk, newest of them first. */
+    /**
+     * Read the session's outline once and pull a first batch of older turns.
+     * The rest waits for the "load more" button: a long session should not cost
+     * a burst of requests before the window even shows.
+     * @param {number} latest newest turn number.
+     */
     function loadOlderTurns(latest) {
       if (loadingHistory) return;
       loadingHistory = true;
       api('turns').then(function (list) {
-        var known = {};
-        turnList.forEach(function (row) { known[row.number] = true; });
-        var rows = ((list && list.turns) || [])
-          .filter(function (row) { return typeof row.turn === 'number' && row.turn < latest && !known[row.turn]; })
-          .slice(-12);
-        var next = function (index) {
-          if (index >= rows.length) {
-            loadingHistory = false;
-            if (latestState) renderRows(latestState);
-            return;
-          }
-          var number = rows[index].turn;
-          var meta = { number: number, startedAt: rows[index].startedAt, endedAt: rows[index].endedAt };
-          api('turn?turn=' + number).then(function (detail) {
-            if (detail && detail.observed && detail.steps && detail.steps.length) {
-              turnList.push({ number: number, turn: meta, steps: detail.steps });
-              turnList.sort(function (a, b) { return a.number - b.number; });
-            }
-          }).catch(function () {}).then(function () { next(index + 1); });
-        };
-        next(0);
+        outline = ((list && list.turns) || []).filter(function (row) {
+          return typeof row.turn === 'number' && row.turn < latest;
+        });
+        loadingHistory = false;
+        loadMoreTurns(FIRST_BATCH);
       }).catch(function () { loadingHistory = false; });
+    }
+
+    /** Older turns not in the column yet, newest first. */
+    function pendingTurns() {
+      var known = {};
+      turnList.forEach(function (row) { known[row.number] = true; });
+      return outline.filter(function (row) { return !known[row.turn]; }).reverse();
+    }
+
+    /**
+     * Append the next batch of older turns.
+     * @param {number} count how many to fetch.
+     */
+    function loadMoreTurns(count) {
+      if (loadingHistory) return;
+      var batch = pendingTurns().slice(0, count);
+      if (!batch.length) {
+        if (latestState) renderRows(latestState);
+        return;
+      }
+      loadingHistory = true;
+      var next = function (index) {
+        if (index >= batch.length) {
+          loadingHistory = false;
+          if (latestState) renderRows(latestState);
+          return;
+        }
+        var row = batch[index];
+        var meta = { number: row.turn, startedAt: row.startedAt, endedAt: row.endedAt };
+        api('turn?turn=' + row.turn).then(function (detail) {
+          if (detail && detail.observed && detail.steps && detail.steps.length) {
+            turnList.push({ number: row.turn, turn: meta, steps: detail.steps });
+            turnList.sort(function (a, b) { return a.number - b.number; });
+          }
+        }).catch(function () {}).then(function () { next(index + 1); });
+      };
+      next(0);
     }
 
     function renderRows(state) {
@@ -228,6 +262,8 @@
       island.render({
         detail: readDetailMode(),
         turns: turnList,
+        moreCount: pendingTurns().length,
+        onLoadMore: function () { loadMoreTurns(MORE_BATCH); },
         steps: (state && state.steps) || [],
         stream: state && state.stream,
         turn: state && state.turn,

@@ -441,7 +441,7 @@ function LiveRows({ stream, t, labels }) {
   return h('div', { className: 'qd-live' }, rows)
 }
 
-function RowList({ turns, stream, turn, running, t, loadDetail, onGrowth, detailMode }) {
+function RowList({ turns, stream, turn, running, t, loadDetail, onGrowth, detailMode, moreCount, onLoadMore }) {
   const [openIds, setOpenIds] = useState(() => new Set())
   const [details, setDetails] = useState({})
   const [turnOpenMap, setTurnOpenMap] = useState({})
@@ -509,6 +509,14 @@ function RowList({ turns, stream, turn, running, t, loadDetail, onGrowth, detail
   }), [t])
 
   return h('div', { className: 'qd-flow' },
+    moreCount > 0 && onLoadMore
+      ? h('div', { className: 'qd-more' },
+        h('button', {
+          type: 'button',
+          className: 'qd-more-btn',
+          onClick: onLoadMore
+        }, t('display.loadMore', { count: moreCount })))
+      : null,
     list.map((entry) => h(TurnGroup, {
       key: 'turn-' + entry.number,
       entry: entry,
@@ -631,6 +639,8 @@ function create(options) {
     render(state) {
       root.render(h(RowList, {
         turns: (state && state.turns) || [],
+        moreCount: (state && state.moreCount) || 0,
+        onLoadMore: state && state.onLoadMore,
         steps: (state && state.steps) || [],
         stream: state && state.stream,
         turn: state && state.turn,

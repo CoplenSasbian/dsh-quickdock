@@ -4408,6 +4408,30 @@ html[data-theme="light"] {
   color: var(--dsw-alias-label-tertiary, rgba(255, 255, 255, 0.38));
 }
 
+/* Older turns load on demand: one quiet pill above the column. */
+.qd-more {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 8px;
+}
+
+.qd-more-btn {
+  height: 24px;
+  padding: 0 10px;
+  border: 0.5px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #83838a);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.qd-more-btn:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.07));
+  color: var(--dsw-alias-label-secondary, #9a9a9d);
+}
+
 /* The user's prompt: DSH paints it as a bubble hugging the right edge. */
 .qd-user {
   display: flex;
