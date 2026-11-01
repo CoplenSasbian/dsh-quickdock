@@ -255,7 +255,9 @@
     if (!panel || !quickDock || !quickDock.setContentHeight) return;
     // .stack pads 10px top and bottom around the panel.
     var height = Math.ceil(panel.getBoundingClientRect().height) + 20;
-    if (height <= 20 || Math.abs(height - reportedHeight) < 2) return;
+    // Before the first render the panel is a stub: reporting it would shrink the
+    // window to the clamp and flash.
+    if (height < 160 || Math.abs(height - reportedHeight) < 2) return;
     reportedHeight = height;
     try {
       var pending = quickDock.setContentHeight(height);
