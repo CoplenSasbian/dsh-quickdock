@@ -33,13 +33,18 @@
       report('todo page: no state yet');
       return;
     }
-    // The task window is up whenever it has a state: an empty plan still shows
-    // the placeholder instead of a window that never appears.
-    if (isTodo && todoReported !== true) {
-      todoReported = true;
-      var todoBridge = window.quickDock;
-      if (todoBridge && todoBridge.setTodoEmpty) {
-        try { todoBridge.setTodoEmpty(false); } catch (error) { /* optional */ }
+    // No plan means no panel: the strip only exists while the agent has steps.
+    // A goal on its own still gets its single line.
+    var wantCard = (Array.isArray(state.todos) && state.todos.length > 0)
+      || Boolean(state.goal && state.goal.objective);
+    if (isTodo) {
+      var wantVisible = Boolean(wantCard);
+      if (todoReported !== wantVisible) {
+        todoReported = wantVisible;
+        var todoBridge = window.quickDock;
+        if (todoBridge && todoBridge.setTodoEmpty) {
+          try { todoBridge.setTodoEmpty(!wantVisible); } catch (error) { /* optional */ }
+        }
       }
     }
     if (!els.todoCard) {
@@ -53,10 +58,14 @@
       if (goal && els.todoGoalText) els.todoGoalText.textContent = goal.objective;
     }
     if (!todos.length && !goal) {
-      els.todoCard.hidden = false;
-      els.todoCard.classList.add('open');
-      els.todoCount.textContent = '';
+      // Nothing to show: the strip collapses entirely instead of holding an
+      // empty placeholder, and the window height follows.
+      els.todoCard.hidden = true;
+      els.todoCard.classList.remove('open');
+      els.todoBuild.textContent = '';
+      els.todoBuild.title = '';
       renderTodoList([]);
+      syncWindowHeight();
       watchPlan();
       return;
     }
