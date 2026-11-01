@@ -37,7 +37,9 @@ var MESSAGES = {
     'client.downloading': 'QuickDock is downloading its desktop runtime {percent}% ({mb}/{total} MB)',
     'client.more': 'More dock actions',
     'client.restartDock': 'Restart the dock window',
-    'client.restartFailed': 'Restart failed: {reason}'
+    'client.restartFailed': 'Restart failed: {reason}',
+    'client.hideDock': 'Close the dock window',
+    'client.hideFailed': 'Close failed: {reason}'
   },
   zh: {
     'client.sendToDock': '在 QuickDock 中打开此会话',
@@ -50,7 +52,9 @@ var MESSAGES = {
     'client.downloading': 'QuickDock 正在下载桌面运行时 {percent}%（{mb}/{total} MB）',
     'client.more': '更多 Dock 操作',
     'client.restartDock': '重启 Dock 窗口',
-    'client.restartFailed': '重启失败：{reason}'
+    'client.restartFailed': '重启失败：{reason}',
+    'client.hideDock': '关闭 Dock 窗口',
+    'client.hideFailed': '关闭失败：{reason}'
   }
 };
 /* i18n-catalog:end */
@@ -283,6 +287,17 @@ function SendToDock(props) {
     setMenu(box ? { top: Math.round(box.bottom + 4), right: Math.round(window.innerWidth - box.right) } : { top: 0, right: 0 })
   }
 
+  const hide = async (event) => {
+    event.stopPropagation()
+    setMenu(null)
+    try {
+      const result = await bridge('hide', {})
+      if (result && result.error) showError(t('client.hideFailed', { reason: result.error }))
+    } catch (error) {
+      showError(t('client.hideFailed', { reason: String(error && error.message || error) }))
+    }
+  }
+
   const restart = async (event) => {
     event.stopPropagation()
     setMenu(null)
@@ -293,6 +308,11 @@ function SendToDock(props) {
       showError(t('client.restartFailed', { reason: String(error && error.message || error) }))
     }
   }
+
+  const menuItems = [
+    { key: 'hide', label: t('client.hideDock'), onClick: hide },
+    { key: 'restart', label: t('client.restartDock'), onClick: restart }
+  ]
 
   const pill = {
     height: '22px',
@@ -359,7 +379,7 @@ function SendToDock(props) {
         position: 'fixed',
         top: menu.top + 'px',
         right: menu.right + 'px',
-        minWidth: '168px',
+        minWidth: '176px',
         padding: '4px',
         borderRadius: 'var(--dsw-radius-md, 8px)',
         background: 'var(--dsw-alias-bg-overlay, #232324)',
@@ -367,15 +387,14 @@ function SendToDock(props) {
         boxShadow: 'var(--dsw-elevation-panel, 0 12px 32px -8px rgba(0,0,0,.55))',
         zIndex: 3000
       }
-    },
-    el('button', {
+    }, menuItems.map((item) => el('button', {
+      key: item.key,
       type: 'button',
       role: 'menuitem',
-      onClick: restart,
+      onClick: item.onClick,
       style: {
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
         width: '100%',
         height: '28px',
         padding: '0 8px',
@@ -390,7 +409,7 @@ function SendToDock(props) {
       },
       onMouseEnter: (event) => { event.currentTarget.style.background = 'var(--dsw-alias-interactive-bg-hover, rgba(255,255,255,.07))' },
       onMouseLeave: (event) => { event.currentTarget.style.background = 'transparent' }
-    }, t('client.restartDock'))) : null
+    }, item.label))) : null
   )
 }
 

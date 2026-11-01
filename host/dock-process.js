@@ -345,6 +345,14 @@ export class DockProcess {
     })
   }
 
+  /** Hide the dock without killing the process; summon brings it back. */
+  hide() {
+    if (!this.alive) return
+    void this.control({ type: 'hide' }).then((ok) => {
+      if (!ok) this.trace('hide: control failed')
+    })
+  }
+
   /** Push a session to the dock (queued until ready). */
   notifyAttach(sessionId) {
     const id = String(sessionId || '')

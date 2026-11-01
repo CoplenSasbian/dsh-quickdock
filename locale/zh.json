@@ -24,6 +24,8 @@
   "card.submit": "提交",
   "client.dockFailed": "QuickDock 请求失败：{reason}",
   "client.downloading": "QuickDock 正在下载桌面运行时 {percent}%（{mb}/{total} MB）",
+  "client.hideDock": "关闭 Dock 窗口",
+  "client.hideFailed": "关闭失败：{reason}",
   "client.label": "Dock",
   "client.more": "更多 Dock 操作",
   "client.preparing": "QuickDock 正在准备桌面窗口（首次需要下载 Electron，约 1–2 分钟，只需一次）…",

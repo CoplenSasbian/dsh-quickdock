@@ -24,6 +24,8 @@
   "card.submit": "Submit",
   "client.dockFailed": "QuickDock request failed: {reason}",
   "client.downloading": "QuickDock is downloading its desktop runtime {percent}% ({mb}/{total} MB)",
+  "client.hideDock": "Close the dock window",
+  "client.hideFailed": "Close failed: {reason}",
   "client.label": "Dock",
   "client.more": "More dock actions",
   "client.preparing": "QuickDock is preparing its desktop window (the first run downloads Electron, ~1–2 minutes, once)…",

@@ -884,6 +884,7 @@ class DockRuntime {
     trace('command: ' + JSON.stringify(message));
     if (message.type === 'quit') this.quit(0);
     else if (message.type === 'show') this.show();
+    else if (message.type === 'hide') this.hide();
     else if (message.type === 'ping') this.status('pong');
     else if (message.type === 'attach') this.show();
     else if (message.type === 'window') {
