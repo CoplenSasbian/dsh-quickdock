@@ -641,7 +641,18 @@ export class QuickDockHost {
     this.probedHistory = true
     try {
       this.trace('probe session keys: ' + Object.keys(live).join(','))
-    } catch (_) { /* ignore */ }
+      const snap = live.eventsSnapshot
+      this.trace('probe eventsSnapshot: kind=' + (Array.isArray(snap) ? 'array:' + snap.length : typeof snap))
+      if (Array.isArray(snap) && snap.length) {
+        const sample = snap[0]
+        this.trace('probe event sample keys: ' + Object.keys(sample || {}).join(',')
+          + ' type=' + (sample && sample.type))
+      }
+      const log = live.log
+      this.trace('probe log keys: ' + Object.keys(log || {}).join(','))
+    } catch (error) {
+      this.trace('probe threw: ' + String(error && error.message))
+    }
     try {
       this.trace('probe projections: ' + Object.keys(this.dsh.projections || {}).join(','))
     } catch (_) { /* ignore */ }
@@ -656,14 +667,49 @@ export class QuickDockHost {
     }
   }
 
+  /**
+   * Rows of a turn the live fold never saw, rebuilt from the session snapshot.
+   *
+   * The dock attaches mid-session, so its folder only holds events received
+   * after binding; DSH keeps the whole event list on the session object, and
+   * folding that list for one turn is cheap.
+   * @param {string} sessionId session id.
+   * @param {number} turn turn number.
+   * @returns {object[]|null} rows, or null when no snapshot is available.
+   */
+  #foldTurnFromSnapshot(sessionId, turn) {
+    const live = this.dsh.session(sessionId)
+    const events = live && Array.isArray(live.eventsSnapshot) ? live.eventsSnapshot : null
+    if (!events || !events.length) return null
+    const folder = new StepFolder(this.config.maxSteps)
+    let folded = 0
+    for (const event of events) {
+      if (!event || typeof event.type !== 'string') continue
+      try {
+        folder.apply(event)
+        folded += 1
+      } catch (_) { /* a malformed event must not break the read */ }
+    }
+    const rows = folder.rows(turn)
+    this.trace('fold from snapshot(' + sessionId + ' turn ' + turn + '): events=' + events.length
+      + ' folded=' + folded + ' rows=' + (rows ? rows.length : 0))
+    return rows && rows.length ? rows : null
+  }
+
   turnDetail(value, sessionId) {
     const target = sessionId || this.state.sessionId
     const folder = target ? this.state.folders.get(target) : null
     if (!folder) return { sessionId: target || null, turn: null, observed: false, steps: [] }
     const wantsTurn = value !== '' && value !== undefined && value !== null
     const turn = wantsTurn ? Number(value) : folder.latestTurn()
-    if (!Number.isFinite(turn) || (wantsTurn && !folder.hasTurn(turn))) {
-      return { sessionId: target, turn: Number.isFinite(turn) ? turn : null, observed: false, steps: [] }
+    if (!Number.isFinite(turn)) {
+      return { sessionId: target, turn: null, observed: false, steps: [] }
+    }
+    if (wantsTurn && !folder.hasTurn(turn)) {
+      // A turn from before the dock attached: rebuild it from the session.
+      const rows = this.#foldTurnFromSnapshot(target, turn)
+      if (rows) return { sessionId: target, turn, observed: true, steps: rows }
+      return { sessionId: target, turn, observed: false, steps: [] }
     }
     return { sessionId: target, turn, observed: true, steps: folder.rows(turn) }
   }
