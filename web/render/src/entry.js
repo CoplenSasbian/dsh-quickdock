@@ -488,10 +488,10 @@ function RowList({ steps, stream, turn, running, t, loadDetail, onGrowth, detail
     code: { copyLabel: t('display.copy'), copiedLabel: t('display.copied') },
     footnotes: t('display.footnotes')
   }), [t])
-  // The turn fold follows the same mode: auto opens it while the turn runs.
+  // Folded only stops rows from opening by themselves; the group still lists
+  // them (opening it would leave an empty box otherwise).
   const turnOpen = detailMode === 'open' ? true
-    : detailMode === 'closed' ? false
-      : turnChoice === null ? Boolean(running) : turnChoice
+    : turnChoice === null ? Boolean(running) : turnChoice
   const toggleTurn = useCallback(() => {
     setTurnChoice((prev) => !(prev === null ? Boolean(running) : prev))
     if (onGrowth) onGrowth()

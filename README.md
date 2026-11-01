@@ -55,8 +55,8 @@ Register the plugin in the DSH profile (see `cordis.patch.yml`):
   bus -> Client half -> `ctx.uiWorkspace.openSession`).
 - **▤** cycles how the docked window's details are folded: auto (the current
   activity expands - reasoning, or the running tool - and collapses once it
-  settles), expanded (everything stays open), folded (nothing opens), hidden
-  (the docked window is not shown at all).
+  settles), expanded (everything stays open), folded (the rows stay listed but
+  no body opens), hidden (the docked window is not shown at all).
 - **⤒** keeps the window above other windows.
 - **The dock follows the DSH theme live**: light/dark switches and every
   `--dsw-*` palette change are read from the main window's computed styles and
