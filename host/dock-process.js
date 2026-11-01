@@ -353,6 +353,14 @@ export class DockProcess {
     })
   }
 
+  /** Put both windows back to their configured geometry. */
+  resetWindows() {
+    if (!this.alive) return
+    void this.control({ type: 'reset-windows' }).then((ok) => {
+      if (!ok) this.trace('reset-windows: control failed')
+    })
+  }
+
   /** Push a session to the dock (queued until ready). */
   notifyAttach(sessionId) {
     const id = String(sessionId || '')

@@ -39,7 +39,9 @@ var MESSAGES = {
     'client.restartDock': 'Restart the dock window',
     'client.restartFailed': 'Restart failed: {reason}',
     'client.hideDock': 'Close the dock window',
-    'client.hideFailed': 'Close failed: {reason}'
+    'client.hideFailed': 'Close failed: {reason}',
+    'client.resetWindows': 'Reset the window size',
+    'client.resetFailed': 'Reset failed: {reason}'
   },
   zh: {
     'client.sendToDock': '在 QuickDock 中打开此会话',
@@ -54,7 +56,9 @@ var MESSAGES = {
     'client.restartDock': '重启 Dock 窗口',
     'client.restartFailed': '重启失败：{reason}',
     'client.hideDock': '关闭 Dock 窗口',
-    'client.hideFailed': '关闭失败：{reason}'
+    'client.hideFailed': '关闭失败：{reason}',
+    'client.resetWindows': '重置窗口大小',
+    'client.resetFailed': '重置失败：{reason}'
   }
 };
 /* i18n-catalog:end */
@@ -298,6 +302,17 @@ function SendToDock(props) {
     }
   }
 
+  const resetWindows = async (event) => {
+    event.stopPropagation()
+    setMenu(null)
+    try {
+      const result = await bridge('reset', {})
+      if (result && result.error) showError(t('client.resetFailed', { reason: result.error }))
+    } catch (error) {
+      showError(t('client.resetFailed', { reason: String(error && error.message || error) }))
+    }
+  }
+
   const restart = async (event) => {
     event.stopPropagation()
     setMenu(null)
@@ -311,6 +326,7 @@ function SendToDock(props) {
 
   const menuItems = [
     { key: 'hide', label: t('client.hideDock'), onClick: hide },
+    { key: 'reset', label: t('client.resetWindows'), onClick: resetWindows },
     { key: 'restart', label: t('client.restartDock'), onClick: restart }
   ]
 

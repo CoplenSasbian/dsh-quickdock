@@ -633,6 +633,31 @@ class DockRuntime {
    * @param {number} height requested content height in DIP.
    * @returns {number} the height the window actually took.
    */
+  /**
+   * Put both windows back to the configured geometry: a window that ended up
+   * squeezed (or dragged off screen) has no other way back.
+   */
+  resetWindows() {
+    const area = (this.electron.screen.getPrimaryDisplay && this.electron.screen.getPrimaryDisplay().workArea)
+      || { x: 0, y: 0, width: 1920, height: 1040 };
+    const width = this.config.width;
+    const height = this.config.inputHeight || 196;
+    const x = Math.round(area.x + area.width - width - (this.config.margin || 16));
+    const y = Math.round(area.y + area.height - height - (this.config.margin || 16));
+    if (this.win && !this.win.isDestroyed()) {
+      this.win.setBounds({ x, y, width, height });
+      this.win.setContentSize(width - 10, height - 10);
+    }
+    if (this.displayWin && !this.displayWin.isDestroyed()) {
+      const wantH = this.config.displayHeight || 520;
+      this.displayWantW = Math.max(200, width - 10);
+      this.displayWantH = wantH;
+      this.displayWin.setContentSize(this.displayWantW, wantH);
+    }
+    this.placeDisplayWindow(true);
+    trace('windows reset to defaults');
+  }
+
   setContentHeight(height) {
     const win = this.win;
     if (!win || win.isDestroyed()) return 0;
@@ -885,6 +910,7 @@ class DockRuntime {
     if (message.type === 'quit') this.quit(0);
     else if (message.type === 'show') this.show();
     else if (message.type === 'hide') this.hide();
+    else if (message.type === 'reset-windows') { this.resetWindows(); this.show(); }
     else if (message.type === 'ping') this.status('pong');
     else if (message.type === 'attach') this.show();
     else if (message.type === 'window') {

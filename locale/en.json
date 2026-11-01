@@ -30,6 +30,8 @@
   "client.more": "More dock actions",
   "client.preparing": "QuickDock is preparing its desktop window (the first run downloads Electron, ~1–2 minutes, once)…",
   "client.requestFailed": "Request failed: HTTP {status}",
+  "client.resetFailed": "Reset failed: {reason}",
+  "client.resetWindows": "Reset the window size",
   "client.restartDock": "Restart the dock window",
   "client.restartFailed": "Restart failed: {reason}",
   "client.sendToDock": "Open this session in QuickDock",

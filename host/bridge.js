@@ -27,6 +27,10 @@ export function createBridgeHandler(deps) {
       app.dock.hide()
       return { body: { ok: true } }
     },
+    reset() {
+      app.dock.resetWindows()
+      return { body: { ok: true } }
+    },
     restart() {
       // A stuck window (stale page, wedged renderer) is best fixed by a fresh
       // process: stop kills it and summon brings a new one up.

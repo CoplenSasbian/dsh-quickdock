@@ -30,6 +30,8 @@
   "client.more": "更多 Dock 操作",
   "client.preparing": "QuickDock 正在准备桌面窗口（首次需要下载 Electron，约 1–2 分钟，只需一次）…",
   "client.requestFailed": "请求失败：HTTP {status}",
+  "client.resetFailed": "重置失败：{reason}",
+  "client.resetWindows": "重置窗口大小",
   "client.restartDock": "重启 Dock 窗口",
   "client.restartFailed": "重启失败：{reason}",
   "client.sendToDock": "在 QuickDock 中打开此会话",
