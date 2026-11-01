@@ -125,6 +125,12 @@ html[data-theme="light"] {
   overflow-y: auto;
 }
 
+.qd-composer-input:focus,
+.qd-composer-input:focus-visible {
+  /* DSH paints no ring on the composer: the caret is the only indicator. */
+  outline: none;
+}
+
 .qd-composer-input::placeholder {
   color: var(--dsw-alias-label-tertiary, rgba(255, 255, 255, 0.38));
 }
