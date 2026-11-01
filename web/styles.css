@@ -139,9 +139,10 @@ html[data-theme="light"] .panel{
 
 /* Status bar: dot - label/text - stop, one row above the composer. */
 .run-line{display:flex;align-items:center;gap:7px;height:28px;padding:0 6px 0 12px;flex:none;font-size:11.5px;color:var(--text-2);-webkit-app-region:drag;overflow:hidden}
-/* Keep the row in flow: the shared .hidden rule is !important, so display must
-   be restated or the composer jumps by a row when a call starts. */
-.run-line.hidden{display:flex!important;visibility:hidden}
+/* Hidden takes the row out of the layout, so an idle window has no empty band.
+   The window resizes to the panel and grows upwards, so the composer keeps its
+   place when the row appears. */
+.run-line.hidden{display:none!important}
 .run-line .rl-dot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--text-3)}
 .run-line .rl-dot.running{background:var(--qd-brand-primary);animation:qd-pulse 1.6s ease-in-out infinite}
 .run-line .rl-dot.thinking{background:var(--qd-thinking, #a97bf0);animation:qd-pulse 1.6s ease-in-out infinite}
