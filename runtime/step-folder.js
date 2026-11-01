@@ -341,6 +341,29 @@ const EVENT_HANDLERS = {
     })
   },
 
+  /**
+   * The human prompt that opened the turn. Injected messages (runtime context,
+   * skill catalog, time context) also arrive as user/message, so only the ones
+   * the user typed are kept.
+   */
+  'user/message'(folder, event) {
+    const { data, time, seq } = event
+    const source = (data && data.source) || {}
+    if (source.kind && source.kind !== 'user') return
+    const text = ((data && data.content) || [])
+      .filter((block) => block && block.type === 'text' && typeof block.text === 'string')
+      .map((block) => block.text)
+      .join('\n')
+      .trim()
+    if (!text) return
+    folder.pushRow(seq, {
+      id: 'user-' + String((data && data.id) || seq),
+      kind: 'user',
+      text: text.slice(0, MAX_ROW_TEXT),
+      time: time ?? ''
+    })
+  },
+
   'assistant/message'(folder, event) {
     const { data, time, seq } = event
     const message = data.message ?? {}

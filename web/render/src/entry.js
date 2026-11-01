@@ -572,11 +572,17 @@ function TurnGroup({
     })
   }
 
+  const prompts = []
   const toolRows = []
   const process = []
   const replies = []
   steps.forEach((step) => {
     const id = String(step.id)
+    if (step.kind === 'user') {
+      prompts.push(h('div', { className: 'qd-user', key: id },
+        h('div', { className: 'qd-bubble' }, String(step.text || ''))))
+      return
+    }
     if (step.kind === 'say') {
       replies.push(h(ProseRow, { key: id, text: String(step.text || ''), labels: markdownLabels }))
       return
@@ -600,6 +606,7 @@ function TurnGroup({
   const hasProcess = process.length > 0
 
   return h('div', { className: 'qd-turn-block' },
+    prompts,
     hasProcess ? h(TurnHeader, {
       turn: turn, title: summarize(toolRows, t), open: open,
       running: isLatest && Boolean(running),

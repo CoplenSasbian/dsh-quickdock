@@ -121,7 +121,8 @@ Adding a language: add `locale/<id>.json`, extend `SUPPORTED_LOCALES` in
 ## The docked window is a conversation
 
 The execution window renders the whole session, not the newest turn: one fold
-per turn (DSH's shape), oldest at the top, replies outside their turn's fold,
+per turn (DSH's shape), the prompt as a right-aligned bubble above each fold,
+replies outside their fold,
 live rows only under the running one. Older turns are read through
 `/turns` + `/turn?turn=N` the first time a session is opened and then kept, so
 nothing is cleared when a turn ends.
