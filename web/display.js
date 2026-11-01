@@ -261,13 +261,33 @@
      * Append the next batch of older turns.
      * @param {number} count how many to fetch.
      */
+    /**
+     * Resolve after at most `ms`, so one hung request cannot keep a batch alive
+     * forever and wedge the loader.
+     * @param {Promise} promise the request.
+     * @param {number} ms budget.
+     * @returns {Promise} the request or a rejection.
+     */
+    function withTimeout(promise, ms) {
+      return new Promise(function (resolve, reject) {
+        var timer = setTimeout(function () { reject(new Error('timed out after ' + ms + 'ms')) }, ms)
+        promise.then(function (value) {
+          clearTimeout(timer)
+          resolve(value)
+        }, function (error) {
+          clearTimeout(timer)
+          reject(error)
+        })
+      })
+    }
+
     function loadMoreTurns(count) {
       var hadTurns = turnList.length
       if (loadingHistory) {
         // A click is a user decision: if the previous batch is taking too long,
         // take over instead of silently ignoring it.
         var waited = Date.now() - loadingSince
-        if (waited < 2500) {
+        if (waited < 1200) {
           report('history load still running (' + waited + 'ms), click ignored')
           return
         }
@@ -288,7 +308,7 @@
       // round trip per turn and the button would look dead.
       Promise.all(batch.map(function (row) {
         var meta = { number: row.turn, startedAt: row.startedAt, endedAt: row.endedAt }
-        return api('turn?turn=' + row.turn).then(function (detail) {
+        return withTimeout(api('turn?turn=' + row.turn), 8000).then(function (detail) {
           report('turn ' + row.turn + ': observed=' + Boolean(detail && detail.observed)
             + ' steps=' + ((detail && detail.steps && detail.steps.length) || 0))
           if (detail && detail.observed && detail.steps && detail.steps.length) {
