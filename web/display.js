@@ -60,6 +60,7 @@
     var loadingHistory = false;
     var loadedFor = 0;
     var loadedSession = null;
+    var outlineRequested = false;
     var host = options.root;
     var api = options.api;
     var getState = options.getState;
@@ -160,14 +161,27 @@
      */
     function absorbHistory(state) {
       var meta = state && state.turn;
-      if (!meta || typeof meta.number !== 'number') return;
-      // A different session starts a new column.
       var sessionId = (state && state.sessionId) || null;
+      if (!sessionId) return;
+      // A different session starts a new column.
       if (sessionId !== loadedSession) {
         loadedSession = sessionId;
         turnList = [];
         outline = [];
+        outlineRequested = false;
         loadedFor = 0;
+        // The window is up from the moment a session is bound: an old session
+        // binds with no live rows, and the column has to be on screen for its
+        // "load earlier turns" pill to be reachable.
+        seenContent = true;
+      }
+      if (!meta || typeof meta.number !== 'number') {
+        // No turn yet (fresh bind): read the outline anyway so history can show.
+        if (!outlineRequested) {
+          outlineRequested = true;
+          void loadOlderTurns(Infinity);
+        }
+        return;
       }
       var entry = { number: meta.number, turn: meta, steps: (state && state.steps) || [] };
       var found = false;
@@ -183,6 +197,7 @@
       }
       if (loadedFor !== meta.number) {
         loadedFor = meta.number;
+        outlineRequested = true;
         void loadOlderTurns(meta.number);
       }
     }
@@ -246,7 +261,6 @@
 
     function renderRows(state) {
       latestState = state;
-      absorbHistory(state);
       var rows = rowsHost()
       if (!island) {
         island = window.QD.render.create({
@@ -462,6 +476,9 @@
         needsRebuild = false;
         resetHost();
       }
+      // Absorb before deciding whether there is anything to show: on a cold bind
+      // the live state is empty and only the outline can tell us otherwise.
+      absorbHistory(state);
       var steps = (state && state.steps) || [];
       var interaction = state && state.interaction;
       var hasInter = Boolean(interaction && interaction.status === 'open');
