@@ -36,6 +36,12 @@
     var active = -1;
     var expanded = false;     // window grown for the menu
     var spaceToken = 0;       // invalidates stale release callbacks
+    /**
+     * The click that opens the menu is still bubbling when the menu appears
+     * (the open runs in a microtask). Ignore that same click in the outside
+     * click handler, or the menu closes itself before it is painted.
+     */
+    var ignoreOutsideClick = false;
 
     function isOpen() {
       return Boolean(menuEl && menuEl.classList.contains('open'));
@@ -93,6 +99,12 @@
       var extra = neededSpace(natural);
       reserveSpace(extra).then(function () {
         if (current !== seq) return; // closed or replaced while waiting
+        // Set this before the menu is visible: the opening click may still be
+        // bubbling through the document listener below.
+        ignoreOutsideClick = true;
+        setTimeout(function () {
+          ignoreOutsideClick = false;
+        }, 0);
         place(owner);
         menuEl.style.visibility = '';
         menuEl.classList.add('open');
@@ -455,6 +467,7 @@
       menuEl.addEventListener('keydown', handleKeydown);
     }
     document.addEventListener('click', function (event) {
+      if (ignoreOutsideClick) return;
       if (!menuEl || !menuEl.classList.contains('open')) return;
       if (menuEl.contains(event.target)) return;
       close();

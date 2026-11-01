@@ -67,6 +67,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
   accent is monochrome, so white-on-white was unreadable in dark mode).
 - A tool that finishes while its detail is open refreshes that detail with the
   call result before it collapses, so reopening the row never shows stale args.
+- The four function-key dropdowns closed themselves before they could be seen:
+  the composer island does not stop click propagation, so the document's
+  outside-click handler processed the same click that opened the menu (the menu
+  opens in a microtask, before the click finishes bubbling). The menu now ignores
+  the click that opened it.
 
 ## [0.3.0] - 2026-10-28
 
