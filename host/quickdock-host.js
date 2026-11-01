@@ -143,7 +143,9 @@ export class QuickDockHost {
       index: this.index,
       hub: this.hub,
       stream: this.stream,
-      goal: () => this.sessionGoal()
+      goal: () => this.sessionGoal(),
+      // DSH's todo projection, or null when it has nothing to say.
+      plan: () => this.projectedPlan()
     })
 
     this.resolver = new ElectronResolver({
@@ -795,10 +797,49 @@ export class QuickDockHost {
    * @param {string} [sessionId] defaults to the bound session.
    * @returns {{todos: object[], goal: object|null, source: string}} current state.
    */
+  /**
+   * The plan as DSH itself sees it, when a projection carries it.
+   *
+   * The dock must not disagree with the main window: if DSH hides the panel
+   * (empty plan), an echo of an older todo/write in our fold would keep showing
+   * a list DSH does not have.
+   * @returns {{todos: object[], goal: object|null}|null} null when absent.
+   */
+  projectedPlan() {
+    if (!this.state.sessionId) return null
+    try {
+      const live = this.dsh.session(this.state.sessionId)
+      if (!live || typeof this.dsh.projectionValues !== 'function') return null
+      const values = this.dsh.projectionValues(live, ['todo', 'todos', 'plan', 'todoList']) || {}
+      for (const key of ['todo', 'todos', 'plan', 'todoList']) {
+        const value = values[key]
+        if (!value) continue
+        const list = Array.isArray(value) ? value : Array.isArray(value.todos) ? value.todos : null
+        if (!list) continue
+        return {
+          todos: list
+            .filter((row) => row && typeof row.content === 'string')
+            .map((row) => ({ content: row.content, status: String(row.status || 'pending') })),
+          goal: null
+        }
+      }
+      return null
+    } catch (_) {
+      return null
+    }
+  }
+
   readPlan(sessionId) {
     const target = String(sessionId || this.state.sessionId || '')
     if (!target) return { todos: [], goal: null, source: 'none' }
     const folder = this.state.folders.get(target) || null
+    // DSH's projection wins: it is what the main window is showing right now.
+    if (target === this.state.sessionId) {
+      const projected = this.projectedPlan()
+      if (projected) {
+        return { todos: projected.todos, goal: (folder && folder.goal) || this.sessionGoal(), source: 'projection' }
+      }
+    }
     if (folder && folder.todos && folder.todos.length) {
       return { todos: folder.todos, goal: folder.goal || null, source: 'fold' }
     }

@@ -11,7 +11,7 @@
  * @returns {() => object} snapshot producer.
  */
 export function createSnapshotBuilder(deps) {
-  const { config, state, dsh, index, hub, stream, goal } = deps
+  const { config, state, dsh, index, hub, stream, goal, plan } = deps
 
   return function snapshot() {
     const workspaces = dsh.workspaces().map((row) => ({ id: row.id, name: row.name, path: row.path }))
@@ -47,7 +47,15 @@ export function createSnapshotBuilder(deps) {
       // turns through GET /quickdock/api/turns and /turn.
       steps: folder ? folder.rows() : [],
       // The agent's task list (todo_write), newest wins. Empty when it has none.
-      todos: folder && Array.isArray(folder.todos) ? folder.todos : [],
+      // DSH's own projection wins: the dock must not show a list the main
+      // window has already dropped.
+      // DSH's own projection wins: the dock must not show a list the main
+      // window has already dropped.
+      todos: (() => {
+        const projected = typeof deps.plan === 'function' ? deps.plan() : null
+        if (projected && Array.isArray(projected.todos)) return projected.todos
+        return folder && Array.isArray(folder.todos) ? folder.todos : []
+      })(),
       // Visible only when the host can read one; the card hides the line otherwise.
       // A goal tool result wins over a service lookup: the tools are the only
       // place DSH exposes it (no goal service or projection was found).
