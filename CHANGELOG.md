@@ -47,6 +47,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Fixed
 
+- A new conversation keeps its send button on the composer row. The agent option
+  adds a fourth function key, the row wrapped, and `↑` dropped onto a line of its
+  own. The row no longer wraps: the keys shrink and ellipsize instead, the
+  thinking effort keeps its width (it is one word), and the agent preset gives way
+  first so the permission and model names stay readable.
 - Permission, model and reasoning changed in DSH itself now reach the dock. They
   live on the session (DSH writes them there), and the dock only ever wrote its
   own copy, so it kept showing a stale value until the session was re-bound. The

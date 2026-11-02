@@ -103,6 +103,9 @@ function Composer({ bridge }) {
             key: kind,
             type: 'button',
             className: 'qd-mark',
+            // Lets the row decide which labels may shrink: the agent option only
+            // exists for a new conversation and must not squeeze the others flat.
+            'data-kind': kind,
             onClick: (event) => bridge.onOpenMenu(kind, event.currentTarget),
             'aria-haspopup': 'menu',
             title: marks[kind] || ''

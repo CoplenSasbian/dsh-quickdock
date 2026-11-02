@@ -137,7 +137,10 @@ html[data-theme="light"] {
 
 .qd-composer-row {
   display: flex;
-  flex-wrap: wrap;
+  /* Never wrap: a new conversation adds the agent mark, and wrapping pushed the
+     send button onto its own line. The marks shrink instead (they already clip
+     with an ellipsis), and the send button keeps its size. */
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -149,12 +152,18 @@ html[data-theme="light"] {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
 }
 
 /* DSH's .select: borderless, 13px/500 secondary text with a chevron. */
 .qd-mark {
   height: 28px;
+  /* Flex items default to min-width:auto, which refuses to shrink below the
+     label: without this the four marks overflow and the row wraps again. */
+  min-width: 0;
+  flex: 0 1 auto;
   max-width: 220px;
   padding: 0 20px 0 8px;
   border: none;
@@ -176,6 +185,17 @@ html[data-theme="light"] {
 
 .qd-mark:hover:not(:disabled) {
   background-color: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.07));
+}
+
+/* Which labels may be squeezed. The thinking effort is a word ("High"), so it
+   keeps its width; the agent preset can be long, so it gives way first and the
+   permission/model names stay as readable as the row allows. */
+.qd-mark[data-kind="thinking"] {
+  flex: none;
+}
+
+.qd-mark[data-kind="agent"] {
+  max-width: 140px;
 }
 
 .qd-mark:disabled {
