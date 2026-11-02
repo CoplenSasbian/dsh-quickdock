@@ -538,7 +538,7 @@
         + (parseFloat(style.marginTop) || 0)
         + (parseFloat(style.marginBottom) || 0);
     };
-    if (unified) height += window.__QD_PANE_HEIGHT__ || 420;
+    if (unified && els.displayPane && !els.displayPane.hidden) height += window.__QD_PANE_HEIGHT__ || 420;
     height += blockHeight(els.todoCard) + blockHeight(panel);
     height = Math.ceil(height);
     // Before the first render the panel is a stub: reporting it would shrink the
@@ -584,6 +584,10 @@
   };
   var detailMode = readDetailMode();
 
+  // A persisted "hidden" must not paint the pane first and collapse it after:
+  // the window height is reported from the pane's presence, so start without it.
+  if (unified && els.displayPane && detailMode === 'hidden') els.displayPane.hidden = true;
+
   function readDetailMode() {
     try {
       var saved = localStorage.getItem(DETAIL_KEY);
@@ -606,9 +610,11 @@
   function syncListButton() {
     var button = els.listBtn;
     if (button) {
-      var closed = detailMode === 'closed';
-      button.classList.toggle('off', closed);
-      button.setAttribute('aria-pressed', closed ? 'false' : 'true');
+      // "closed" folds the detail rows, "hidden" removes the whole pane: both
+      // mean the detail line is not on screen, so the button reads as off.
+      var off = detailMode === 'closed' || detailMode === 'hidden';
+      button.classList.toggle('off', off);
+      button.setAttribute('aria-pressed', off ? 'false' : 'true');
       var label = t(DETAIL_LABELS[detailMode]);
       button.title = label;
       button.setAttribute('aria-label', label);
@@ -649,6 +655,16 @@
     // Only "hidden" closes the window; the other modes decide how the rows
     // inside it are folded, which the docked page handles itself.
     var show = detailMode !== 'hidden' && displaySeen;
+    // Unified layout: there is no second window to hide - the docked pane lives
+    // inside this one, so "hidden" collapses the pane and the window shrinks
+    // with it. Without this the mode was a no-op exactly where the dock runs.
+    if (unified && els.displayPane) {
+      var paneHidden = !show;
+      if (els.displayPane.hidden !== paneHidden) {
+        els.displayPane.hidden = paneHidden;
+        syncWindowHeight();
+      }
+    }
     var quickDock = window.quickDock;
     if (!quickDock || !quickDock.setDisplayEmpty) return;
     try {
@@ -1043,10 +1059,11 @@
       getState: function () {
         return state;
       },
-      // The docked window is shown/hidden by setDisplayEmpty; there is no
-      // separate list flag any more.
+      // Whether the docked window may be on screen at all. The mode is shared
+      // through localStorage, so the display page agrees with the input page
+      // instead of showing itself again after "detail: hidden" closed it.
       isListHidden: function () {
-        return false;
+        return detailMode === 'hidden';
       },
       scheduleHitReport: function () {
         scheduleHitReport();

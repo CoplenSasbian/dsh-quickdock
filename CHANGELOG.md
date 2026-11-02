@@ -42,6 +42,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Fixed
 
+- "Detail mode: hidden" now hides the execution pane in the unified layout. The
+  mode only closed the separate run window, which does not exist when both live in
+  one window, so choosing it did nothing; the pane now collapses (and the window
+  shrinks with it), the mode is applied before the first paint, and the display
+  page no longer re-shows itself after the input page hid it.
 - "Load earlier turns" keeps working past the first batch. The fold keeps only its
   newest `maxSteps` rows, so every older turn stayed listed while its rows were
   gone, and each batch after the first came back empty (`observed: true, steps: 0`).

@@ -455,6 +455,10 @@ html[data-theme="light"] .ws-chip{background:var(--qd-fill-weak)}
 /* The details pane takes the space left over: it asks for displayHeight but
    shrinks when the window is clamped to the screen, so nothing gets clipped. */
 body[data-layout="unified"] .display-pane{display:flex;flex:1 1 auto;min-height:120px;height:auto!important}
+/* "Detail mode: hidden" collapses the pane in the unified window. The rule above
+   is more specific than the browser's [hidden]{display:none}, so it has to be
+   restated or hiding the pane does nothing. */
+body[data-layout="unified"] .display-pane[hidden]{display:none}
 body[data-layout="unified"] .todo-card,body[data-layout="unified"] #panelA{flex:0 0 auto}
 body[data-layout="unified"] .stack{height:100%}
 body[data-layout="unified"]{overflow:hidden}
