@@ -1247,14 +1247,41 @@
       api('select', { newSession: true }).catch(toastError);
     });
 
-    // Manual reload: the docked window re-reads the state and the history, which
-    // covers the case where its first read raced the host.
-    U.on(els.reloadBtn, 'click', function (event) {
-      event.stopPropagation();
+    // Manual reload: re-read this conversation from the Host.
+    //
+    // In the split layout the run log is its own window, so the Host reloads it.
+    // In the unified layout that window does not exist - the log is an iframe in
+    // this one - and reloading the iframe is the same thing: the page drops its
+    // turns, re-reads /turns and starts the history loader again, which is the
+    // honest fix for a stuck or stale column. Both layouts also re-read the
+    // state here, so the window is in step even if its stream raced the Host.
+    function reloadConversation() {
       var bridge = window.quickDock;
+      if (unified && els.displayFrame) {
+        try {
+          if (els.displayFrame.contentWindow) els.displayFrame.contentWindow.location.reload();
+          else els.displayFrame.src = els.displayFrame.src;
+        } catch (error) {
+          // A cross-document reload can be refused; re-assigning the src always works.
+          els.displayFrame.src = els.displayFrame.src;
+        }
+        return;
+      }
       if (bridge && bridge.reloadDisplay) {
         try { bridge.reloadDisplay(); } catch (error) { /* optional */ }
       }
+    }
+
+    U.on(els.reloadBtn, 'click', function (event) {
+      event.stopPropagation();
+      if (!state || !state.sessionId) {
+        toast(t('bar.noSession'));
+        return;
+      }
+      reloadConversation();
+      api('state').then(function (next) {
+        if (next) applyState(next);
+      }).catch(function () { /* the stream still delivers */ });
       toast(t('bar.reloaded'));
     });
 

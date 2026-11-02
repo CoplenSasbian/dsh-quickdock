@@ -21,6 +21,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Changed
 
+- The ⟳ "Reload the conversation" button does something now: in the unified
+  layout it reloads the docked pane (fresh state and turn history, which also
+  restarts a stuck history loader), in the split layout it reloads the run window
+  as before, and both layouts re-read the state. With nothing bound it says so
+  instead of pretending.
 - "Load earlier turns" now shows what it is doing: the pill turns into a disabled
   `Loading earlier turns…` with a spinner while the batch is in flight, and back
   with the new count when it lands. The batch is still inserted above the reader
