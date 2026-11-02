@@ -22,6 +22,7 @@ import {
   INDEX_TICKER_MS,
   MAX_TRACKED_SESSIONS,
   PAGE_PATH,
+  SETTINGS_SYNC_MS,
   STREAM_FLUSH_MS,
   VIEWS
 } from './constants.js'
@@ -358,6 +359,11 @@ export class QuickDockHost {
     this.ctx.on('agent/status', (payload) => this.#onAgentStatus(payload))
     this.ctx.on('agent/assistant-stream', (payload) => this.#onAssistantStream(payload))
 
+    // Permission / model / reasoning can be changed in DSH's own UI while the
+    // dock is bound. They live in the session's projections, which announce
+    // themselves here, so the dock follows instead of keeping its last choice.
+    this.#subscribeProjectionFeed()
+
     // Must prepend: DSH's own approval UI registers earlier in the waterfall.
     this.ctx.on('approval/request', async (request, next) => {
       if (!this.#dockCanAnswer(request)) return next()
@@ -444,6 +450,20 @@ export class QuickDockHost {
     const catalogTimer = setTimeout(() => void this.catalogService.refreshModels(), CATALOG_WARMUP_MS)
     this.#disposeOn(() => clearTimeout(catalogTimer), 'quickdock: catalog timer')
 
+    // DSH's own UI writes permission / model / reasoning on the SESSION, not on
+    // the dock, so the dock's copy goes stale unless it is re-read. The
+    // projection feed covers most changes as they commit; this ticker catches
+    // whatever the feed does not announce.
+    const settingsTimer = setInterval(() => {
+      // A cold composition may mount the plugin before the projections service
+      // is ready: the feed is retried here until it subscribes.
+      this.#subscribeProjectionFeed()
+      if (!this.hub.sseSize || !this.state.sessionId) return
+      if (this.#adoptSessionSettings(this.state.sessionId)) this.publish()
+    }, SETTINGS_SYNC_MS)
+    if (settingsTimer.unref) settingsTimer.unref()
+    this.#disposeOn(() => clearInterval(settingsTimer), 'quickdock: settings sync ticker')
+
     if (this.config.autoLaunch) {
       const launchTimer = setTimeout(() => void this.dock?.spawnDock(), 500)
       this.#disposeOn(() => clearTimeout(launchTimer), 'quickdock: launch timer')
@@ -485,7 +505,60 @@ export class QuickDockHost {
     if (event?.type === 'turn/start') this.#clearStream()
     this.#ensureFolder(session.id)
     this.state.folders.get(session.id).apply(event)
+    // A turn header or a permission event can carry a settings change the
+    // projection feed may not announce; re-read the session's own values.
+    this.#adoptSessionSettings(session.id)
     this.publish()
+  }
+
+  /**
+   * Listen to the session projection feed (idempotent).
+   *
+   * DSH announces every committed projection change here, which is what makes
+   * permission / model / reasoning follow DSH's own UI. The service can still be
+   * missing when the plugin mounts in a cold composition, so the caller retries;
+   * until then the settings ticker carries the sync.
+   */
+  #subscribeProjectionFeed() {
+    if (this.projectionFeed) return true
+    try {
+      const projections = this.dsh.projections
+      if (!projections || typeof projections.onChanged !== 'function') {
+        this.trace('projection feed unavailable: settings sync falls back to the ticker')
+        return false
+      }
+      this.ctx.effect(() => projections.onChanged((session) => {
+        if (this.#adoptSessionSettings(session?.id)) this.publish()
+      }), 'quickdock: session settings changes')
+      this.projectionFeed = true
+      this.trace('projection feed subscribed: settings follow DSH')
+      return true
+    } catch (error) {
+      this.trace('projection subscription failed: ' + String((error && error.message) || error))
+      return false
+    }
+  }
+
+  /**
+   * Adopt the permission / model / reasoning the bound session actually has.
+   *
+   * DSH's own UI writes these on the session, not on the dock, so the dock kept
+   * showing whatever it last sent. Returns whether the dock's copy changed; the
+   * caller publishes.
+   * @param {string} [sessionId] session to read (only the bound one is adopted).
+   * @returns {boolean} whether the dock's settings changed.
+   */
+  #adoptSessionSettings(sessionId) {
+    const id = String(sessionId || this.state.sessionId || '')
+    if (!id || id !== this.state.sessionId) return false
+    const settings = this.state.settings
+    const before = [settings.permission, settings.model, settings.reasoning].join('\u0000')
+    this.catalogService.syncSettingsFromSession(id)
+    const after = [settings.permission, settings.model, settings.reasoning].join('\u0000')
+    if (after === before) return false
+    this.trace('settings from DSH: permission=' + settings.permission
+      + ' model=' + (settings.model || '-') + ' reasoning=' + (settings.reasoning || '-'))
+    return true
   }
 
   #onAgentStatus(payload) {

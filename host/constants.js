@@ -38,6 +38,8 @@ export const SESSION_INDEX_TTL_MS = 10_000
 export const SSE_PING_MS = 20_000
 /** Periodic session-index refresh while a dock page is connected. */
 export const INDEX_TICKER_MS = 20_000
+/** How often the bound session's permission / model / reasoning are re-read. */
+export const SETTINGS_SYNC_MS = 4_000
 /** Delay before the model catalog is warmed up. */
 export const CATALOG_WARMUP_MS = 1500
 /** Restart backoff for a dock process that keeps crashing. */

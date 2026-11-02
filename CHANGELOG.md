@@ -47,6 +47,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Fixed
 
+- Permission, model and reasoning changed in DSH itself now reach the dock. They
+  live on the session (DSH writes them there), and the dock only ever wrote its
+  own copy, so it kept showing a stale value until the session was re-bound. The
+  Host now follows the session projection feed and re-reads the session's values
+  on every bound-session event, with a four-second fallback ticker while a page
+  is open for anything the feed does not announce.
 - "Detail mode: hidden" now hides the execution pane in the unified layout. The
   mode only closed the separate run window, which does not exist when both live in
   one window, so choosing it did nothing; the pane now collapses (and the window
