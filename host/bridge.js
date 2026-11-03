@@ -23,6 +23,10 @@ export function createBridgeHandler(deps) {
       app.dock?.summon()
       return { body: { ok: true, error: app.state.dock.error || undefined } }
     },
+    collapse() {
+      app.dock?.collapse?.()
+      return { body: { ok: true } }
+    },
     reset() {
       app.dock?.resetWindows()
       return { body: { ok: true } }
@@ -58,6 +62,27 @@ export function createBridgeHandler(deps) {
     },
     'web-url'() {
       return { body: { ok: true, url: app.pageUrl() } }
+    },
+    /**
+     * The General-settings row in DSH writes here: the ball diameter is stored in
+     * the plugin's own preferences and applied to the running window immediately.
+     */
+    'ball-size'(body) {
+      const size = Number(body?.size)
+      if (!Number.isFinite(size)) return { status: 400, body: { ok: false, error: 'size required' } }
+      return { body: app.setBallSize(size) }
+    },
+    'ball-size-get'() {
+      return { body: { ok: true, size: app.ballSize() } }
+    },
+    /** The whole effective configuration (file over row over defaults). */
+    'config-get'() {
+      return { body: { ok: true, config: app.effectiveConfig() } }
+    },
+    /** Persist a configuration patch; runtime-safe keys apply immediately. */
+    'config-set'(body) {
+      const patch = body && body.patch && typeof body.patch === 'object' ? body.patch : {}
+      return { body: { ok: true, config: app.setConfig(patch) } }
     }
   }
 

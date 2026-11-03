@@ -24,7 +24,7 @@ const SKIP_FILES = new Set([
   'dock-prototype.html',
   'default_app_test.asar'
 ])
-const DYNAMIC_PREFIXES = ['reasoning.']
+const DYNAMIC_PREFIXES = ['reasoning.', 'cfg.']
 
 const problems = []
 const warnings = []

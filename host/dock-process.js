@@ -122,7 +122,8 @@ export class DockProcess {
         minHeight: this.config.minHeight,
         maxWidth: this.config.maxWidth,
         maxHeight: this.config.maxHeight,
-        // On-demand mode: closing the window ends the process.
+        // Diameter of the floating whale ball.
+        ballSize: this.config.ballSize,        // On-demand mode: closing the window ends the process.
         exitOnClose: !this.config.autoLaunch
       })
     })
@@ -370,6 +371,29 @@ export class DockProcess {
     if (!this.alive) return
     void this.control({ type: 'hide' }).then((ok) => {
       if (!ok) this.trace('hide: control failed')
+    })
+  }
+
+  /** Collapse the window into the floating ball. */
+  collapse() {
+    if (!this.alive) return
+    void this.control({ type: 'collapse' }).then((ok) => {
+      if (!ok) this.trace('collapse: control failed')
+    })
+    this.onInactive && this.onInactive()
+  }
+
+  /**
+   * Change the floating ball diameter and apply it to the running window.
+   * @param {number} size diameter in DIP (clamped to 24-160).
+   */
+  setBallSize(size) {
+    const next = Math.min(160, Math.max(24, Math.round(Number(size) || 0)))
+    if (!Number.isFinite(next) || next <= 0) return
+    this.config.ballSize = next
+    if (!this.alive) return
+    void this.control({ type: 'window', ballSize: next }).then((ok) => {
+      if (!ok) this.trace('ball size: control failed')
     })
   }
 

@@ -3,6 +3,45 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [0.6.0-beta.1] - 2026-11-04
+
+Configuration moves out of the Loader row into its own file and its own settings
+page, and the window learns to collapse into a floating whale disc.
+
+### Added
+
+- `config.json` next to the host log: first run writes the whole template, and the
+  file overrides the row config (precedence: file > row > schema default).
+- A dedicated **QuickDock** page under Settings (`settings.section`) with 23 rows:
+  window size and bounds, pin/geometry/focus/auto-launch, ball size and icon,
+  edge snapping, collapse-on-close, first-appearance corner, header button and the
+  dock-only trims.
+- Floating disc: minimising (or closing, with `collapseOnClose`) hides the window
+  and leaves a whale disc where the collapse button was clicked.
+- The disc is dragged by polling the OS cursor (see Fixed) and snapped to the
+  nearest screen edge when `snapToEdge` is on.
+- Restoring the window reopens it around the disc, so the disc lands back on the
+  button it replaced; the result is clamped into the work area.
+- `ballIcon` (`whale` / `dot`), `ballAlwaysVisible`, `trimTabs` (hides the
+  conversation tab strip).
+
+### Changed
+
+- The window-wide Settings row is gone: the plugin now owns a settings page
+  instead of one line in General.
+- `ballSize` is applied live: the disc is rebuilt at the new diameter and kept
+  centred.
+
+### Fixed
+
+- The disc grew while dragged: renderer-reported pointer deltas fed window
+  movement back into the pointer events. Dragging now polls
+  `screen.getCursorScreenPoint()` and re-asserts the disc size on every move, so
+  a held pointer cannot move or resize it.
+- A disc press without travel is treated as a click and restores the window.
+- Restoring used to leave the window at its old place even when the disc had been
+  dragged across the screen.
+
 ## [0.5.0] - 2026-11-03
 
 The dock window becomes a dock: one title bar drives everything, the sidebar only

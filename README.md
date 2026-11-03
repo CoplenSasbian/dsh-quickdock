@@ -69,6 +69,7 @@ dsh plugin install C:\path\to\dsh-quickdock
 | `autoLaunch` | `false` | Open with the plugin instead of on the first click |
 | `prefetchElectron` | `true` | Prepare Electron at mount so the first click is instant |
 | `rememberGeometry` | `true` | Remember the window position |
+| `ballSize` | `64` | Diameter of the floating whale ball the window collapses into (24–160) |
 | `headerButton` / `headerButtonOrder` | `true` / `1010` | Header Dock button |
 
 ## Development

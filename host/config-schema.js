@@ -80,5 +80,7 @@ export const configSchema = {
   minWidth: Schema.number().default(360),
   minHeight: Schema.number().default(420),
   maxWidth: Schema.number().default(900),
-  maxHeight: Schema.number().default(1400)
+  maxHeight: Schema.number().default(1400),
+  /** Diameter of the floating whale ball the window collapses into (24-160). */
+  ballSize: Schema.number().default(64)
 }

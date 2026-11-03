@@ -95,6 +95,14 @@ export function createDockComponent(deps) {
       return supervisor ? supervisor.summon() !== false : false
     },
 
+    /** Collapse the window into the floating ball. */
+    collapse() {
+      const supervisor = ensure()
+      if (!supervisor) return false
+      supervisor.collapse?.()
+      return true
+    },
+
     /** Bring the window to the foreground (queued while it is still starting). */
     focus() {
       const supervisor = ensure()

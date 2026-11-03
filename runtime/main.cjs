@@ -18,6 +18,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
+const { BALL_PADDING, ballHtml } = require('./ball.cjs');
 
 // Temporary debug aid: no usable console on the Electron side, so log to disk.
 const TRACE = path.join(process.env.LOCALAPPDATA || process.env.TEMP || '.', 'dsh-quickdock', 'dock.log');
@@ -161,6 +162,16 @@ class DockRuntime {
     this.win = null;
     /** Display window (sticks above or below the input window, moves independently). */
     this.displayWin = null;
+    /** Floating disc shown while the dock is minimised (no taskbar entry). */
+    this.ball = null;
+    /** Pointer-to-window offset captured when a ball drag starts. */
+    this.ballGrab = null;
+    /** Where the collapse button sat inside the window (disc -> button mapping). */
+    this.ballAnchor = null;
+    /** Cursor polling while the disc is dragged. */
+    this.ballTimer = null;
+    this.ballStart = null;
+    this.ballMoved = false;
     this.store = null;
     /** Click-through state of the input window. */
     this.interactive = false;
@@ -227,8 +238,9 @@ class DockRuntime {
     trace('restored bounds: ' + JSON.stringify(restored.bounds)
       + ' scale=' + (restored.display && restored.display.scaleFactor)
       + ' workArea=' + JSON.stringify(restored.display && restored.display.workArea));
-    // 'system' draws the OS window controls (close/minimise/maximise) with the
-    // page underneath; the window must be opaque for that overlay to composite.
+    // The shell draws its own window buttons (minimise collapses into the floating
+    // ball, which an OS minimise cannot do). 'system' keeps the OS overlay for
+    // comparison; both modes want the native border/shadow and a resizable frame.
     const systemControls = this.config.controls === 'system';
     const chromeOptions = systemControls
       ? {
@@ -239,18 +251,11 @@ class DockRuntime {
           transparent: false,
           backgroundColor: '#1b1b1c',
           roundedCorners: true,
-          // The Windows frame itself: native resize border and drop shadow.
           thickFrame: true,
           hasShadow: true,
-          // Windows only draws a control when the window allows it: the close
-          // button stayed alone until minimise was enabled.
-          minimizable: true,
-          // The shell is drag-resizable; the bounds keep the layout usable.
-          resizable: this.config.resizable !== false,
-          minWidth: this.config.minWidth,
-          minHeight: this.config.minHeight,
-          maxWidth: this.config.maxWidth,
-          maxHeight: this.config.maxHeight,
+          // The OS draws only the close button: minimise is ours (collapse to the
+          // floating ball), so the platform must not add its own.
+          minimizable: false,
           maximizable: false,
         }
       : {};
@@ -260,12 +265,34 @@ class DockRuntime {
       chromeOptions.transparent = false;
       chromeOptions.backgroundColor = chromeOptions.backgroundColor || '#1b1b1c';
       chromeOptions.roundedCorners = true;
+      // Native resize border and drop shadow without OS caption buttons: the shell
+      // has its own.
+      chromeOptions.thickFrame = true;
+      chromeOptions.hasShadow = true;
+      chromeOptions.minimizable = false;
+      chromeOptions.resizable = this.config.resizable !== false;
+      chromeOptions.minWidth = this.config.minWidth;
+      chromeOptions.minHeight = this.config.minHeight;
+      chromeOptions.maxWidth = this.config.maxWidth;
+      chromeOptions.maxHeight = this.config.maxHeight;
+      chromeOptions.maximizable = false;
     }
     this.win = new BrowserWindow(sharedWindowOptions(Object.assign({ title: 'QuickDock' }, restored.bounds, chromeOptions)));
     trace('window: resizable=' + (this.config.resizable !== false)
       + ' bounds=' + this.config.minWidth + 'x' + this.config.minHeight
       + '..' + this.config.maxWidth + 'x' + this.config.maxHeight);
     prepareWindow(this.win, this.store);
+    // A frameless window with `minimizable: false` can lose its resize border on
+    // Windows: re-asserting the limits through the runtime setters (and toggling
+    // resizable) puts the thick frame back, which the drag cursor needs.
+    if (this.config.resizable !== false) {
+      try {
+        this.win.setMinimumSize(this.config.minWidth, this.config.minHeight);
+        this.win.setMaximumSize(this.config.maxWidth, this.config.maxHeight);
+        this.win.setResizable(false);
+        this.win.setResizable(true);
+      } catch (_) {}
+    }
     // Record initial geometry once: size is fixed, position changes while dragging and must persist.
     this.remember();
     trace('created: bounds=' + JSON.stringify(this.win.getBounds())
@@ -358,6 +385,12 @@ class DockRuntime {
      */
     this.win.on('close', (event) => {
       if (this.quitting) return;
+      // Close-to-disc keeps the process alive and leaves a way back.
+      if (this.config.collapseOnClose === true) {
+        event.preventDefault();
+        this.minimizeToBall();
+        return;
+      }
       if (!this.exitOnClose) {
         event.preventDefault();
         this.hide();
@@ -402,7 +435,22 @@ class DockRuntime {
         this.remember();
       }, 150);
     });
-    this.win.on('show', () => this.reinforceSkipTaskbar());
+    // Minimising would hide the window with no taskbar entry to bring it back:
+    // collapse to the floating disc instead.
+    this.win.on('minimize', () => this.minimizeToBall());
+    this.win.on('show', () => {
+      // A resident disc (config: ballAlwaysVisible) stays on screen beside the window.
+      if (this.config.ballAlwaysVisible === true) {
+        this.ensureBall();
+        if (this.ball && !this.ball.isDestroyed() && !this.ball.isVisible()) {
+          this.positionBall();
+          try { this.ball.showInactive(); } catch (_) {}
+        }
+      } else if (this.ball && !this.ball.isDestroyed() && this.ball.isVisible()) {
+        this.ball.hide();
+      }
+      this.reinforceSkipTaskbar();
+    });
     this.win.on('ready-to-show', () => this.show());
     wc.on('did-finish-load', () => {
       this.clearTimer(this.showFallback);
@@ -457,6 +505,35 @@ class DockRuntime {
       win.webContents.reload();
     });
     ipcMain.on('dock:hide', (event) => { if (sendAllowed(event)) this.hide(); });
+    // The shell draws its own window buttons (the OS minimise cannot collapse the
+    // dock into the ball), so it asks for these two explicitly.
+    ipcMain.on('dock:collapse-to-ball', (event, point) => {
+      if (!sendAllowed(event)) return;
+      this.minimizeToBall(point);
+    });
+    ipcMain.on('dock:close-window', (event) => {
+      if (!sendAllowed(event)) return;
+      if (this.win && !this.win.isDestroyed()) this.win.close();
+    });
+    // The floating disc is a separate window; only it may ask for a restore.
+    ipcMain.on('dock:restore-from-ball', (event) => {
+      const wc = eventWebContents(event);
+      if (!wc || !this.ball || this.ball.isDestroyed() || wc !== this.ball.webContents) return;
+      this.restoreFromBall();
+    });
+    // Dragging the disc: the page reports the pointer's screen position, and the
+    // disc is anchored to the cursor (grab offset). Absolute positioning cannot
+    // feed back into itself, so a held pointer never moves the window on its own.
+    // Dragging the disc: the page reports press and release only. The cursor is
+    // polled from the OS, so moving the window can never feed back into the
+    // pointer events (which is what made the disc grow before).
+    ipcMain.on('dock:ball-drag', (event, payload) => {
+      const wc = eventWebContents(event);
+      if (!wc || !this.ball || this.ball.isDestroyed() || wc !== this.ball.webContents) return;
+      if (!payload || typeof payload !== 'object') return;
+      if (payload.phase === 'start') this.startBallDrag();
+      else if (payload.phase === 'end') this.endBallDrag();
+    });
     /**
      * Size the task window to the height its page reports. The edge that faces
      * the input window stays put, so the panel grows away from the composer.
@@ -1186,6 +1263,253 @@ class DockRuntime {
   }
 
   /**
+   * Minimised windows have no taskbar entry (skipTaskbar): the dock collapses to
+   * a floating whale disc instead, and the disc brings it back.
+   */
+  minimizeToBall(point) {
+    if (this.quitting || !this.win || this.win.isDestroyed()) return;
+    if (this.ball && !this.ball.isDestroyed() && this.ball.isVisible()) return;
+    // Remember where the collapse button sat inside the window: the window is
+    // reopened around the disc with that same point, so the disc really takes the
+    // button's place instead of landing in some corner.
+    if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) {
+      const bounds = this.win.getBounds();
+      this.ballAnchor = { x: point.x - bounds.x, y: point.y - bounds.y };
+    } else {
+      this.ballAnchor = null;
+    }
+    this.ensureBall();
+    if (!this.ball) return;
+    this.positionBall(point);
+    try { this.ball.showInactive(); } catch (_) {}
+    try { if (this.win.isVisible()) this.win.hide(); } catch (_) {}
+    this.status('ball');
+    trace('collapsed to ball' + (point ? ' at ' + point.x + ',' + point.y : ''));
+  }
+
+  /** Open (or create) the floating ball window. */
+  ensureBall() {
+    if (this.ball && !this.ball.isDestroyed()) return this.ball;
+    const { BrowserWindow } = this.electron;
+    const ball = new BrowserWindow({
+      width: this.ballSize(),
+      height: this.ballSize(),
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      // Resizable so the OS cannot permanently rescale it when the disc crosses
+      // a display with a different DPI; the frameless shell has no drag border.
+      resizable: true,
+      movable: true,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      hasShadow: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      roundedCorners: false,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        devTools: false,
+      },
+    });
+    ball.setMenuBarVisibility(false);
+    try { ball.setAlwaysOnTop(true, 'screen-saver'); } catch (_) {}
+    try { ball.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); } catch (_) {}
+    void ball.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(ballHtml({ icon: this.config.ballIcon })));
+    // Remember where the user dropped it, so it comes back there next time.
+    ball.on('moved', () => this.rememberBall());
+    ball.on('closed', () => { this.ball = null; });
+    trace('ball window created');
+    this.ball = ball;
+    return ball;
+  }
+
+  /** Window edge for the disc: the disc plus the transparent margin. */
+  ballSize() {
+    return this.config.ballSize + BALL_PADDING * 2;
+  }
+
+  /**
+   * Move the disc and re-assert its size in one call.
+   *
+   * Moving a window across displays with different DPI makes Windows rescale it;
+   * the explicit width/height puts the disc back to the configured diameter.
+   * @param {number} x left edge, DIP.
+   * @param {number} y top edge, DIP.
+   */
+  placeBall(x, y) {
+    if (!this.ball || this.ball.isDestroyed()) return;
+    const edge = this.ballSize();
+    try {
+      this.ball.setBounds({ x: Math.round(x), y: Math.round(y), width: edge, height: edge });
+    } catch (_) {}
+  }
+
+  /** Put the ball under the click, or beside the dock window's corner. */
+  positionBall(point) {
+    if (!this.ball || this.ball.isDestroyed()) return;
+    const size = this.ballSize();
+    const anchor = point && Number.isFinite(point.x) && Number.isFinite(point.y)
+      ? point
+      : null;
+    if (anchor) {
+      const area = currentDisplay(this.electron.screen, {
+        x: anchor.x, y: anchor.y, width: size, height: size,
+      }).workArea;
+      const x = Math.round(anchor.x - size / 2);
+      const y = Math.round(anchor.y - size / 2);
+      this.placeBall(
+        Math.max(area.x + 4, Math.min(x, area.x + area.width - size - 4)),
+        Math.max(area.y + 4, Math.min(y, area.y + area.height - size - 4))
+      );
+      return;
+    }
+    // No click point (a summon from the bridge, or an automatic collapse): the
+    // configured corner decides where the disc shows up.
+    const corner = this.config.startCorner === 'top-right' ? 'top-right'
+      : this.config.startCorner === 'cursor' ? 'cursor'
+        : 'bottom-right';
+    if (corner === 'cursor') {
+      const cursor = this.electron.screen.getCursorScreenPoint();
+      const area = currentDisplay(this.electron.screen, {
+        x: cursor.x, y: cursor.y, width: size, height: size,
+      }).workArea;
+      this.placeBall(
+        Math.max(area.x + 4, Math.min(cursor.x - size / 2, area.x + area.width - size - 4)),
+        Math.max(area.y + 4, Math.min(cursor.y - size / 2, area.y + area.height - size - 4))
+      );
+      return;
+    }
+    const bounds = this.win ? this.win.getBounds() : { x: 200, y: 200, width: 460, height: 800 };
+    const area = currentDisplay(this.electron.screen, bounds).workArea;
+    const x = bounds.x + bounds.width - size - 10;
+    const y = corner === 'top-right' ? bounds.y + 10 : bounds.y + bounds.height - size - 10;
+    this.placeBall(
+      Math.max(area.x + 8, Math.min(x, area.x + area.width - size - 8)),
+      Math.max(area.y + 8, Math.min(y, area.y + area.height - size - 8))
+    );
+  }
+
+  /** Persist the ball position (also keeps it on screen). */
+  rememberBall() {
+    if (!this.ball || this.ball.isDestroyed()) return;
+    const point = this.ball.getPosition();
+    const size = this.ballSize();
+    const area = currentDisplay(this.electron.screen, { x: point[0], y: point[1], width: size, height: size }).workArea;
+    const x = Math.max(area.x + 4, Math.min(point[0], area.x + area.width - size - 4));
+    const y = Math.max(area.y + 4, Math.min(point[1], area.y + area.height - size - 4));
+    if (x !== point[0] || y !== point[1]) {
+      try { this.ball.setPosition(x, y); } catch (_) {}
+    }
+    if (this.store) this.store.update({ ball: { x, y } });
+  }
+
+  /** The ball was clicked: bring the dock back. */
+  restoreFromBall() {
+    const disc = this.ball && !this.ball.isDestroyed() ? this.ball.getBounds() : null;
+    if (this.ball && !this.ball.isDestroyed()) this.ball.hide();
+    if (!this.win || this.win.isDestroyed()) return;
+    // The user may have dragged the disc across the screen: the window opens at
+    // the disc rather than at wherever it happened to sit before.
+    if (disc) this.openWindowAtDisc(disc);
+    this.focus();
+    this.status('shown');
+    trace('restored from ball at ' + (disc ? disc.x + ',' + disc.y : '?'));
+  }
+
+  /** Start a disc drag: anchor the disc to the cursor and follow it. */
+  startBallDrag() {
+    if (!this.ball || this.ball.isDestroyed()) return;
+    const cursor = this.electron.screen.getCursorScreenPoint();
+    const position = this.ball.getPosition();
+    this.ballGrab = { x: cursor.x - position[0], y: cursor.y - position[1] };
+    this.ballStart = { x: cursor.x, y: cursor.y };
+    this.ballMoved = false;
+    if (this.ballTimer) clearInterval(this.ballTimer);
+    this.ballTimer = setInterval(() => {
+      if (!this.ball || this.ball.isDestroyed() || !this.ballGrab) return;
+      const point = this.electron.screen.getCursorScreenPoint();
+      if (!this.ballMoved) {
+        const travel = Math.abs(point.x - this.ballStart.x) + Math.abs(point.y - this.ballStart.y);
+        if (travel > 3) this.ballMoved = true;
+      }
+      if (this.ballMoved) this.placeBall(point.x - this.ballGrab.x, point.y - this.ballGrab.y);
+    }, 16);
+  }
+
+  /** End a disc drag; a press without travel is a click that restores the dock. */
+  endBallDrag() {
+    if (this.ballTimer) {
+      clearInterval(this.ballTimer);
+      this.ballTimer = null;
+    }
+    this.ballGrab = null;
+    if (this.ball && !this.ball.isDestroyed()) {
+      if (this.config.snapToEdge !== false) this.snapBallToEdge();
+      this.rememberBall();
+    }
+    const moved = this.ballMoved;
+    this.ballMoved = false;
+    if (!moved) this.restoreFromBall();
+  }
+
+  /**
+   * Open the window around the disc.
+   *
+   * The disc sits where the collapse button used to be, so the window is placed
+   * with the same button offset: the disc lands back on the button and the window
+   * reappears exactly where it was. A disc dragged near an edge would push the
+   * window off screen, so the result is clamped into the work area.
+   * @param {{x: number, y: number, width: number, height: number}} disc disc bounds.
+   */
+  openWindowAtDisc(disc) {
+    if (!this.win || this.win.isDestroyed() || !disc) return;
+    const bounds = this.win.getBounds();
+    const area = currentDisplay(this.electron.screen, disc).workArea;
+    const width = Math.min(bounds.width, area.width - 16);
+    const height = Math.min(bounds.height, area.height - 16);
+    const discCentreX = disc.x + disc.width / 2;
+    const discCentreY = disc.y + disc.height / 2;
+    const anchor = this.ballAnchor || { x: width - 96, y: 17 };
+    const rawX = discCentreX - anchor.x;
+    const rawY = discCentreY - anchor.y;
+    const x = Math.max(area.x, Math.min(rawX, area.x + area.width - width));
+    const y = Math.max(area.y, Math.min(rawY, area.y + area.height - height));
+    try { this.win.setBounds({ x: Math.round(x), y: Math.round(y), width, height }); } catch (_) {}
+    this.remember();
+  }
+
+  /** Pull the disc to the nearest screen edge (config: snapToEdge). */
+  snapBallToEdge() {
+    if (!this.ball || this.ball.isDestroyed()) return;
+    const position = this.ball.getPosition();
+    const size = this.ball.getSize();
+    const area = currentDisplay(this.electron.screen, {
+      x: position[0], y: position[1], width: size[0], height: size[1],
+    }).workArea;
+    const distances = [
+      { edge: 'left', value: position[0] - area.x },
+      { edge: 'right', value: area.x + area.width - (position[0] + size[0]) },
+      { edge: 'top', value: position[1] - area.y },
+      { edge: 'bottom', value: area.y + area.height - (position[1] + size[1]) },
+    ].sort((a, b) => a.value - b.value);
+    const edge = distances[0];
+    if (!edge || edge.value > 48) return;
+    let x = position[0];
+    let y = position[1];
+    if (edge.edge === 'left') x = area.x;
+    if (edge.edge === 'right') x = area.x + area.width - size[0];
+    if (edge.edge === 'top') y = area.y;
+    if (edge.edge === 'bottom') y = area.y + area.height - size[1];
+    this.placeBall(x, y);
+  }
+
+  /**
    * Bring the window to the foreground.
    *
    * DSH asks for this when the Dock button hands the window a session: showing
@@ -1274,14 +1598,60 @@ class DockRuntime {
     else if (message.type === 'show') this.show();
     else if (message.type === 'focus') this.focus();
     else if (message.type === 'hide') this.hide();
+    else if (message.type === 'collapse') this.minimizeToBall();
     else if (message.type === 'reset-windows') { this.resetWindows(); this.show(); }
     else if (message.type === 'ping') this.status('pong');
     else if (message.type === 'attach') this.show();
     else if (message.type === 'window') {
       if (message.alwaysOnTop !== undefined) this.applyAlwaysOnTop(message.alwaysOnTop);
+      if (Number.isFinite(message.ballSize)) {
+        this.applyBallSize(message.ballSize);
+        // A size tweak must not yank the window back out of the ball.
+        if (message.alwaysOnTop === undefined) {
+          this.sendState();
+          return;
+        }
+      }
       this.show();
       this.sendState();
     }
+  }
+
+  /**
+   * Change the floating ball diameter at runtime.
+   *
+   * The disc fills its window minus the transparent margin, so resizing the window
+   * resizes the whale; the ball keeps its position relative to the anchor.
+   * @param {number} size diameter in DIP.
+   */
+  applyBallSize(size) {
+    const next = Math.min(160, Math.max(24, Math.round(size)));
+    if (!Number.isFinite(next) || next <= 0) return;
+    this.config.ballSize = next;
+    if (!this.ball || this.ball.isDestroyed()) return;
+    // Windows ignores setSize on a window created non-resizable, and a stale size
+    // then made the disc drift on every change. A fresh window at the new size is
+    // deterministic; the disc is re-shown at the same centre.
+    let centre = null;
+    try {
+      const point = this.ball.getPosition();
+      const current = this.ball.getSize();
+      centre = { x: point[0] + current[0] / 2, y: point[1] + current[1] / 2 };
+    } catch (_) {
+      centre = null;
+    }
+    const wasVisible = this.ball.isVisible();
+    try { this.ball.destroy(); } catch (_) {}
+    this.ball = null;
+    if (!wasVisible) {
+      trace('ball size: ' + next + ' (next collapse)');
+      return;
+    }
+    this.ensureBall();
+    if (!this.ball) return;
+    this.positionBall(centre || undefined);
+    try { this.ball.showInactive(); } catch (_) {}
+    trace('ball size: ' + next);
   }
 
   isHostAlive() {
@@ -1397,6 +1767,15 @@ class DockRuntime {
       try { this.displayWin.destroy(); } catch (_) {}
       this.displayWin = null;
     }
+    if (this.ballTimer) {
+      clearInterval(this.ballTimer);
+      this.ballTimer = null;
+    }
+    if (this.ball && !this.ball.isDestroyed()) {
+      try { this.ball.destroy(); } catch (_) {}
+    }
+    this.ball = null;
+    this.ballGrab = null;
   }
 
   async quit(code) {

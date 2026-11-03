@@ -20,6 +20,7 @@ import { ElectronResolver } from './electron-resolver.js'
 import { sendJson } from './http.js'
 import { LocaleController } from './locale.js'
 import { PageRenderer } from './page.js'
+import { DEFAULT_CONFIG, configPath, readConfig, resolveValue, sanitize, writeConfig, writeTemplateIfMissing } from './config-file.js'
 import { createDockComponent } from './dock-component.js'
 import { readVersion } from './version.js'
 import { ThemeStore } from './theme.js'
@@ -39,6 +40,10 @@ export class QuickDockHost {
     this.dsh = new DshFacade(ctx)
     this.tracePath = traceLogPath()
     this.trace = createTrace({ path: this.tracePath })
+    /** User configuration (`config.json`), overriding the Loader row config. */
+    this.configFile = configPath(this.tracePath)
+    writeTemplateIfMissing(this.configFile)
+    this.fileConfig = readConfig(this.configFile)
     this.disposers = []
     /** The loopback listener that serves the shell page and the API. */
     this.server = null
@@ -220,6 +225,7 @@ export class QuickDockHost {
       // process keeps the single-instance lock and blocks the next window.
       this.#disposeOn(() => this.dockComponent?.dispose(), 'quickdock: dock lifecycle')
     }
+    this.#applyFileConfig()
     if (service) {
       this.#startServer()
       this.#registerBridge()
@@ -249,6 +255,52 @@ export class QuickDockHost {
    * and the bridge, the dock entry only adds the windows.
    * @returns {boolean} whether the component is mounted.
    */
+  /**
+   * The floating ball diameter actually in use: the value written from DSH's
+   * Settings page wins over the row config, which stays the default.
+   * @returns {number} diameter in DIP (24-160).
+   */
+  ballSize() {
+    const size = resolveValue(this.fileConfig, this.config, 'ballSize')
+    return Math.min(160, Math.max(24, Math.round(Number(size) || 64)))
+  }
+
+  /**
+   * Store a new ball diameter and apply it to a running window.
+   * @param {number} size diameter in DIP.
+   * @returns {{ok: boolean, size: number}} applied value.
+   */
+  setBallSize(size) {
+    return this.setConfig({ ballSize: size }).ballSize !== undefined
+      ? { ok: true, size: this.ballSize() }
+      : { ok: false, error: 'invalid size' }
+  }
+
+  /**
+   * Effective configuration: file over row over schema defaults.
+   * @returns {object} one value per documented key.
+   */
+  effectiveConfig() {
+    const keys = Object.keys(DEFAULT_CONFIG)
+    const out = {}
+    for (const key of keys) out[key] = resolveValue(this.fileConfig, this.config, key)
+    return out
+  }
+
+  /**
+   * Persist a configuration patch and apply what can change at runtime.
+   * @param {object} patch partial configuration.
+   * @returns {object} the effective configuration after the write.
+   */
+  setConfig(patch) {
+    const clean = sanitize(Object.assign({}, this.fileConfig, patch))
+    this.fileConfig = clean
+    writeConfig(this.configFile, clean)
+    this.config.ballSize = this.ballSize()
+    this.dock?.setBallSize?.(this.config.ballSize)
+    return this.effectiveConfig()
+  }
+
   mountDock() {
     if (!this.dockComponent) return false
     if (this.state.components) this.state.components.dock = true
@@ -404,6 +456,34 @@ export class QuickDockHost {
     }
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
     res.end('not found')
+  }
+
+  /**
+   * Copy the user's configuration over the row config.
+   *
+   * Everything downstream (window options, supervisor, spawn environment) reads
+   * `this.config`, so one merge here keeps the file the single user-facing source.
+   */
+  #applyFileConfig() {
+    const config = this.effectiveConfig()
+    // Row-only names for the window size.
+    this.config.width = config.width
+    this.config.inputHeight = config.height
+    this.config.minWidth = config.minWidth
+    this.config.minHeight = config.minHeight
+    this.config.maxWidth = config.maxWidth
+    this.config.maxHeight = config.maxHeight
+    this.config.alwaysOnTop = config.alwaysOnTop
+    this.config.rememberGeometry = config.rememberGeometry
+    this.config.focusOnSummon = config.focusOnSummon
+    this.config.ballSize = config.ballSize
+    this.config.autoLaunch = config.autoLaunch
+    this.config.prefetchElectron = config.prefetchElectron
+    this.config.headerButton = config.headerButton
+    this.config.headerButtonOrder = config.headerButtonOrder
+    this.config.trimHeaderActions = config.trimHeaderActions
+    this.config.trimSidebarPanels = config.trimSidebarPanels
+    this.config.trimAccountMenu = config.trimAccountMenu
   }
 
   #registerBridge() {

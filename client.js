@@ -27,40 +27,445 @@ function el(tag, props) {
 /* i18n-catalog:start — kept in sync with locale/en.json + locale/zh.json */
 var MESSAGES = {
   en: {
-    'client.sendToDock': 'Open this session in QuickDock',
-    'client.label': 'Dock',
-    'client.unknownError': 'Unknown error',
-    'client.startTimeout': 'QuickDock did not start in time. See {log}',
-    'client.preparing': 'QuickDock is preparing its desktop window (the first run downloads Electron, ~1–2 minutes, once)…',
-    'client.requestFailed': 'Request failed: HTTP {status}',
+    'app.displayTitle': 'QuickDock Display',
+    'app.inputTitle': 'QuickDock',
+    'app.name': 'QuickDock',
+    'ask.back': 'Back',
+    'ask.next': 'Next',
+    'bar.close': 'Close QuickDock (Esc)',
+    'bar.connecting': 'Connecting…',
+    'bar.inputPanel': 'Input panel',
+    'bar.newSession': 'New conversation (Shift/Alt-click forks the current session)',
+    'bar.newSessionLabel': 'New conversation',
+    'bar.newSessionTitle': 'New conversation',
+    'bar.noSession': 'No conversation to reload yet',
+    'bar.noWorkspace': 'No workspace',
+    'bar.openInDsh': 'Open current session in DSH',
+    'bar.pin': 'Always on top',
+    'bar.reload': 'Reload the conversation',
+    'bar.reloaded': 'Conversation reloaded',
+    'bar.statusTitle': 'Status',
+    'bar.toggleList': 'Show / hide the run window',
+    'bar.toggleListLabel': 'Show or hide the run window',
+    'bar.workspace': 'Workspace',
+    'bar.workspaceTitle': 'Current workspace',
+    'card.allow': 'Allow',
+    'card.answerPlaceholder': 'Type an answer…',
+    'card.deny': 'Deny',
+    'card.needConfirm': '⚠ Needs confirmation',
+    'card.question': '? Question',
+    'card.submit': 'Submit',
     'client.dockFailed': 'QuickDock request failed: {reason}',
     'client.downloading': 'QuickDock is downloading its desktop runtime {percent}% ({mb}/{total} MB)',
+    'client.label': 'Dock',
     'client.more': 'More dock actions',
+    'client.preparing': 'QuickDock is preparing its desktop window (the first run downloads Electron, ~1–2 minutes, once)…',
     'client.reloadApp': 'Reload the app',
     'client.reloadFailed': 'Reload failed: {reason}',
+    'client.ballSize': 'Floating ball size',
+    'client.ballSizeHint': 'Diameter of the whale ball the dock collapses into.',
+    'client.requestFailed': 'Request failed: HTTP {status}',
+    'client.resetFailed': 'Reset failed: {reason}',
+    'client.resetWindows': 'Reset the window size',
     'client.restartDock': 'Restart the dock window',
     'client.restartFailed': 'Restart failed: {reason}',
-    'client.resetWindows': 'Reset the window size',
-    'client.resetFailed': 'Reset failed: {reason}'
+    'client.sendToDock': 'Open this session in QuickDock',
+    'client.startTimeout': 'QuickDock did not start in time. See {log}',
+    'client.unknownError': 'Unknown error',
+    'composer.label': 'Message or task',
+    'composer.placeholder': 'Send a message or task…',
+    'composer.send': 'Send (Enter)',
+    'composer.sendLabel': 'Send',
+    'confirm.cancel': 'Cancel',
+    'confirm.ok': 'Enable full access',
+    'confirm.text': 'The agent will be able to read and modify files and run commands outside the workspace. Continue only if you fully trust this task.',
+    'confirm.title': 'Enable full access?',
+    'detail.auto': 'Details: auto',
+    'detail.closed': 'Details: folded',
+    'detail.hidden': 'Details: window hidden',
+    'detail.open': 'Details: all expanded',
+    'display.act.code': 'Ran code',
+    'display.act.commands': 'Ran commands',
+    'display.act.edit': 'Edited files',
+    'display.act.read': 'Read files',
+    'display.act.readImage': 'Read images',
+    'display.act.search': 'Searched code',
+    'display.act.tools': 'Called tools',
+    'display.act.webFetch': 'Visited web pages',
+    'display.act.webSearch': 'Searched the web',
+    'display.act.write': 'Wrote files',
+    'display.collapse': 'Collapse details',
+    'display.comma': ', ',
+    'display.commandLine': 'Command line {line}',
+    'display.copied': 'Copied',
+    'display.copy': 'Copy',
+    'display.diffTitle': '+{added} / −{removed} lines',
+    'display.done': 'Done',
+    'display.empty': 'Nothing has run in this session yet',
+    'display.exitCode': 'exit {code}',
+    'display.expand': 'Expand details',
+    'display.expandLines': 'Show {count} more lines',
+    'display.failed': 'Failed',
+    'display.footnotes': 'Footnotes',
+    'display.joinTwo': '{first} and {second}',
+    'display.lines': 'lines {from}–{to}',
+    'display.linesTitle': 'Read lines {from}–{to}',
+    'display.loadFailed': 'Failed to load detail: {message}',
+    'display.loadMore': 'Load earlier turns ({count})',
+    'display.loadMoreHint': 'Scroll up to load older turns',
+    'display.loadMoreLoading': 'Loading earlier turns…',
+    'display.loading': 'Loading…',
+    'display.logLabel': 'Run log',
+    'display.more': '{title}, etc.',
+    'display.noDetail': '(no further detail for this step)',
+    'display.noExitCode': 'No exit code',
+    'display.noOutput': 'No output',
+    'display.output': 'Output',
+    'display.paneTitle': 'Execution details',
+    'display.readWindow': '{shown} of {total} lines',
+    'display.running': 'Running',
+    'display.signal': 'signal {signal}',
+    'display.thinking': 'Thinking',
+    'display.thinkingIdle': 'Thinking…',
+    'display.tool.code': 'Code',
+    'display.tool.commands': 'Command',
+    'display.tool.edit': 'Edit',
+    'display.tool.read': 'Read',
+    'display.tool.search': 'Search',
+    'display.tool.web': 'Web',
+    'display.tool.write': 'Write',
+    'display.toolFallback': 'Tool call',
+    'error.http': 'Request failed: HTTP {status}',
+    'error.noSession': 'No session is bound yet',
+    'host.busOffline': 'The DSH main window is not connected (is the plugin enabled?)',
+    'host.dockCrashLoop': 'The dock keeps exiting (last exit code {code}); retries stopped. See {log}',
+    'host.dockExited': 'The dock exited (code {code}); retrying in {delay}s ({attempt}/{max})',
+    'host.dockSpawnFailed': 'Failed to start the dock process: {reason}',
+    'host.dockStartFailed': 'The dock exited before it was ready (code {code}): {reason}',
+    'host.electronBlocked': 'Downloaded but still cannot start (it crashes before running JS, usually blocked by security software): {path}',
+    'host.electronDownloadHint': ' (every mirror failed: set ELECTRON_MIRROR to a reachable mirror, e.g. https://npmmirror.com/mirrors/electron/, or point DSH_QUICKDOCK_ELECTRON_PATH at an existing electron.exe)',
+    'host.electronInstallHint': ' (run npm install first: Electron is fetched with @electron/get, or set DSH_QUICKDOCK_ELECTRON_PATH to an electron.exe)',
+    'host.electronMissing': 'No usable Electron runtime found',
+    'host.electronUnavailable': 'Electron unavailable: {reason}{hint}',
+    'host.missingMessage': 'Message text is required',
+    'host.modelNotApplied': 'The model selection could not be applied to the session',
+    'host.newSessionTitle': 'New session',
+    'host.noSession': 'No session is bound yet',
+    'host.noSessionController': 'sessionController unavailable (DSH version mismatch?)',
+    'host.notFound': 'not found',
+    'host.permissionNotApplied': 'The permission preset could not be applied to the session',
+    'host.reasoningNotApplied': 'The thinking effort could not be applied to the session',
+    'host.unauthorized': 'unauthorized',
+    'host.unknownError': 'Unknown error',
+    'host.untitledSession': 'Untitled session',
+    'key.agent': 'Agent',
+    'key.model': 'Model',
+    'key.permission': 'Permission',
+    'key.thinking': 'Thinking',
+    'menu.agentTitle': 'Agent preset',
+    'menu.context': '{count} ctx',
+    'menu.defaultAgent': '(default)',
+    'menu.emptyMatch': 'No matches',
+    'menu.emptyOptions': '(no options)',
+    'menu.forkArmed': 'Next message will fork the current session',
+    'menu.loading': '(loading…)',
+    'menu.menuLabel': 'Menu',
+    'menu.modelTitle': 'Model',
+    'menu.noModels': '(no models available)',
+    'menu.noSessionToFork': 'No session to fork',
+    'menu.notConnected': 'Not connected to DSH yet',
+    'menu.off': 'Off',
+    'menu.permissionTitle': 'Permission policy',
+    'menu.searchLabel': 'Search {title}',
+    'menu.searchPlaceholder': 'Search {title}…',
+    'menu.thinkingTitle': 'Thinking effort',
+    'reasoning.high': 'High',
+    'reasoning.low': 'Low',
+    'reasoning.max': 'Max',
+    'reasoning.medium': 'Medium',
+    'run.backgroundCount': '{count} in background',
+    'run.doneCount': '{count} done',
+    'run.executing': 'Working',
+    'run.failedCount': '{count} failed',
+    'run.label': 'Run status',
+    'run.starting': 'Starting…',
+    'run.stop': 'Stop',
+    'run.thinking': 'Thinking',
+    'run.title': 'Running',
+    'status.ask': 'Needs confirmation',
+    'status.done': 'Done',
+    'status.failed': 'Failed',
+    'status.idle': 'Idle',
+    'status.offline': 'Offline',
+    'status.ready': 'Ready',
+    'status.running': 'Running',
+    'status.waitingAnswer': 'Waiting for answer',
+    'time.daysAgo': '{count}d ago',
+    'time.hoursAgo': '{count}h ago',
+    'time.justNow': 'just now',
+    'time.minutesAgo': '{count}m ago',
+    'todo.empty': 'No steps yet',
+    'todo.progress.active': '{active} active',
+    'todo.progress.done': '{done} done',
+    'todo.progress.pending': '{pending} pending',
+    'todo.status.completed': 'Done',
+    'todo.status.inProgress': 'In progress',
+    'todo.status.pending': 'Pending',
+    'todo.title': 'Tasks',
+    'settings.quickdock': 'QuickDock',
+    'cfg.width': 'Window width',
+    'cfg.height': 'Window height',
+    'cfg.minWidth': 'Minimum width',
+    'cfg.minHeight': 'Minimum height',
+    'cfg.maxWidth': 'Maximum width',
+    'cfg.maxHeight': 'Maximum height',
+    'cfg.alwaysOnTop': 'Always on top',
+    'cfg.rememberGeometry': 'Remember size and position',
+    'cfg.focusOnSummon': 'Focus when opened',
+    'cfg.ballSize': 'Floating ball size',
+    'cfg.ballIcon': 'Floating ball icon',
+    'cfg.ballAlwaysVisible': 'Keep the ball on screen',
+    'cfg.snapToEdge': 'Snap the ball to the screen edge',
+    'cfg.collapseOnClose': 'Closing collapses into the ball',
+    'cfg.startCorner': 'First appearance position',
+    'cfg.autoLaunch': 'Open the window with the plugin',
+    'cfg.prefetchElectron': 'Prefetch the desktop runtime',
+    'cfg.headerButton': 'Show the header Dock button',
+    'cfg.headerButtonOrder': 'Header button order',
+    'cfg.trimHeaderActions': 'Hide header action buttons in the dock',
+    'cfg.trimSidebarPanels': 'Hide plugins / automations / more in the dock',
+    'cfg.trimAccountMenu': 'Hide the account menu in the dock',
+    'cfg.trimTabs': 'Hide the conversation tabs in the dock',
+    'cfg.ballIcon.whale': 'Whale',
+    'cfg.ballIcon.dot': 'Plain dot',
+    'cfg.startCorner.bottom-right': 'Bottom right',
+    'cfg.startCorner.top-right': 'Top right',
+    'cfg.startCorner.cursor': 'At the cursor',
+    'cfg.group.window': 'Window',
+    'cfg.group.ball': 'Floating ball',
+    'cfg.group.dock': 'Dock window'
   },
   zh: {
-    'client.sendToDock': '在 QuickDock 中打开此会话',
-    'client.label': 'Dock',
-    'client.unknownError': '未知错误',
-    'client.startTimeout': 'QuickDock 启动超时。请看 {log}',
-    'client.preparing': 'QuickDock 正在准备桌面窗口（首次需要下载 Electron，约 1–2 分钟，只需一次）…',
-    'client.requestFailed': '请求失败：HTTP {status}',
+    'app.displayTitle': 'QuickDock 执行过程',
+    'app.inputTitle': 'QuickDock',
+    'app.name': 'QuickDock',
+    'ask.back': '上一步',
+    'ask.next': '下一步',
+    'bar.close': '关闭 QuickDock (Esc)',
+    'bar.connecting': '正在连接…',
+    'bar.inputPanel': '输入面板',
+    'bar.newSession': '新建对话（Shift/Alt 点 = 从当前会话分叉）',
+    'bar.newSessionLabel': '新建对话',
+    'bar.newSessionTitle': '新建对话',
+    'bar.noSession': '还没有可重新加载的对话',
+    'bar.noWorkspace': '未绑定工作区',
+    'bar.openInDsh': '在 DSH 中打开当前会话',
+    'bar.pin': '顶置',
+    'bar.reload': '重新加载对话',
+    'bar.reloaded': '已重新加载这次对话',
+    'bar.statusTitle': '状态',
+    'bar.toggleList': '显示 / 隐藏执行过程窗口',
+    'bar.toggleListLabel': '显示或隐藏执行过程窗口',
+    'bar.workspace': '工作区',
+    'bar.workspaceTitle': '当前工作区',
+    'card.allow': '允许',
+    'card.answerPlaceholder': '输入回答…',
+    'card.deny': '拒绝',
+    'card.needConfirm': '⚠ 需要确认',
+    'card.question': '? 提问',
+    'card.submit': '提交',
     'client.dockFailed': 'QuickDock 请求失败：{reason}',
     'client.downloading': 'QuickDock 正在下载桌面运行时 {percent}%（{mb}/{total} MB）',
+    'client.label': 'Dock',
     'client.more': '更多 Dock 操作',
+    'client.preparing': 'QuickDock 正在准备桌面窗口（首次需要下载 Electron，约 1–2 分钟，只需一次）…',
     'client.reloadApp': '重新加载应用',
     'client.reloadFailed': '重新加载失败：{reason}',
+    'client.ballSize': '悬浮球大小',
+    'client.ballSizeHint': 'dock 收起到鲸鱼球时的直径。',
+    'client.requestFailed': '请求失败：HTTP {status}',
+    'client.resetFailed': '重置失败：{reason}',
+    'client.resetWindows': '重置窗口大小',
     'client.restartDock': '重启 Dock 窗口',
     'client.restartFailed': '重启失败：{reason}',
-    'client.resetWindows': '重置窗口大小',
-    'client.resetFailed': '重置失败：{reason}'
+    'client.sendToDock': '在 QuickDock 中打开此会话',
+    'client.startTimeout': 'QuickDock 启动超时。请看 {log}',
+    'client.unknownError': '未知错误',
+    'composer.label': '消息或任务',
+    'composer.placeholder': '发送消息或任务…',
+    'composer.send': '发送 (Enter)',
+    'composer.sendLabel': '发送',
+    'confirm.cancel': '取消',
+    'confirm.ok': '启用完全权限',
+    'confirm.text': 'Agent 将可以不受工作区限制地读取、修改文件并执行命令。请仅在完全信任当前任务时继续。',
+    'confirm.title': '启用完全权限？',
+    'detail.auto': '执行详情：自动',
+    'detail.closed': '执行详情：折叠',
+    'detail.hidden': '执行详情：隐藏',
+    'detail.open': '执行详情：全部展开',
+    'display.act.code': '运行了代码',
+    'display.act.commands': '执行了命令',
+    'display.act.edit': '修改了文件',
+    'display.act.read': '已读取文件',
+    'display.act.readImage': '已读取图片',
+    'display.act.search': '已搜索代码',
+    'display.act.tools': '已调用工具',
+    'display.act.webFetch': '已访问网页',
+    'display.act.webSearch': '已搜索网页',
+    'display.act.write': '已写入文件',
+    'display.collapse': '折叠详情',
+    'display.comma': '，',
+    'display.commandLine': '命令行 {line}',
+    'display.copied': '已复制',
+    'display.copy': '复制',
+    'display.diffTitle': '新增 {added} 行 · 删除 {removed} 行',
+    'display.done': '完成',
+    'display.empty': '这个会话还没有执行记录',
+    'display.exitCode': '退出码 {code}',
+    'display.expand': '展开详情',
+    'display.expandLines': '展开其余 {count} 行',
+    'display.failed': '失败',
+    'display.footnotes': '脚注',
+    'display.joinTwo': '{first}并{second}',
+    'display.lines': '{from}–{to} 行',
+    'display.linesTitle': '读取第 {from}–{to} 行',
+    'display.loadFailed': '详情加载失败：{message}',
+    'display.loadMore': '加载更早的对话（还有 {count} 轮）',
+    'display.loadMoreHint': '向上滚动即可加载更早的对话',
+    'display.loadMoreLoading': '正在加载更早的对话…',
+    'display.loading': '加载中…',
+    'display.logLabel': '执行过程',
+    'display.more': '{title}等',
+    'display.noDetail': '（这一步没有更多细节）',
+    'display.noExitCode': '无退出码',
+    'display.noOutput': '没有输出',
+    'display.output': '输出',
+    'display.paneTitle': '执行详情',
+    'display.readWindow': '{shown} / {total} 行',
+    'display.running': '运行中',
+    'display.signal': '信号 {signal}',
+    'display.thinking': '思考',
+    'display.thinkingIdle': '正在思考…',
+    'display.tool.code': '代码',
+    'display.tool.commands': '命令',
+    'display.tool.edit': '编辑',
+    'display.tool.read': '读取',
+    'display.tool.search': '搜索',
+    'display.tool.web': '网页',
+    'display.tool.write': '写入',
+    'display.toolFallback': '工具调用',
+    'error.http': '请求失败 HTTP {status}',
+    'error.noSession': '还没有绑定会话',
+    'host.busOffline': 'DSH 主窗口没有连上（插件是否启用？）',
+    'host.dockCrashLoop': 'dock 进程反复退出（最后一次退出码 {code}），已停止重试。请看日志 {log}',
+    'host.dockExited': 'dock 进程退出（退出码 {code}），{delay}s 后重试（{attempt}/{max}）',
+    'host.dockSpawnFailed': 'dock 进程启动失败：{reason}',
+    'host.dockStartFailed': 'dock 进程在就绪前退出（退出码 {code}）：{reason}',
+    'host.electronBlocked': '下载完成但仍无法启动（进程在 JS 执行前崩溃，通常是安全软件拦截）：{path}',
+    'host.electronDownloadHint': '（所有镜像都失败了：可以用 ELECTRON_MIRROR 指定能访问的镜像，例如 https://npmmirror.com/mirrors/electron/；或用 DSH_QUICKDOCK_ELECTRON_PATH 指向已有的 electron.exe）',
+    'host.electronInstallHint': '（本插件需要先 npm install：它用 @electron/get 下载 Electron；也可以手动指定 DSH_QUICKDOCK_ELECTRON_PATH 指向一个 electron.exe）',
+    'host.electronMissing': '未找到可用的 Electron 运行时',
+    'host.electronUnavailable': 'Electron 不可用：{reason}{hint}',
+    'host.missingMessage': '缺少消息内容',
+    'host.modelNotApplied': '模型选择未能写入会话',
+    'host.newSessionTitle': '新会话',
+    'host.noSession': '还没有绑定会话',
+    'host.noSessionController': 'sessionController 不可用（DSH 版本不匹配？）',
+    'host.notFound': '未找到',
+    'host.permissionNotApplied': '权限预设未能写入会话',
+    'host.reasoningNotApplied': '思考强度未能写入会话',
+    'host.unauthorized': '未授权',
+    'host.unknownError': '未知错误',
+    'host.untitledSession': '未命名会话',
+    'key.agent': 'Agent',
+    'key.model': '模型',
+    'key.permission': '权限',
+    'key.thinking': '思考',
+    'menu.agentTitle': 'Agent 预设',
+    'menu.context': '{count} 上下文',
+    'menu.defaultAgent': '（默认）',
+    'menu.emptyMatch': '没有匹配项',
+    'menu.emptyOptions': '（没有可选项）',
+    'menu.forkArmed': '下一条消息将从当前会话分叉',
+    'menu.loading': '（读取中…）',
+    'menu.menuLabel': '菜单',
+    'menu.modelTitle': '模型',
+    'menu.noModels': '（无可用模型）',
+    'menu.noSessionToFork': '没有可分叉的会话',
+    'menu.notConnected': '还没连上 DSH',
+    'menu.off': '关闭',
+    'menu.permissionTitle': '权限策略',
+    'menu.searchLabel': '{title}搜索',
+    'menu.searchPlaceholder': '搜索{title}…',
+    'menu.thinkingTitle': '思考强度',
+    'reasoning.high': '高',
+    'reasoning.low': '低',
+    'reasoning.max': '最高',
+    'reasoning.medium': '中',
+    'run.backgroundCount': '后台 {count}',
+    'run.doneCount': '已完成 {count}',
+    'run.executing': '正在执行',
+    'run.failedCount': '失败 {count}',
+    'run.label': '运行状态',
+    'run.starting': '正在启动…',
+    'run.stop': '停止',
+    'run.thinking': '思考',
+    'run.title': '正在执行',
+    'status.ask': '等待确认',
+    'status.done': '已完成',
+    'status.failed': '失败',
+    'status.idle': '空闲',
+    'status.offline': '离线',
+    'status.ready': '就绪',
+    'status.running': '执行中',
+    'status.waitingAnswer': '等待回答',
+    'time.daysAgo': '{count} 天前',
+    'time.hoursAgo': '{count} 小时前',
+    'time.justNow': '刚刚',
+    'time.minutesAgo': '{count} 分钟前',
+    'todo.empty': '还没有步骤',
+    'todo.progress.active': '{active} 进行中',
+    'todo.progress.done': '{done} 已完成',
+    'todo.progress.pending': '{pending} 待处理',
+    'todo.status.completed': '已完成',
+    'todo.status.inProgress': '进行中',
+    'todo.status.pending': '待处理',
+    'todo.title': '任务',
+    'settings.quickdock': 'QuickDock 设置',
+    'cfg.width': '窗口宽度',
+    'cfg.height': '窗口高度',
+    'cfg.minWidth': '最小宽度',
+    'cfg.minHeight': '最小高度',
+    'cfg.maxWidth': '最大宽度',
+    'cfg.maxHeight': '最大高度',
+    'cfg.alwaysOnTop': '窗口置顶',
+    'cfg.rememberGeometry': '记住窗口大小和位置',
+    'cfg.focusOnSummon': '打开时聚焦',
+    'cfg.ballSize': '悬浮球大小',
+    'cfg.ballIcon': '悬浮球图标',
+    'cfg.ballAlwaysVisible': '始终显示悬浮球',
+    'cfg.snapToEdge': '悬浮球吸附屏幕边缘',
+    'cfg.collapseOnClose': '关闭时收起到悬浮球',
+    'cfg.startCorner': '首次出现的位置',
+    'cfg.autoLaunch': '随插件启动窗口',
+    'cfg.prefetchElectron': '预取桌面运行时',
+    'cfg.headerButton': '显示标题栏 Dock 按钮',
+    'cfg.headerButtonOrder': '标题栏按钮顺序',
+    'cfg.trimHeaderActions': 'dock 中隐藏标题栏操作按钮',
+    'cfg.trimSidebarPanels': 'dock 中隐藏插件/自动化/更多',
+    'cfg.trimAccountMenu': 'dock 中隐藏账号菜单',
+    'cfg.trimTabs': 'dock 中隐藏对话/轨迹标签',
+    'cfg.ballIcon.whale': '鲸鱼',
+    'cfg.ballIcon.dot': '纯色圆点',
+    'cfg.startCorner.bottom-right': '右下角',
+    'cfg.startCorner.top-right': '右上角',
+    'cfg.startCorner.cursor': '跟随光标',
+    'cfg.group.window': '窗口',
+    'cfg.group.ball': '悬浮球',
+    'cfg.group.dock': 'dock 窗口'
   }
-};
+}
+
 /* i18n-catalog:end */
 
 var activeLocale = 'en'
@@ -754,8 +1159,12 @@ html[data-qd-dock] [class*="_frame"][data-rightbar-collapsed]:not([data-sidebar-
 html[data-qd-dock] [data-sidebar-collapsed="true"] [class*="sidebarCol"] {
   display: none !important;
 }
+/* Optional: the conversation tabs (chat / trajectory / views) take 36px. */
+html[data-qd-dock][data-qd-trim-tabs] [class*="tabs"] {
+  display: none !important;
+}
 /* The app's panel list (plugins/automations/more) is not part of the dock. */
-html[data-qd-dock] [class*="panelList"] {
+html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
   display: none !important;
 }
 `
@@ -765,6 +1174,18 @@ html[data-qd-dock] [class*="panelList"] {
     return
   }
   document.documentElement.setAttribute('data-qd-dock', '1')
+  // Every trim defaults to on; the config can switch any group off for a dock
+  // window that should look exactly like the main one.
+  document.documentElement.setAttribute('data-qd-trim-sidebar', '1')
+  bridge('config-get').then(function (result) {
+    const config = result && result.config
+    if (!config) return
+    DOCK_TRIMS.account = config.trimAccountMenu !== false
+    DOCK_TRIMS.header = config.trimHeaderActions !== false
+    DOCK_TRIMS.sidebar = config.trimSidebarPanels !== false
+    if (!DOCK_TRIMS.sidebar) document.documentElement.removeAttribute('data-qd-trim-sidebar')
+    if (config.trimTabs === true) document.documentElement.setAttribute('data-qd-trim-tabs', '1')
+  }).catch(function () { /* keep the defaults */ })
 
   // A session picked from the full-window sidebar should leave the conversation
   // visible again: collapse on the next tick, after the app handled the click.
@@ -870,6 +1291,9 @@ const HIDDEN_MENU_ITEMS = [
   /sign\s*out/i
 ]
 
+/** Which dock-only UI trims are active (config: trimAccountMenu / trimHeaderActions / trimSidebarPanels). */
+const DOCK_TRIMS = { account: true, header: true, sidebar: true }
+
 /** The avatar that opens the account menu (localised label, hence the pattern). */
 const ACCOUNT_TRIGGER = /(\u8d26\u53f7\u83dc\u5355)|account\s*menu|account/i
 
@@ -965,15 +1389,15 @@ function hideDocklessMenuItems() {
     for (const item of document.querySelectorAll('[role="menuitem"]')) {
       const label = String(item.textContent || '').trim()
       if (!label) continue
-      if (HIDDEN_MENU_ITEMS.some(function (pattern) { return pattern.test(label) })) {
+      if (DOCK_TRIMS.account && HIDDEN_MENU_ITEMS.some(function (pattern) { return pattern.test(label) })) {
         item.style.display = 'none'
       }
     }
     // The trigger is useless once every entry is gone.
     for (const trigger of document.querySelectorAll('button[aria-label]')) {
       const label = String(trigger.getAttribute('aria-label') || '')
-      if (ACCOUNT_TRIGGER.test(label)) trigger.style.display = 'none'
-      if (HIDDEN_HEADER_BUTTONS.some(function (pattern) { return pattern.test(label) })) {
+      if (DOCK_TRIMS.account && ACCOUNT_TRIGGER.test(label)) trigger.style.display = 'none'
+      if (DOCK_TRIMS.header && HIDDEN_HEADER_BUTTONS.some(function (pattern) { return pattern.test(label) })) {
         trigger.style.display = 'none'
       }
     }
@@ -1107,6 +1531,146 @@ function followHandoff(uiCtx) {
   }).catch(function () { /* no dock host */ })
 }
 
+/* ---------------- settings page (Settings → QuickDock) ---------------- */
+
+const SETTINGS_SECTION = 'settings.section'
+
+/** Rows of the settings page: key, control kind and bounds. */
+const CONFIG_FIELDS = [
+  { group: 'window', key: 'width', kind: 'number', min: 320, max: 1200, step: 10 },
+  { group: 'window', key: 'height', kind: 'number', min: 320, max: 1600, step: 10 },
+  { group: 'window', key: 'minWidth', kind: 'number', min: 280, max: 1200, step: 10 },
+  { group: 'window', key: 'minHeight', kind: 'number', min: 280, max: 1600, step: 10 },
+  { group: 'window', key: 'alwaysOnTop', kind: 'bool' },
+  { group: 'window', key: 'rememberGeometry', kind: 'bool' },
+  { group: 'window', key: 'focusOnSummon', kind: 'bool' },
+  { group: 'window', key: 'autoLaunch', kind: 'bool' },
+  { group: 'window', key: 'prefetchElectron', kind: 'bool' },
+  { group: 'ball', key: 'ballSize', kind: 'number', min: 24, max: 160, step: 4 },
+  { group: 'ball', key: 'ballIcon', kind: 'enum', options: ['whale', 'dot'] },
+  { group: 'ball', key: 'ballAlwaysVisible', kind: 'bool' },
+  { group: 'ball', key: 'snapToEdge', kind: 'bool' },
+  { group: 'ball', key: 'collapseOnClose', kind: 'bool' },
+  { group: 'ball', key: 'startCorner', kind: 'enum', options: ['bottom-right', 'top-right', 'cursor'] },
+  { group: 'dock', key: 'headerButton', kind: 'bool' },
+  { group: 'dock', key: 'trimHeaderActions', kind: 'bool' },
+  { group: 'dock', key: 'trimSidebarPanels', kind: 'bool' },
+  { group: 'dock', key: 'trimAccountMenu', kind: 'bool' },
+  { group: 'dock', key: 'trimTabs', kind: 'bool' }
+]
+
+const CONFIG_GROUPS = [
+  { id: 'window', label: 'cfg.group.window' },
+  { id: 'ball', label: 'cfg.group.ball' },
+  { id: 'dock', label: 'cfg.group.dock' }
+]
+
+/** Prefix for every settings label, so the checker does not read it as one key. */
+const CFG_PREFIX = 'cfg.'
+
+const ROW_STYLE = { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 2px', borderBottom: '1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.08))' }
+const LABEL_STYLE = { flex: '1 1 auto', minWidth: 0, fontSize: '13px' }
+const VALUE_STYLE = { fontSize: '12px', opacity: .8, fontVariantNumeric: 'tabular-nums', minWidth: '48px', textAlign: 'right' }
+const GROUP_STYLE = { fontSize: '12px', opacity: .55, margin: '18px 2px 4px' }
+
+/**
+ * The plugin's settings page in DSH: one row per configuration key.
+ *
+ * A settings section draws its own content (the shell only supplies the page
+ * frame), so the rows, the read and the write path all live here. Values go
+ * through the same bridge as the header button; the Host stores them in
+ * config.json and applies the runtime-safe ones immediately.
+ */
+function QuickDockSettings() {
+  const [config, setConfig] = React.useState(null)
+  const [busy, setBusy] = React.useState(false)
+
+  React.useEffect(function () {
+    let alive = true
+    bridge('config-get').then(function (result) {
+      if (alive && result && result.config) setConfig(result.config)
+    }).catch(function () { /* host not up yet */ })
+    return function () { alive = false }
+  }, [])
+
+  function write(patch) {
+    setBusy(true)
+    bridge('config-set', { patch: patch }).then(function (result) {
+      setBusy(false)
+      if (result && result.config) setConfig(result.config)
+    }).catch(function () { setBusy(false) })
+  }
+
+  if (!config) {
+    return el('div', { style: { padding: '24px', fontSize: '13px', opacity: .6 } }, '…')
+  }
+
+  function control(field) {
+    const value = config[field.key]
+    if (field.kind === 'bool') {
+      return el('input', {
+        type: 'checkbox',
+        checked: value === true,
+        disabled: busy,
+        'aria-label': t(CFG_PREFIX + field.key),
+        style: { width: '16px', height: '16px', accentColor: 'var(--dsw-alias-brand-primary, #4d8eff)' },
+        onChange: function (event) {
+          const patch = {}
+          patch[field.key] = event.target.checked
+          write(patch)
+        }
+      })
+    }
+    if (field.kind === 'enum') {
+      return el('select', {
+        value: String(value),
+        disabled: busy,
+        'aria-label': t(CFG_PREFIX + field.key),
+        style: { fontSize: '12px', padding: '4px 6px', borderRadius: '6px', background: 'var(--dsw-alias-bg-layer-2, #232326)', color: 'inherit', border: '1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.12))' },
+        onChange: function (event) {
+          const patch = {}
+          patch[field.key] = event.target.value
+          write(patch)
+        }
+      }, field.options.map(function (option) {
+        return el('option', { key: option, value: option }, t(CFG_PREFIX + field.key + '.' + option))
+      }))
+    }
+    return el('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+      el('input', {
+        type: 'range',
+        min: field.min,
+        max: field.max,
+        step: field.step,
+        value: Number(value),
+        disabled: busy,
+        'aria-label': t(CFG_PREFIX + field.key),
+        style: { width: '130px', accentColor: 'var(--dsw-alias-brand-primary, #4d8eff)' },
+        onChange: function (event) {
+          const patch = {}
+          patch[field.key] = Number(event.target.value)
+          write(patch)
+        }
+      }),
+      el('span', { style: VALUE_STYLE }, String(value) + 'px')
+    )
+  }
+
+  const rows = []
+  for (const group of CONFIG_GROUPS) {
+    rows.push(el('div', { key: 'g-' + group.id, style: GROUP_STYLE }, t(group.label)))
+    for (const field of CONFIG_FIELDS) {
+      if (field.group !== group.id) continue
+      rows.push(el('div', { key: field.key, style: ROW_STYLE },
+        el('div', { style: LABEL_STYLE }, t(CFG_PREFIX + field.key)),
+        control(field)
+      ))
+    }
+  }
+
+  return el('div', { style: { display: 'flex', flexDirection: 'column', padding: '4px 0 24px' } }, rows)
+}
+
 function apply(ctx) {
   if (insideDockWindow()) {
     // This page is the dock, not the window that opens it: no header button, no
@@ -1158,6 +1722,19 @@ function apply(ctx) {
     }, DownloadBadge))
   } catch (error) {
     console.warn('[dsh-quickdock] footer slot unavailable:', error)
+  }
+
+  // Settings → QuickDock: its own tab, one row per configuration key.
+  try {
+    ctx.slots.inject(SETTINGS_SECTION, () => ctx.slots.register({
+      name: SETTINGS_SECTION,
+      id: PLUGIN_ID,
+      registrant: PLUGIN_ID,
+      order: 60,
+      label: function () { return t('settings.quickdock') }
+    }, QuickDockSettings))
+  } catch (error) {
+    console.warn('[dsh-quickdock] settings page unavailable:', error)
   }
 
   // Push the browser locale even when the locale service is unavailable.

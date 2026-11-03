@@ -10,8 +10,13 @@
  * script at the end of the document for the message table.
  */
 
+import { createRequire } from 'node:module'
+
 import { htmlLang } from './locale.js'
 import { themeCss } from './theme.js'
+
+const require = createRequire(import.meta.url)
+const { WHALE_PATH, WHALE_VIEWBOX } = require('../runtime/whale.cjs')
 
 /** Attribute-safe escaping for a URL that is written into the shell HTML. */
 function escapeAttribute(value) {
@@ -42,11 +47,14 @@ export class PageRenderer {
     const scheme = this.theme.colorScheme()
     const theme = themeCss(this.theme.current())
     const href = escapeAttribute(src)
-    // With the OS controls the platform draws close/minimise inside the bar: drop
-    // our own close button and keep the right side clear for them.
+    // The OS keeps the close button; its minimise is replaced by our own button,
+    // because only we can collapse the window into the floating ball.
     const system = Boolean(options && options.systemControls)
     const barClass = system ? ' qd-frame-bar--system' : ''
     const closeButton = system ? '' : '\n    <button type="button" data-action="close" title="Close">✕</button>'
+    // Not a minimise: the icon is the whale the window collapses into.
+    const collapseButton = '\n    <button type="button" data-action="collapse" title="Collapse to the floating whale">'
+      + '<svg viewBox="' + WHALE_VIEWBOX + '" fill="none" aria-hidden="true"><path d="' + WHALE_PATH + '" fill="currentColor"></path></svg></button>'
     return `<!doctype html>
 <html lang="${htmlLang(this.locale.locale)}" data-theme="${scheme}">
 <head>
@@ -87,9 +95,8 @@ ${theme}
      real button) is out of the way. */
   .qd-frame-bar button[data-action="sidebar"][data-expanded="1"] ~ button[data-action="new-session"] { display: none; }
   .qd-frame-bar button svg { width: 16px; height: 16px; display: block; }
-  /* Room for the OS close/minimise buttons drawn over the bar's right edge
-     (two caption buttons, ~46px each at 100% scaling). */
-  .qd-frame-bar--system { padding-right: 102px; }
+  /* Room for the OS close button drawn over the bar's right edge. */
+  .qd-frame-bar--system { padding-right: 56px; }
   iframe { flex: 1 1 auto; width: 100%; border: 0; display: block; background: #fff; }
 </style>
 </head>
@@ -99,7 +106,7 @@ ${theme}
     <button type="button" data-action="new-session" title="New session"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"></path></svg></button>
     <span class="qd-frame-title">DeepSeek Harness</span>
     <button type="button" data-action="handoff" title="Show in DSH" disabled><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2.5H13.5V6.5"></path><path d="M13.5 2.5 7.5 8.5"></path><path d="M11.5 9.5V12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12V6A1.5 1.5 0 0 1 4 4.5h2.5"></path></svg></button>
-    <button type="button" data-action="pin" title="Pin on top" data-on="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"></path><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path></svg></button>${closeButton}
+    <button type="button" data-action="pin" title="Pin on top" data-on="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"></path><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path></svg></button>${collapseButton}${closeButton}
   </div>
   <iframe src="${href}" allow="clipboard-read; clipboard-write" referrerpolicy="no-referrer"></iframe>
   <script>
@@ -220,7 +227,16 @@ ${theme}
         pin.setAttribute('data-on', on ? '0' : '1');
       });
     });
-    if (close) close.addEventListener('click', function () { api.hide(); });
+    var collapse = document.querySelector('[data-action="collapse"]');
+    if (collapse) collapse.addEventListener('click', function (event) {
+      // The ball appears where the button was clicked, not at a fixed corner.
+      if (typeof api.collapseToBall === 'function') api.collapseToBall(event.screenX, event.screenY);
+      else api.hide();
+    });
+    if (close) close.addEventListener('click', function () {
+      if (typeof api.closeWindow === 'function') api.closeWindow();
+      else api.hide();
+    });
     Promise.resolve(api.getState()).then(function (state) {
       if (state && state.alwaysOnTop && pin) pin.setAttribute('data-on', '1');
     }).catch(function () {});

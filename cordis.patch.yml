@@ -25,5 +25,6 @@
         inputHeight: 820
         # The embedded app posts no hit regions: keep the window clickable.
         clickThrough: false
-        # The frame shell owns its title bar; the OS draws close/minimise over it.
+        # Close stays with the OS; minimise is our own button (collapse into the
+        # floating whale ball), so the platform must not draw a minimise.
         windowControls: system

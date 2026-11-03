@@ -100,6 +100,8 @@ function parseConfig(argv, env) {
     minHeight: positiveInteger(inline.minHeight, 420),
     maxWidth: positiveInteger(inline.maxWidth, 900),
     maxHeight: positiveInteger(inline.maxHeight, 1400),
+    // Diameter of the floating ball the window collapses into.
+    ballSize: Math.min(160, Math.max(24, positiveInteger(inline.ballSize, 64))),
     // An opaque window: the frame shell paints its own background and hosts an iframe.
     opaque: inline.opaque === true,
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,

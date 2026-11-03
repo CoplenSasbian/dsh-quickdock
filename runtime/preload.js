@@ -24,6 +24,10 @@ const outbound = Object.freeze({
   setContentHeight: 'dock:content-height',
   hide: 'dock:hide',
   getState: 'dock:get-state',
+  restoreDock: 'dock:restore-from-ball',
+  ballDrag: 'dock:ball-drag',
+  collapseToBall: 'dock:collapse-to-ball',
+  closeWindow: 'dock:close-window',
 });
 
 function validRect(rect) {
@@ -103,6 +107,34 @@ const api = Object.freeze({
   },
   hide() {
     ipcRenderer.send(outbound.hide);
+  },
+  /** Bring the dock back from the floating ball. */
+  restoreDock() {
+    ipcRenderer.send(outbound.restoreDock);
+  },
+  /**
+   * Drag the floating ball. The main process polls the OS cursor, so only the
+   * press and the release travel over IPC.
+   * @param {'start'|'end'} phase drag phase.
+   */
+  ballDrag(phase) {
+    if (phase !== 'start' && phase !== 'end') return;
+    ipcRenderer.send(outbound.ballDrag, { phase });
+  },
+  /**
+   * Collapse the dock into the floating ball.
+   * @param {number} [screenX] click position, so the ball appears under the pointer.
+   * @param {number} [screenY] click position.
+   */
+  collapseToBall(screenX, screenY) {
+    const point = Number.isFinite(screenX) && Number.isFinite(screenY)
+      ? { x: screenX, y: screenY }
+      : null;
+    ipcRenderer.send(outbound.collapseToBall, point);
+  },
+  /** Close the window the way the OS close button would. */
+  closeWindow() {
+    ipcRenderer.send(outbound.closeWindow);
   },
   /** Show or hide the run window (no content = hidden). */
   /** Size the task window to the height the page reports. */

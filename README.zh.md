@@ -63,6 +63,7 @@ dsh plugin install C:\path\to\dsh-quickdock
 | `autoLaunch` | `false` | 随插件启动窗口；关闭时点 Dock 才启动 |
 | `prefetchElectron` | `true` | 挂载时就准备 Electron，首次点击不用等 |
 | `rememberGeometry` | `true` | 记住窗口位置 |
+| `ballSize` | `64` | 收起的悬浮鲸鱼球直径（24–160） |
 | `headerButton` / `headerButtonOrder` | `true` / `1010` | 表头 Dock 按钮 |
 
 ## 开发
