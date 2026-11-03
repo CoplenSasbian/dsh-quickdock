@@ -3,6 +3,40 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [0.5.0] - 2026-11-03
+
+The dock window becomes a dock: one title bar drives everything, the sidebar only
+exists when opened, and the window can be resized.
+
+### Added
+
+- Session title mirrored from the app into the dock title bar (`quickdock:title`).
+- Title-bar "new session" button (`＋`), shown while the sidebar is collapsed.
+- Title-bar handoff button (`⤴`): ask the main DSH window to show the session the
+  dock is on (`POST /quickdock/api/handoff`, `GET` for the main window to poll).
+- Resizable window with bounds: 360x420 to 900x1400 (`minWidth`, `minHeight`,
+  `maxWidth`, `maxHeight`); the chosen size is remembered.
+- A Dock bind now brings the window to the front and focuses it.
+
+### Changed
+
+- Collapsed sidebar is gone: no vertical strip, the conversation fills the window.
+- Dock-only trimming: account menu, workspace opener / "open with" / overflow /
+  right-sidebar buttons, plugins, automations, "more", view options and "add
+  workspace" are hidden inside the dock; the main window is untouched.
+- Header title row and its 76px fixed height collapse in the dock, so the tab
+  strip sits directly under the title bar.
+- Pin button moved next to the OS window buttons.
+
+### Fixed
+
+- First expand used to flash and close: the boot-time collapse loop now stops once
+  the sidebar is collapsed and yields to the user's click.
+- Removing the sidebar left the conversation at 0 width (the centre column is now
+  pinned across all grid tracks instead of relying on grid-track order).
+- Reloading the plugin left an orphaned Electron process holding the
+  single-instance lock, so the next window could not start.
+
 ## [0.4.0] - 2026-11-03
 
 The dock is now a window around DSH's own Web UI instead of a re-implementation.

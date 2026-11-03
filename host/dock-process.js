@@ -70,6 +70,7 @@ export class DockProcess {
     this.controlPort = 0
     // A summon that lands before the process is ready is replayed afterwards.
     this.pendingShow = false
+    this.pendingFocus = false
     this.pendingAttach = ''
     this.spawning = false
     this.stopping = false
@@ -115,6 +116,12 @@ export class DockProcess {
         controls: this.config.windowControls === 'system' ? 'system' : 'custom',
         // The frame shell paints its own background and hosts the app in an iframe.
         opaque: this.config.dockTarget === 'webui',
+        // Drag-resize is allowed in the shell window, inside these bounds.
+        resizable: true,
+        minWidth: this.config.minWidth,
+        minHeight: this.config.minHeight,
+        maxWidth: this.config.maxWidth,
+        maxHeight: this.config.maxHeight,
         // On-demand mode: closing the window ends the process.
         exitOnClose: !this.config.autoLaunch
       })
@@ -332,6 +339,10 @@ export class DockProcess {
       this.pendingShow = false
       void this.control({ type: 'show' })
     }
+    if (this.pendingFocus) {
+      this.pendingFocus = false
+      void this.control({ type: 'focus' })
+    }
   }
 
   /** Raise the dock, starting it when necessary. */
@@ -359,6 +370,27 @@ export class DockProcess {
     if (!this.alive) return
     void this.control({ type: 'hide' }).then((ok) => {
       if (!ok) this.trace('hide: control failed')
+    })
+  }
+
+  /**
+   * Bring the window to the foreground after showing it.
+   *
+   * A window that was only made visible stays behind whatever the user is
+   * looking at; a bind from the main window should land in front instead.
+   */
+  focus() {
+    if (!this.child) {
+      // Still starting: replay once the process is ready.
+      this.pendingFocus = true
+      return
+    }
+    if (!this.alive) {
+      this.pendingFocus = true
+      return
+    }
+    void this.control({ type: 'focus' }).then((ok) => {
+      if (!ok) this.trace('focus: control failed')
     })
   }
 

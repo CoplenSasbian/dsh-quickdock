@@ -78,20 +78,27 @@ ${theme}
     background: transparent; color: inherit; opacity: .8; cursor: pointer; font-size: 13px;
   }
   .qd-frame-bar button:hover { background: rgba(255,255,255,.14); opacity: 1; }
+  .qd-frame-bar button[disabled] { opacity: .28; pointer-events: none; }
   .qd-frame-bar button[data-on="1"] { background: rgba(88,158,255,.42); color: #fff; opacity: 1; }
   .qd-frame-bar button[data-action="close"]:hover { background: rgba(232,72,72,.8); color: #fff; }
   .qd-frame-bar button[data-action="sidebar"] { width: 26px; }
   .qd-frame-bar button[data-action="sidebar"][data-expanded="1"] { background: rgba(255,255,255,.14); opacity: 1; }
+  /* The new-session shortcut only makes sense while the sidebar (which owns the
+     real button) is out of the way. */
+  .qd-frame-bar button[data-action="sidebar"][data-expanded="1"] ~ button[data-action="new-session"] { display: none; }
   .qd-frame-bar button svg { width: 16px; height: 16px; display: block; }
-  /* Room for the OS close/minimise/maximise drawn over the bar's right edge. */
-  .qd-frame-bar--system { padding-right: 146px; }
+  /* Room for the OS close/minimise buttons drawn over the bar's right edge
+     (two caption buttons, ~46px each at 100% scaling). */
+  .qd-frame-bar--system { padding-right: 102px; }
   iframe { flex: 1 1 auto; width: 100%; border: 0; display: block; background: #fff; }
 </style>
 </head>
 <body>
   <div class="qd-frame-bar${barClass}">
     <button type="button" data-action="sidebar" title="Toggle sidebar" data-expanded="0"><svg viewBox="0 0 16 16" fill="none" stroke-width="1" aria-hidden="true"><path d="M13.5 1.5H2.5C1.94772 1.5 1.5 1.94772 1.5 2.5V13.5C1.5 14.0523 1.94772 14.5 2.5 14.5H13.5C14.0523 14.5 14.5 14.0523 14.5 13.5V2.5C14.5 1.94772 14.0523 1.5 13.5 1.5Z" stroke="currentColor"></path><path d="M5.5 1.5V14.5" stroke="currentColor"></path></svg></button>
+    <button type="button" data-action="new-session" title="New session"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"></path></svg></button>
     <span class="qd-frame-title">DeepSeek Harness</span>
+    <button type="button" data-action="handoff" title="Show in DSH" disabled><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2.5H13.5V6.5"></path><path d="M13.5 2.5 7.5 8.5"></path><path d="M11.5 9.5V12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12V6A1.5 1.5 0 0 1 4 4.5h2.5"></path></svg></button>
     <button type="button" data-action="pin" title="Pin on top" data-on="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"></path><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path></svg></button>${closeButton}
   </div>
   <iframe src="${href}" allow="clipboard-read; clipboard-write" referrerpolicy="no-referrer"></iframe>
@@ -111,6 +118,24 @@ ${theme}
     var sidebarButton = document.querySelector('[data-action="sidebar"]');
     if (sidebarButton) {
       sidebarButton.addEventListener('click', function () { tell({ type: 'quickdock:toggle-sidebar' }) });
+    }
+    var newSessionButton = document.querySelector('[data-action="new-session"]');
+    if (newSessionButton) {
+      newSessionButton.addEventListener('click', function () { tell({ type: 'quickdock:new-session' }) });
+    }
+    // The app reports which session it currently shows; the handoff button asks
+    // the main DSH window to open the same one.
+    var currentSessionId = '';
+    var handoffButton = document.querySelector('[data-action="handoff"]');
+    if (handoffButton) {
+      handoffButton.addEventListener('click', function () {
+        if (!currentSessionId) return;
+        fetch('/quickdock/api/handoff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: currentSessionId })
+        }).catch(function () { /* the button stays usable for a retry */ });
+      });
     }
 
     var lastTargetSeq = -1;
@@ -147,6 +172,22 @@ ${theme}
       if (!data) return;
       if (data.type === 'quickdock:sidebar-state') {
         if (sidebarButton) sidebarButton.setAttribute('data-expanded', data.expanded ? '1' : '0');
+        return;
+      }
+      if (data.type === 'quickdock:title') {
+        var titleElement = document.querySelector('.qd-frame-title');
+        if (titleElement && typeof data.title === 'string' && data.title) {
+          titleElement.textContent = data.title;
+          titleElement.title = data.title;
+        }
+        return;
+      }
+      if (data.type === 'quickdock:session') {
+        currentSessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
+        if (handoffButton) {
+          if (currentSessionId) handoffButton.removeAttribute('disabled');
+          else handoffButton.setAttribute('disabled', 'disabled');
+        }
         return;
       }
       if (data.type === 'quickdock:ready') {

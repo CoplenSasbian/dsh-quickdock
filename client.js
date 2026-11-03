@@ -731,15 +731,32 @@ function applyDockMode() {
   const style = document.createElement('style')
   style.id = DOCK_STYLE_ID
   style.textContent = `
-html[data-qd-dock] [class*="_frame"][data-rightbar-collapsed]:not([data-sidebar-collapsed="true"]) {
-  grid-template-columns: 0 1fr 0 !important;
+/* The dock has no right rail, and the conversation must fill the frame in both
+   states. Pinning the centre column across every grid track keeps it full width
+   no matter which side columns are hidden or lifted out of the flow. */
+html[data-qd-dock] [class*="rightbarCol"] {
+  display: none !important;
 }
+html[data-qd-dock] [class*="centerCol"] {
+  grid-column: 1 / -1 !important;
+  min-width: 0 !important;
+}
+/* Expanded: the sidebar floats over the whole window instead of squeezing it. */
 html[data-qd-dock] [class*="_frame"][data-rightbar-collapsed]:not([data-sidebar-collapsed="true"]) [class*="sidebarCol"] {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
   z-index: 60 !important;
   background: var(--dsw-alias-bg-base, #151517) !important;
+}
+/* Collapsed: the strip only ever held the expand toggle, so the column goes away
+   entirely and the conversation gets its space back. */
+html[data-qd-dock] [data-sidebar-collapsed="true"] [class*="sidebarCol"] {
+  display: none !important;
+}
+/* The app's panel list (plugins/automations/more) is not part of the dock. */
+html[data-qd-dock] [class*="panelList"] {
+  display: none !important;
 }
 `
   try {
@@ -766,16 +783,19 @@ html[data-qd-dock] [class*="_frame"][data-rightbar-collapsed]:not([data-sidebar-
 
   // The dock window opens on the conversation: the sidebar state is shared with
   // the main window through localStorage, so an expanded sidebar there would
-  // cover the whole dock on every start. Collapse it once, when it is found.
+  // cover the whole dock on every start. Collapse it once, then stop - clicking
+  // again during this window used to undo the user's expand.
   let attempts = 0
   const collapseOnStart = setInterval(function () {
     attempts += 1
     const frame = document.querySelector('[class*="_frame"][data-rightbar-collapsed]')
-    if (frame && !frame.hasAttribute('data-sidebar-collapsed')) {
-      const toggle = findToggle()
-      if (toggle) {
-        try { toggle.click() } catch (error) { /* ignore */ }
-      }
+    if (frame && frame.hasAttribute('data-sidebar-collapsed')) {
+      clearInterval(collapseOnStart)
+      return
+    }
+    const toggle = frame ? findToggle() : null
+    if (toggle) {
+      try { toggle.click() } catch (error) { /* ignore */ }
     }
     if (attempts > 30) clearInterval(collapseOnStart)
   }, 100)
@@ -797,18 +817,220 @@ html[data-qd-dock] [class*="_frame"][data-rightbar-collapsed]:not([data-sidebar-
     // Only our embedding shell may drive the layout.
     if (event.source !== window.parent) return
     const data = event.data
-    if (!data || data.type !== 'quickdock:toggle-sidebar') return
-    const toggle = findToggle()
-    if (toggle) {
-      try { toggle.click() } catch (error) { /* ignore */ }
+    if (!data) return
+    if (data.type === 'quickdock:toggle-sidebar') {
+      // The user is driving now: the boot-time collapse must not fight the click.
+      clearInterval(collapseOnStart)
+      const toggle = findToggle()
+      if (toggle) {
+        try { toggle.click() } catch (error) { /* ignore */ }
+      }
+      setTimeout(reportSidebarState, 80)
+      return
     }
-    setTimeout(reportSidebarState, 80)
+    if (data.type === 'quickdock:new-session') {
+      // The shell owns the shortcut button while the sidebar is hidden; the app's
+      // own button stays in the DOM and its click handler does the work.
+      const create = document.querySelector('button[class*="newSession"]')
+      if (create) {
+        try { create.click() } catch (error) { /* ignore */ }
+      }
+    }
   })
 
   // Any click may have toggled the rail (its own button, a session row, ...).
   document.addEventListener('click', function () { setTimeout(reportSidebarState, 80) }, true)
   setTimeout(reportSidebarState, 400)
   setTimeout(reportSidebarState, 1200)
+
+  // The account menu only carries full-window actions (settings, feedback, sign
+  // out); at dock size none of them is usable, so the trigger goes away too.
+  hideDocklessMenuItems()
+  // Mirror the session title into the shell's title bar and tell it which session
+  // is on screen (the shell's handoff button sends that back to the main window).
+  followDocumentTitle()
+  followCurrentSession()
+}
+
+/**
+ * Account-menu entries that only make sense in the full DSH window.
+ *
+ * Written as escapes on purpose: the repository check keeps literal CJK out of
+ * product code (UI strings live in locale/*.json), and these are DSH's labels,
+ * not ours.
+ */
+const HIDDEN_MENU_ITEMS = [
+  /\u8bbe\u7f6e/,               // settings
+  /settings/i,
+  /\u610f\u89c1\u53cd\u9988/,   // feedback
+  /feedback/i,
+  /\u9000\u51fa\u767b\u5f55/,   // sign out
+  /\u9000\u51fa\u5e33\u865f/,   // sign out (traditional)
+  /\u767b\u51fa/,               // log out (traditional)
+  /sign\s*out/i
+]
+
+/** The avatar that opens the account menu (localised label, hence the pattern). */
+const ACCOUNT_TRIGGER = /(\u8d26\u53f7\u83dc\u5355)|account\s*menu|account/i
+
+/**
+ * Conversation-header actions that need the full window.
+ *
+ * At dock width the workspace opener, its "open with" chevron, the overflow menu
+ * and the right-sidebar toggle crowd out the session title and cannot be used
+ * meaningfully, so they go away in the dock.
+ */
+const HIDDEN_HEADER_BUTTONS = [
+  /^\u7528 .+\u6253\u5f00$/,          // "open with <app>"
+  /open with/i,
+  /\u66f4\u591a\u6253\u5f00\u65b9\u5f0f/, // more ways to open
+  /more ways to open/i,
+  /\u66f4\u591a\u64cd\u4f5c/,         // more actions
+  /more actions/i,
+  /\u6253\u5f00\u53f3\u4fa7\u8fb9\u680f/, // open right sidebar
+  /\u6536\u8d77\u53f3\u4fa7\u8fb9\u680f/, // close right sidebar
+  /open right sidebar/i,
+  /close right sidebar/i
+]
+
+/** Strip the "— DeepSeek Harness" suffix DSH appends to its document title. */
+function sessionTitleOf(documentTitle) {
+  const text = String(documentTitle || '').trim()
+  const split = text.lastIndexOf(' \u2014 ')
+  return (split > 0 ? text.slice(0, split) : text).trim()
+}
+
+/**
+ * Keep the dock title bar in sync with the session title.
+ *
+ * The app owns the title (it folds it from the session log), so the shell reads
+ * it from `document.title` here and mirrors it; no session state is modelled.
+ */
+function followDocumentTitle() {
+  let last = ''
+  const report = function () {
+    let title = sessionTitleOf(document.title)
+    // An unsaved session has no name yet and DSH reports the bare app name; use
+    // the app's own label for "new session" instead of showing a brand twice.
+    if (!title || title === 'DeepSeek Harness') {
+      const create = document.querySelector('button[class*="newSession"]')
+      const label = create && create.getAttribute('aria-label')
+      if (label) title = String(label).trim()
+    }
+    if (!title || title === last) return
+    last = title
+    try { window.parent.postMessage({ type: 'quickdock:title', title: title }, '*') } catch (error) { /* ignore */ }
+  }
+  try {
+    const titleElement = document.querySelector('title')
+    if (titleElement) new MutationObserver(report).observe(titleElement, { childList: true, characterData: true, subtree: true })
+  } catch (error) { /* poll below still runs */ }
+  report()
+  setInterval(report, 1200)
+}
+
+/**
+ * Sidebar entries that only the full window needs.
+ *
+ * Management surfaces (plugins, automations, the "more" menu), workspace
+ * creation and the list view options do not belong in a 460px dock; the session
+ * list, the new-session button and search stay.
+ *
+ * Exact labels, not substrings: the "more views" entry and the "show remaining
+ * N sessions" row must survive.
+ */
+const HIDDEN_SIDEBAR_LABELS = new Set([
+  '\u63d2\u4ef6',           // plugins
+  'plugins',
+  '\u81ea\u52a8\u5316\u4efb\u52a1', // automation tasks
+  'automations',
+  '\u81ea\u52a8\u5316',
+  '\u66f4\u591a',           // more
+  'more',
+  '\u6dfb\u52a0\u5de5\u4f5c\u533a', // add workspace
+  'add workspace',
+  '\u89c6\u56fe\u9009\u9879', // view options
+  'view options'
+])
+
+/**
+ * Hide the account-menu entries that only the full window needs.
+ *
+ * The menu is portalled when it opens, so this runs on DOM insertions instead of
+ * once at boot; entries are matched by their label because the item list carries
+ * no stable ids.
+ */
+function hideDocklessMenuItems() {
+  const sweep = function () {
+    for (const item of document.querySelectorAll('[role="menuitem"]')) {
+      const label = String(item.textContent || '').trim()
+      if (!label) continue
+      if (HIDDEN_MENU_ITEMS.some(function (pattern) { return pattern.test(label) })) {
+        item.style.display = 'none'
+      }
+    }
+    // The trigger is useless once every entry is gone.
+    for (const trigger of document.querySelectorAll('button[aria-label]')) {
+      const label = String(trigger.getAttribute('aria-label') || '')
+      if (ACCOUNT_TRIGGER.test(label)) trigger.style.display = 'none'
+      if (HIDDEN_HEADER_BUTTONS.some(function (pattern) { return pattern.test(label) })) {
+        trigger.style.display = 'none'
+      }
+    }
+    // Sidebar: drop the management rows, keep navigation and the session list.
+    const column = document.querySelector('[class*="sidebarCol"]')
+    if (column) {
+      for (const entry of column.querySelectorAll('button')) {
+        const label = String(entry.getAttribute('aria-label') || entry.textContent || '').trim()
+        if (!label) continue
+        if (HIDDEN_SIDEBAR_LABELS.has(label) || HIDDEN_SIDEBAR_LABELS.has(label.toLowerCase())) {
+          entry.style.display = 'none'
+        }
+      }
+    }
+    // The session title lives in the dock's own title bar now, so the app's title
+    // row is a wasted 30px: drop the whole row, not just the text. The header also
+    // reserves a leading strip and a fixed 76px height that the tab strip then
+    // stretches into - collapse all of it, or the space stays even without text.
+    const titleCluster = document.querySelector('[class*="titleCluster"]')
+    const titleRow = titleCluster && titleCluster.parentElement
+    if (titleRow) titleRow.style.display = 'none'
+    for (const leading of document.querySelectorAll('[class*="headerLeading"]')) {
+      leading.style.display = 'none'
+    }
+    for (const header of document.querySelectorAll('header')) {
+      if (!header.querySelector('[class*="titleCluster"], [class*="tabs"]')) continue
+      header.style.height = 'auto'
+      header.style.minHeight = '0px'
+      header.style.paddingTop = '0px'
+      header.style.paddingBottom = '0px'
+      header.style.paddingRight = '10px'
+    }
+    for (const tabs of document.querySelectorAll('[class*="tabs"]')) {
+      tabs.style.height = 'auto'
+      tabs.style.marginTop = '6px'
+    }
+  }
+  let queued = false
+  const schedule = function () {
+    if (queued) return
+    queued = true
+    requestAnimationFrame(function () {
+      queued = false
+      sweep()
+    })
+  }
+  try {
+    const observer = new MutationObserver(schedule)
+    observer.observe(document.body, { childList: true, subtree: true })
+  } catch (error) {
+    /* no observer: the sweep below still runs once */
+  }
+  sweep()
+  setTimeout(sweep, 1500)
+  // React re-renders the header on session switches and would put its own inline
+  // styles back; a cheap re-apply keeps the dock layout stable.
+  setInterval(sweep, 1500)
 }
 
 /** The sidebar rail/expanded toggle, independent of the active locale. */
@@ -816,6 +1038,73 @@ function findToggle() {
   const column = document.querySelector('[class*="sidebarCol"]')
   return (column && column.querySelector('button[class*="_toggle"]'))
     || document.querySelector('button[class*="_toggle"]')
+}
+
+/**
+ * Tell the shell which session is on screen, so its handoff button can ask the
+ * main DSH window to show the same one.
+ *
+ * The app keeps the active session in localStorage and both windows share the
+ * origin, so reading that key is cheaper and more stable than scraping the DOM.
+ */
+function followCurrentSession() {
+  let last = ''
+  const report = function () {
+    let sessionId = ''
+    try {
+      const raw = localStorage.getItem('dsh.sessions.current')
+      if (raw) sessionId = String(JSON.parse(raw).sessionId || '')
+    } catch (error) {
+      sessionId = ''
+    }
+    if (sessionId === last) return
+    last = sessionId
+    try { window.parent.postMessage({ type: 'quickdock:session', sessionId: sessionId }, '*') } catch (error) { /* ignore */ }
+  }
+  report()
+  setInterval(report, 1000)
+}
+
+/**
+ * The reverse of the Dock button: switch this (main) window to a session that
+ * the dock asked for.
+ *
+ * The Host stores the request; polling is the only channel a browser tab offers
+ * for this direction, and it is a loopback GET every couple of seconds.
+ */
+function followHandoff(uiCtx) {
+  let last = -1
+  bridge('web-url').then(function (body) {
+    const origin = body && body.url ? new URL(body.url, location.href).origin : ''
+    if (!origin) return
+    const tick = function () {
+      fetch(origin + '/quickdock/api/handoff', { cache: 'no-store' })
+        .then(function (response) { return response.json() })
+        .then(function (info) {
+          if (!info || typeof info.seq !== 'number') return
+          if (last === -1) { last = info.seq; return }
+          if (info.seq <= last || !info.sessionId) return
+          last = info.seq
+          try {
+            uiCtx.uiWorkspace.openSession(String(info.sessionId))
+          } catch (error) {
+            console.warn('[dsh-quickdock] handoff failed:', error)
+          }
+          // Bring this window forward. Browsers restrict programmatic focus, so
+          // it is attempted and retried; the dock also hides itself on handoff,
+          // which hands the foreground to this window at the OS level.
+          const raise = function () {
+            try { window.focus() } catch (error) { /* ignore */ }
+          }
+          raise()
+          setTimeout(raise, 400)
+          setTimeout(raise, 1500)
+        })
+        .catch(function () { /* dock not running: nothing to do */ })
+    }
+    setInterval(tick, 2000)
+    tick()
+  }).catch(function () { /* no dock host */ })
 }
 
 function apply(ctx) {
@@ -873,6 +1162,14 @@ function apply(ctx) {
 
   // Push the browser locale even when the locale service is unavailable.
   applyLocale(detectLocale())
+
+  // The dock can ask this window to show a session (the reverse of the Dock
+  // button); it needs the workspace navigation service to act on it.
+  try {
+    ctx.inject(['uiWorkspace'], followHandoff)
+  } catch (error) {
+    console.warn('[dsh-quickdock] handoff unavailable:', error)
+  }
 
   // Optional dependencies: the button works without theme/locale services.
   try {

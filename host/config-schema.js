@@ -72,5 +72,13 @@ export const configSchema = {
    * Window controls: 'custom' keeps the frameless dock look and the shell's own
    * buttons; 'system' lets the OS draw close/minimise/maximise over the page.
    */
-  windowControls: Schema.string().default('custom')
+  windowControls: Schema.string().default('custom'),
+  /**
+   * Drag-resize bounds. The window is resizable; these cap how small or large it
+   * can get before the layout stops making sense.
+   */
+  minWidth: Schema.number().default(360),
+  minHeight: Schema.number().default(420),
+  maxWidth: Schema.number().default(900),
+  maxHeight: Schema.number().default(1400)
 }

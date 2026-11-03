@@ -17,6 +17,7 @@ import { createBridgeHandler } from './bridge.js'
 import { API_PREFIX, API_VERSION, BIND_HOST, BRIDGE_PATH, DEFAULT_PORT, PAGE_PATH } from './constants.js'
 import { DshFacade } from './dsh.js'
 import { ElectronResolver } from './electron-resolver.js'
+import { sendJson } from './http.js'
 import { LocaleController } from './locale.js'
 import { PageRenderer } from './page.js'
 import { createDockComponent } from './dock-component.js'
@@ -57,6 +58,8 @@ export class QuickDockHost {
     this.dockTargetSeq = 0
     /** Bumped on request: the dock shell reloads the app in its iframe. */
     this.dockReloadSeq = 0
+    /** The reverse request: "show this session in the DSH main window". */
+    this.handoff = { sessionId: '', seq: 0 }
     this.lastDownloadPublishAt = 0
 
     this.publish = () => { /* state is read directly; nothing to push */ }
@@ -170,6 +173,31 @@ export class QuickDockHost {
     return { ok: true, running: Boolean(this.dock && this.dock.alive) }
   }
 
+  /**
+   * The dock's read side of the handoff: which session the main window should
+   * show, and a counter the main window uses to notice a new request.
+   * @returns {{sessionId: string, seq: number}} pending handoff.
+   */
+  handoffInfo() {
+    return { sessionId: this.handoff.sessionId, seq: this.handoff.seq }
+  }
+
+  /**
+   * Ask the DSH main window to show a session - the reverse of a bind.
+   *
+   * The main window is a separate tab the Host cannot reach, so the request is
+   * stored and the Client half there polls for it.
+   * @param {string} sessionId session to open.
+   * @returns {{ok: boolean, seq?: number}} result.
+   */
+  handoffToMain(sessionId) {
+    const id = String(sessionId || '').trim()
+    if (!id) return { ok: false }
+    this.handoff = { sessionId: id, seq: this.handoff.seq + 1 }
+    this.trace('handoff -> main window: ' + id)
+    return { ok: true, seq: this.handoff.seq }
+  }
+
   /** The shell page address (no token: the fixed port is the handshake). */
   pageUrl() {
     const port = (this.state.server && this.state.server.port) || this.serverPort()
@@ -187,6 +215,11 @@ export class QuickDockHost {
     const dock = service && (components ? components.dock !== false : true)
     this.state.components = { service, dock }
     if (this.dockComponent) this.dockComponent.mount({ dock })
+    if (dock) {
+      // Reloading the plugin must take the window with it: an orphaned Electron
+      // process keeps the single-instance lock and blocks the next window.
+      this.#disposeOn(() => this.dockComponent?.dispose(), 'quickdock: dock lifecycle')
+    }
     if (service) {
       this.#startServer()
       this.#registerBridge()
@@ -359,6 +392,13 @@ export class QuickDockHost {
       return
     }
     if (url.pathname.startsWith(API_PREFIX)) {
+      // One write endpoint: the shell asks the main window to show a session.
+      if (url.pathname === API_PREFIX + 'handoff' && req.method === 'POST') {
+        const body = await readJson(req)
+        const result = this.handoffToMain(body && body.sessionId)
+        sendJson(res, result.ok ? 200 : 400, result)
+        return
+      }
       await this.api.handle(req, res, url)
       return
     }
@@ -415,6 +455,9 @@ export class QuickDockHost {
     // only when this composition actually mounted the window component.
     if (this.state.components.dock) {
       this.dock?.summon()
+      // The user clicked Dock in the main window: the window must come forward,
+      // not just become visible behind it.
+      this.dockComponent?.focus?.()
       this.dock?.notifyAttach(sessionId)
     }
     return {
@@ -431,8 +474,50 @@ export class QuickDockHost {
       name: 'dsh-quickdock',
       apiVersion: API_VERSION,
       components: this.state.components,
-      capabilities: ['dock-target'],
+      capabilities: ['dock-target', 'handoff'],
       version: this.state.version?.pkg || null
     }
+  }
+}
+
+/**
+ * Read a small JSON request body.
+ *
+ * Handles both a real IncomingMessage (event emitter) and the async-iterable
+ * stand-in the unit tests use.
+ * @param {import('node:http').IncomingMessage} req request.
+ * @returns {Promise<object|null>} parsed body, or null when it is not JSON.
+ */
+async function readJson(req) {
+  const limit = 64 * 1024
+  let text = ''
+  try {
+    const chunks = []
+    let size = 0
+    if (typeof req.on === 'function') {
+      text = await new Promise((resolve) => {
+        req.on('data', (chunk) => {
+          size += chunk.length
+          if (size > limit) {
+            req.destroy()
+            resolve('')
+            return
+          }
+          chunks.push(Buffer.from(chunk))
+        })
+        req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+        req.on('error', () => resolve(''))
+      })
+    } else if (typeof req[Symbol.asyncIterator] === 'function') {
+      for await (const chunk of req) {
+        size += chunk.length
+        if (size > limit) break
+        chunks.push(Buffer.from(chunk))
+      }
+      text = Buffer.concat(chunks).toString('utf8')
+    }
+    return text ? JSON.parse(text) : null
+  } catch (_) {
+    return null
   }
 }

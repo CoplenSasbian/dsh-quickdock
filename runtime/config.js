@@ -94,6 +94,12 @@ function parseConfig(argv, env) {
     chrome: inline.chrome === true,
     // 'system' lets the OS draw close/minimise/maximise (window controls overlay).
     controls: inline.controls === 'system' ? 'system' : 'custom',
+    resizable: inline.resizable === true,
+    // Drag-resize bounds; the width/height defaults sit inside them.
+    minWidth: positiveInteger(inline.minWidth, 360),
+    minHeight: positiveInteger(inline.minHeight, 420),
+    maxWidth: positiveInteger(inline.maxWidth, 900),
+    maxHeight: positiveInteger(inline.maxHeight, 1400),
     // An opaque window: the frame shell paints its own background and hosts an iframe.
     opaque: inline.opaque === true,
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,

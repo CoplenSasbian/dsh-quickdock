@@ -245,6 +245,13 @@ class DockRuntime {
           // Windows only draws a control when the window allows it: the close
           // button stayed alone until minimise was enabled.
           minimizable: true,
+          // The shell is drag-resizable; the bounds keep the layout usable.
+          resizable: this.config.resizable !== false,
+          minWidth: this.config.minWidth,
+          minHeight: this.config.minHeight,
+          maxWidth: this.config.maxWidth,
+          maxHeight: this.config.maxHeight,
+          maximizable: false,
         }
       : {};
     // The frame shell (dockTarget: 'webui') paints its own background and hosts an
@@ -255,6 +262,9 @@ class DockRuntime {
       chromeOptions.roundedCorners = true;
     }
     this.win = new BrowserWindow(sharedWindowOptions(Object.assign({ title: 'QuickDock' }, restored.bounds, chromeOptions)));
+    trace('window: resizable=' + (this.config.resizable !== false)
+      + ' bounds=' + this.config.minWidth + 'x' + this.config.minHeight
+      + '..' + this.config.maxWidth + 'x' + this.config.maxHeight);
     prepareWindow(this.win, this.store);
     // Record initial geometry once: size is fixed, position changes while dragging and must persist.
     this.remember();
@@ -381,6 +391,15 @@ class DockRuntime {
       this.moveTimer = this.later(() => {
         this.clampIntoView();
         this.placeDisplayWindow(true);
+      }, 150);
+    });
+    // Resizing: keep the window on screen and persist the new content size once
+    // the drag stops, so the next launch opens at the size the user chose.
+    this.win.on('resized', () => {
+      this.clearTimer(this.resizeTimer);
+      this.resizeTimer = this.later(() => {
+        this.clampIntoView();
+        this.remember();
       }, 150);
     });
     this.win.on('show', () => this.reinforceSkipTaskbar());
@@ -1166,6 +1185,51 @@ class DockRuntime {
     try { this.displayWin.moveTop(); } catch (_) {}
   }
 
+  /**
+   * Bring the window to the foreground.
+   *
+   * DSH asks for this when the Dock button hands the window a session: showing
+   * without focus (the default for an automatic launch) is not enough, the user
+   * clicked a button in the main window and expects the dock to come forward.
+   *
+   * On Windows a background process may not call SetForegroundWindow: the call
+   * succeeds only when it owns the last input event. Flipping the always-on-top
+   * flag first raises the window above the others, which also lets the following
+   * focus() actually land; the flag is restored right after.
+   */
+  focus() {
+    if (!this.win || this.destroyed) return;
+    this.show();
+    const win = this.win;
+    const sticky = win.isAlwaysOnTop();
+    try {
+      if (win.isMinimized()) win.restore();
+      if (!sticky) win.setAlwaysOnTop(true, 'screen-saver');
+      win.show();
+      win.focus();
+      try { win.webContents.focus(); } catch (_) {}
+      if (typeof win.moveTop === 'function') win.moveTop();
+    } catch (_) {}
+    if (!sticky) {
+      this.later(() => {
+        if (!this.win || this.win.isDestroyed()) return;
+        // Restore the user's own setting rather than forcing it off.
+        this.win.setAlwaysOnTop(this.store ? this.store.state.alwaysOnTop : false);
+      }, 350);
+    }
+    // Second attempt: a minimised/restored window is allowed to take the
+    // foreground where a plain focus() was refused.
+    this.later(() => {
+      if (!this.win || this.win.isDestroyed() || this.win.isFocused()) return;
+      try {
+        this.win.minimize();
+        this.win.restore();
+        this.win.focus();
+      } catch (_) {}
+    }, 120);
+    this.status('focused');
+  }
+
   show() {
     if (!this.win || this.destroyed) return;
     this.clearTimer(this.showFallback);
@@ -1208,6 +1272,7 @@ class DockRuntime {
     trace('command: ' + JSON.stringify(message));
     if (message.type === 'quit') this.quit(0);
     else if (message.type === 'show') this.show();
+    else if (message.type === 'focus') this.focus();
     else if (message.type === 'hide') this.hide();
     else if (message.type === 'reset-windows') { this.resetWindows(); this.show(); }
     else if (message.type === 'ping') this.status('pong');

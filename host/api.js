@@ -16,6 +16,13 @@ const ROUTES = [
     handle: ({ app }) => app.dockTargetInfo()
   },
   {
+    // The reverse direction: the dock asks the main DSH window to show a session.
+    // The main window's Client half polls this and switches when `seq` moves.
+    method: 'GET',
+    path: 'handoff',
+    handle: ({ app }) => app.handoffInfo()
+  },
+  {
     method: 'GET',
     path: 'meta',
     handle: ({ app }) => app.meta()

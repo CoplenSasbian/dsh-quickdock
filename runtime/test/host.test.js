@@ -64,7 +64,7 @@ test('api: meta describes the remaining contract', async () => {
   const { app, get } = await start();
   const meta = JSON.parse((await get('/quickdock/api/meta')).body);
   assert.strictEqual(meta.apiVersion, 1);
-  assert.deepStrictEqual(meta.capabilities, ['dock-target']);
+  assert.deepStrictEqual(meta.capabilities, ['dock-target', 'handoff']);
   assert.strictEqual(meta.name, 'dsh-quickdock');
   assert.strictEqual(app.meta().components.service, true);
 });
@@ -74,6 +74,20 @@ test('api: an unknown path returns a readable 404', async () => {
   const response = await get('/quickdock/api/nope');
   assert.strictEqual(response.status, 404);
   assert.ok(JSON.parse(response.body).error);
+});
+
+test('api: the dock hands a session back to the main window', async () => {
+  const { app, get } = await start();
+  assert.deepStrictEqual(JSON.parse((await get('/quickdock/api/handoff')).body), { sessionId: '', seq: 0 });
+
+  // The shell writes the request; the main window polls this read side.
+  const posted = app.handoffToMain('s-reverse');
+  assert.deepStrictEqual(posted, { ok: true, seq: 1 });
+  assert.deepStrictEqual(JSON.parse((await get('/quickdock/api/handoff')).body), { sessionId: 's-reverse', seq: 1 });
+
+  app.handoffToMain('s-second');
+  assert.strictEqual(JSON.parse((await get('/quickdock/api/handoff')).body).seq, 2);
+  assert.deepStrictEqual(app.handoffToMain(''), { ok: false }, 'an empty session is rejected');
 });
 
 test('bridge: bind reports the dock status without a running window', async () => {

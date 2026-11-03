@@ -93,6 +93,14 @@ export function createDockComponent(deps) {
     summon() {
       const supervisor = ensure()
       return supervisor ? supervisor.summon() !== false : false
+    },
+
+    /** Bring the window to the foreground (queued while it is still starting). */
+    focus() {
+      const supervisor = ensure()
+      if (!supervisor) return false
+      supervisor.focus?.()
+      return true
     }
   }
 }
