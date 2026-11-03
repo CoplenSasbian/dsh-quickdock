@@ -9,6 +9,11 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
+// A unit test must never launch (or download) a real Electron: a missing explicit
+// path makes an accidental dock spawn fail fast instead of starting the machine's
+// install. Tests that exercise the resolver pass their own env.
+process.env.DSH_QUICKDOCK_ELECTRON_PATH = process.env.DSH_QUICKDOCK_ELECTRON_PATH || 'Z:\\__no_electron__';
+
 // The package row mounts nothing: the components live in service.js/dock.js.
 // Tests exercise the service component through this alias, so `dock: true` can
 // still mount both when a test needs the windows.
@@ -23,6 +28,7 @@ function createContext() {
   let origin = 'http://127.0.0.1:1234';
 
   const services = {
+    webApp: { getAdvertisedUrl: () => origin },
     sessions: { get: () => undefined },
     workspaceRegistry: { list: () => [], archivedSessionIds: [] },
     agents: { get: () => undefined, list: () => [] },
@@ -70,6 +76,8 @@ function createContext() {
     }
   };
   ctx.connection = {
+    // The shell hands the iframe a tokenised URL; tests only need the shape.
+    authenticatedUrl: (base) => base + '/?token=test-token',
     fetch: {
       register(route) {
         fetchRoutes.set(route.path, route);
@@ -87,25 +95,22 @@ function config(overrides) {
     enabled: true,
     autoLaunch: false,
     width: 480,
-    inputHeight: 172,
-    displayHeight: 520,
+    inputHeight: 820,
     margin: 16,
     rememberGeometry: false,
     alwaysOnTop: false,
     focusOnSummon: false,
-    hideOnEscape: true,
-    followBoundOnly: true,
-    defaultWorkspaceId: '',
-    agentPreset: '',
-    submitMode: 'queue',
-    thinkMode: 'fold',
-    showTiming: true,
-    maxSteps: 200,
     theme: 'auto',
     locale: 'auto',
     headerButton: true,
     headerButtonOrder: 1010,
-    approvalTimeoutMs: 300000
+    // 0 keeps the loopback listener off: tests call host.handleHttp directly and
+    // must not bind a port (the files run in parallel).
+    port: 0,
+    // Never download or launch a real Electron binary from a unit test.
+    prefetchElectron: false,
+    clickThrough: false,
+    windowControls: 'system'
   }, overrides || {});
 }
 
@@ -125,7 +130,13 @@ function invoke(handler, url, headers, rawBody) {
     const res = {
       statusCode: 0,
       headers: {},
-      writeHead(code, head) { this.statusCode = code; this.headers = head || {}; return this; },
+      setHeader(name, value) { this.headers[String(name)] = value; return this; },
+      getHeader(name) { return this.headers[String(name)]; },
+      writeHead(code, head) {
+        this.statusCode = code;
+        this.headers = Object.assign({}, this.headers, head || {});
+        return this;
+      },
       write(chunk) { chunks.push(String(chunk)); return true; },
       end(chunk) {
         if (chunk !== undefined) chunks.push(String(chunk));

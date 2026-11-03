@@ -3,25 +3,27 @@
  *
  * `index.js` (both components), `service.js` and `dock.js` validate against this
  * object, so a knob added here appears everywhere.
+ *
+ * The dock is a window around DSH's own Web UI, so the knobs are about the window
+ * (size, pinning, controls), not about rendering conversation content.
  */
 
 import Schema from '@deepseek-ai/schemastery'
 
 /** Raw field descriptors for Schema.object. */
 export const configSchema = {
-
   enabled: Schema.boolean().default(true),
   /**
-   * The Host API: routes, SSE, folds, interactions, session index.
-   * Turn it off only when another instance already serves the same origin.
+   * The Host half: the shell page, its listener and the browser bridge.
+   * Turn it off only when another instance already serves the same port.
    */
   service: Schema.boolean().default(true),
   /**
-   * Mount the windows in *this* row as well.
+   * Mount the window in *this* row as well.
    *
-   * Off by default: the package's cordis.patch.yml inserts dsh-quickdock/dock as
-   * its own row, so DSH owns that switch. Set it to true for a single-entry
-   * install where no component row is inserted.
+   * Off by default: the package's cordis.patch.yml inserts dsh-quickdock as one
+   * row that mounts both components; the separate `dsh-quickdock/dock` entry
+   * exists for installs that split them.
    */
   dock: Schema.boolean().default(false),
   /**
@@ -36,33 +38,39 @@ export const configSchema = {
    * that click instead.
    */
   prefetchElectron: Schema.boolean().default(true),
-  /** Content width shared by both windows (input + run). */
+  /** Content width of the dock window. */
   width: Schema.number().default(480),
-  /** Fixed height of the input window. */
-  inputHeight: Schema.number().default(172),
-  /** Fixed height of the run window (content scrolls inside it). */
-  displayHeight: Schema.number().default(520),
-  todoHeight: Schema.number().default(180),
-  todoWindow: Schema.boolean().default(false),
-  layout: Schema.string().default('unified'),
+  /** Content height of the dock window (the shell + the embedded app). */
+  inputHeight: Schema.number().default(820),
   margin: Schema.number().default(16),
   rememberGeometry: Schema.boolean().default(true),
   alwaysOnTop: Schema.boolean().default(false),
   focusOnSummon: Schema.boolean().default(false),
-  hideOnEscape: Schema.boolean().default(true),
-  followBoundOnly: Schema.boolean().default(true),
-  defaultWorkspaceId: Schema.string().default(''),
-  agentPreset: Schema.string().default(''),
-  /** 'queue' (default) or 'steer' while the agent is running. */
-  submitMode: Schema.string().default('queue'),
-  thinkMode: Schema.string().default('fold'),
-  showTiming: Schema.boolean().default(true),
-  maxSteps: Schema.number().default(200),
   /** Fallback scheme before the Client half reports the theme: 'auto' | 'light' | 'dark'. */
   theme: Schema.string().default('auto'),
   /** 'auto' follows the DSH/browser language; 'en' and 'zh' force one. */
   locale: Schema.string().default('auto'),
   headerButton: Schema.boolean().default(true),
   headerButtonOrder: Schema.number().default(1010),
-  approvalTimeoutMs: Schema.number().default(300000)
+  /**
+   * Fixed loopback port for the shell page and its API.
+   *
+   * The address is the whole handshake: there is no token, so any local client -
+   * the dock window, an IDE extension - only needs `http://127.0.0.1:<port>`.
+   * When something else already listens there the Host logs EADDRINUSE and this
+   * is the one setting to change. 0 disables the listener (used by tests).
+   */
+  port: Schema.number().default(47910),
+  /**
+   * Let clicks through the transparent parts of the window.
+   *
+   * The shell page posts hit regions; a page that does not (an IDE webview) needs
+   * it off or the whole window becomes unclickable.
+   */
+  clickThrough: Schema.boolean().default(true),
+  /**
+   * Window controls: 'custom' keeps the frameless dock look and the shell's own
+   * buttons; 'system' lets the OS draw close/minimise/maximise over the page.
+   */
+  windowControls: Schema.string().default('custom')
 }

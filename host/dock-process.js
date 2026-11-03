@@ -109,6 +109,12 @@ export class DockProcess {
         margin: this.config.margin,
         alwaysOnTop: this.state.dock.alwaysOnTop,
         rememberGeometry: this.config.rememberGeometry,
+        // A foreign page (dockTarget: 'webui') has no dock buttons: draw them.
+        chrome: this.config.dockChrome === true,
+        // 'system' makes the OS draw close/min/max over the page.
+        controls: this.config.windowControls === 'system' ? 'system' : 'custom',
+        // The frame shell paints its own background and hosts the app in an iframe.
+        opaque: this.config.dockTarget === 'webui',
         // On-demand mode: closing the window ends the process.
         exitOnClose: !this.config.autoLaunch
       })
@@ -116,6 +122,9 @@ export class DockProcess {
     // Must delete, not blank: an empty value makes Electron exit 134 (DESIGN 3.3).
     delete env.ELECTRON_RUN_AS_NODE
     delete env.ELECTRON_NO_ATTACH_CONSOLE
+    // A foreign page (dockTarget: 'webui') posts no hit regions: keep the window
+    // fully clickable instead of letting every click fall through.
+    if (this.config.clickThrough === false) env.DSH_QUICKDOCK_NO_CLICK_THROUGH = '1'
     return env
   }
 

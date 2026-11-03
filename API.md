@@ -1,238 +1,68 @@
-# QuickDock client API (v1)
+# QuickDock API
 
-The Host half is a client-agnostic service: the dock UI is **one** client. IDE
-plugins (VS Code, JetBrains, editors) can drive the same API to bind any
-workspace/session, send prompts, follow the live turn and read earlier turns.
+QuickDock puts DSH's own Web UI in a small always-on-top window. There is no dock
+data model to read: the window **is** the app, so anything a client needs about
+sessions, runs or approvals comes from DSH itself.
 
-Two things the dock UI deliberately does **not** do are backend capabilities:
+What remains is the little the shell page has to ask the Host about.
 
-| Capability | Dock UI | API |
+## Address
+
+```
+http://127.0.0.1:<port>        port = plugin config, default 47910
+```
+
+No token: the fixed loopback address is the whole handshake. Change `port` when
+something else already listens there (the Host logs `EADDRINUSE`).
+
+## Endpoints
+
+### `GET /quickdock?view=frame`
+
+The shell page: a draggable title bar (sidebar toggle, pin, OS window controls)
+and an iframe with the authenticated DSH Web UI (`/?token=…&dock=1`).
+
+### `GET /quickdock/api/dock-target`
+
+Which session the window should show, and whether the user asked for a reload.
+The shell polls this every 1.2 s.
+
+```json
+{ "sessionId": "session-…", "seq": 3, "reloadSeq": 1 }
+```
+
+- `seq` changes when the Dock button binds another session;
+- `reloadSeq` changes when the user picks "Reload the app" in the header menu.
+
+### `GET /quickdock/api/meta`
+
+```json
+{ "name": "dsh-quickdock", "apiVersion": 1, "components": { "service": true, "dock": true }, "capabilities": ["dock-target"], "version": "0.4.0" }
+```
+
+## Shell ↔ app messages
+
+Both frames are on different origins, so `postMessage` is the whole channel.
+
+| Direction | Message | Meaning |
 |---|---|---|
-| Switch workspace / session | read-only chip | `POST select` |
-| Show more than the newest turn | newest turn only | `GET turns`, `GET turn` |
+| shell → app | `{ type: 'quickdock:context', dock: true, host: 'desktop' }` | This page runs inside the dock |
+| shell → app | `{ type: 'quickdock:toggle-sidebar' }` | Title bar `☰` |
+| shell → app | `{ type: 'quickdock:open-session', sessionId }` | Follow the session the Dock button bound |
+| app → shell | `{ type: 'quickdock:ready' }` | App booted; please send the target |
+| app → shell | `{ type: 'quickdock:sidebar-state', expanded }` | Reflect the real sidebar state on the button |
 
-In other words: the dock not rendering history is a UI choice, not an API limit.
+## Browser bridge (DSH origin, cookie-authenticated)
 
-## Transport and authentication
+`POST /api/quickdock` with `{ "action": … }`, used by the Client half:
 
-- Base URL: the DSH web-server origin plus `/quickdock/api/` (for example
-  `http://127.0.0.1:54321/quickdock/api/state`).
-- Auth: `Authorization: Bearer <token>`, or `?t=<token>` where headers cannot be
-  set (EventSource/SSE). Requests without it get `401 { "error": ... }`.
-- The token is created per Host process. The dock receives the full URL through
-  `DSH_QUICKDOCK_URL`; another client must be handed the origin and token by its
-  Host-side integration.
-- Bodies are JSON. Handler errors return `400 { "ok": false, "error": "..." }`.
-
-## Discovery
-
-```http
-GET /quickdock/api/meta
-```
-
-```json
-{
-  "name": "dsh-quickdock",
-  "apiVersion": 1,
-  "capabilities": ["state", "stream", "workspaces", "sessions", "select", "bind", "task",
-                    "stop", "turns", "turn", "plan", "step-detail", "catalogs", "settings",
-                    "answer", "theme", "locale", "events"],
-  "turns": { "latestInState": true, "history": "turns+turn", "retention": "maxSteps" },
-  "events": { "replay": "events", "push": "stream?events=1", "retention": "maxEvents+maxBytes" },
-  "interactions": { "approvals": "claim-and-delegate", "questions": "claim-and-delegate" },
-  "components": { "service": true, "dock": true }
-}
-```
-
-`apiVersion` only changes for breaking changes; new fields and new routes are
-additive.
-
-`components` says what this instance mounted: `service` (the API itself) and
-`dock` (the Electron windows). A headless server - `{ "dock": false }` in the
-plugin config - answers every route below with `components.dock: false`. `dock`
-implies `service`; both off mounts nothing.
-
-## Read endpoints
-
-| Route | Result |
-|---|---|
-| `GET state` | Full state snapshot (see below). |
-| `GET workspaces` | `{ workspaceId, workspaces: [{ id, name, path, sessionCount }] }`. |
-| `GET sessions?workspaceId=<id>` | `{ workspaceId, sessions: [{ sessionId, title, cwd, updatedAt, running, blank }] }`. Omit the workspace to list every indexed session. |
-| `GET turns?sessionId=<id>` | `{ sessionId, outline, turns: [{ turn, seq, prompt, response, rows, startedAt, endedAt }] }`; defaults to the bound session. `rows` counts what the in-memory fold still holds: an old turn can report `0` and still be readable, because `turn` rebuilds it from the session log. |
-| `GET turn?turn=<n>&sessionId=<id>` | `{ sessionId, turn, observed, steps }`; omitting `turn` reads the newest one, omitting `sessionId` uses the bound session. |
-| `GET plan?sessionId=<id>` | `{ todos, goal, source }` — the agent's current plan and goal (see below). |
-| `GET step-detail?id=<rowId>&sessionId=<id>` | `{ args, result }` for one expandable row (bound session by default). |
-| `GET catalogs` | Permission / model / reasoning / agent catalogs (may refresh models first). |
-| `GET events?sessionId=<id>&from=<seq>&limit=<n>&type=<filter>` | **Every** session event, verbatim: `{ sessionId, events: [{ seq, time, type, data }], latestSeq, dropped, retained }`. `from` resumes after a sequence number, `limit` caps the page (default 200, max 1000), `type` filters on the client's terms (`tool/*`, `assistant/message`, `*`). |
-| `GET stream` | SSE: initial `state`, `theme`, `locale` frames, then updates. |
-| `GET stream?events=1` | The same stream plus a `session-event` frame per bound-session event (opt-in: the dock page does not subscribe). |
-| `GET bus` | SSE used by the dock for "open session in DSH" commands. |
-
-### Pass-through events
-
-The Host does not decide what a client may render. `steps` is the dock's folded
-view; `events` is the underlying stream, complete for what the bounded log still
-retains (`dropped` counts what the bound cut off). A client filters on its own
-side: an IDE plugin can read `todo/write`, `job/*` or `workspace/changes`, which
-the run window never draws.
-
-```json
-{ "sessionId": "s-1",
-  "events": [ { "seq": 42, "time": 1793492842070, "type": "tool/ptc-dispatch",
-                "data": { "parentCallId": "call_x", "subCallId": "call_x:ptc:1",
-                          "name": "ops_bash", "content": [ ... ] } } ],
-  "latestSeq": 97, "dropped": 0, "retained": 56 }
-```
-
-### State snapshot
-
-`steps` is always the **newest turn** (what the dock renders). `turn` describes
-it; the rest of the history is read through `turns`/`turn`.
-
-```json
-{
-  "workspaceId": "ws-1",
-  "sessionId": "s-1",
-  "newSession": false,
-  "workspaces": [{ "id": "ws-1", "name": "dsh-quickdock", "path": "D:/code/dock" }],
-  "session": { "id": "s-1", "title": "...", "cwd": "...", "updatedAt": 0, "running": true },
-  "status": "running",
-  "version": { "hash": "0bae232", "pkg": "0.3.0", "startedAt": "2026-11-01T10:29:33Z" },
-  "steps": [ ... rows of the newest turn ... ],
-  "todos": [ { "content": "read the failing test", "status": "completed" } ],
-  "goal": { "objective": "make the dock match DSH", "phase": "active" },
-  "turn": { "number": 4, "count": 4, "steps": 6, "startedAt": "...", "endedAt": "" },
-  "stream": { "thinking": "...", "text": "...", "tools": [] },
-  "interaction": null,
-  "settings": { "permission": "workspace-write", "model": "", "reasoning": "", "agentPreset": "" },
-  "catalogs": { ... },
-  "locale": "en",
-  "config": { ... },
-  "runtime": { "running": true, "visible": true, ... },
-  "backgroundRunning": 0
-}
-```
-
-### Row shape
-
-`steps` rows are the same objects the dock renders:
-
-| Field | Meaning |
-|---|---|
-| `id` | Stable row id (also the `step-detail` key). |
-| `kind` | `tool` (tool call, approval row), `think` (reasoning), `say` (assistant text). |
-| `tool` | Tool name for `tool` rows. |
-| `description` | Human title of the tool call (empty when the call has none). |
-| `command` | One-line summary of the arguments (command, path, pattern…). |
-| `status` | `run` \| `done` \| `fail` \| `ask`. |
-| `text` | Assistant text or reasoning body, or a truncated tool result. |
-| `time` | ISO timestamp of the event. |
-| `lines`, `delta` | Optional read range `[from,to]` / edit `[added,removed]` badges. |
-
-Full tool arguments and results are never in the state frame; fetch them with
-`step-detail`.
-
-### Plan and goal
-
-`todos` and `goal` are DSH's own projections, not something the Host keeps on
-its own:
-
-| Value | Source | Cleared by |
+| Action | Body | Result |
 |---|---|---|
-| `todos` | `ctx.sessionProjections` key `todos` (registered by `dsh-tool-todo`), folded from `todo/write` | `turn/start`: the value becomes `null` for every new turn |
-| `goal` | the same registry, key `goal` (registered by `dsh-goal`); wire view is the goal object itself | the goal being completed or cleared |
-
-The precedence is: **projection, then the Host's own fold**. A present projection
-wins even when it is `null` — that is what keeps a client from showing a plan the
-main window has already dropped. The fold is only consulted when no projection is
-registered at all (for example an older DSH).
-
-```http
-GET /quickdock/api/plan?t=<token>
-
-{ "todos": [ { "content": "write the docs", "status": "in_progress" } ],
-  "goal": { "objective": "make the dock match DSH", "phase": "active" },
-  "source": "projection" }
-```
-
-`source` is `projection`, `fold` or `empty`, so a client can tell a real "no
-plan" from "this build does not expose one". `todos` is always an array; `goal`
-is `null` when there is none. A client that only wants the produced state can
-read both from `GET state`.
-
-## Minimal client
-
-```text
-POST /quickdock/api/select  { "workspaceId": "ws-1", "sessionId": "s-1" }
-POST /quickdock/api/task    { "text": "fix the failing test" }
-GET  /quickdock/api/stream          -> SSE; state.steps is the newest turn
-GET  /quickdock/api/turns?sessionId=s-1
-GET  /quickdock/api/turn?sessionId=s-1&turn=3
-```
-
-## Write endpoints
-
-| Route | Body | Result |
-|---|---|---|
-| `POST select` | `{ workspaceId?, sessionId?, newSession? }` | `{ ok, workspaceId, sessionId, newSession }`. Switches the bound workspace/session without summoning the dock. |
-| `POST bind` | `{ sessionId }` | `{ ok, dockRunning, starting, error? }`. Binds **and** raises the dock (header-button path). |
-| `POST task` | `{ text, sessionId?, workspaceId?, fork? }` | `{ sessionId }`. Prompts the bound/existing session (a new turn) or creates/forks one; an explicit `sessionId` is bound first so its events reach the stream. |
-| `POST stop` | – | `{ ok }`. Cancels the running turn of the bound session. |
-| `POST answer` | `{ id, outcome? } \| { id, answers? }` | `true` when an interaction was waiting. |
-| `POST settings` | `{ permission?, model?, reasoning?, agentPreset? }` | `{ ok, error? }`. |
-| `POST theme` / `POST locale` | palette / locale id | Used by the DSH client half; not needed by API clients. |
-| `POST open-in-dsh` / `POST open-session` | – | Dock command bus (open the bound session in DSH). |
-
-### Switching
-
-`POST select` is the backend capability the dock UI does not expose:
-
-```http
-POST /quickdock/api/select?t=<token>
-{ "workspaceId": "ws-2", "sessionId": "s-9" }
-```
-
-`sessionId: null` starts a blank conversation, `newSession: true` clears the
-binding without touching the workspace. The call is silent: it does not raise or
-restart the dock.
-
-The binding is **Host-wide**, not per client: every client that follows
-`GET state` / `GET stream` — including the dock — sees the switch. Read-only
-inspection of another session does not need a switch: `turns` and `turn` accept
-`sessionId` directly.
-
-## Multi-turn model
-
-- A turn opens on DSH's `turn/start` event; its number comes from
-  `data.turn`. Rows are attributed to a turn by event sequence
-  (`[turn.seq, nextTurn.seq)`).
-- Rows are retained per session up to `config.maxSteps` (200 by default) and
-  the Host tracks up to 8 sessions (the oldest folder is evicted).
-- `GET turns` merges two sources:
-  - DSH's `turnOutline` projection: prompt/response previews and boundary
-    sequence for **every** turn in the log, including turns that happened before
-    this Host attached.
-  - Locally folded turns: `rows > 0` only for turns observed while attached.
-- `GET turn?turn=N` returns the folded rows of that turn; `observed: false`
-  means the turn exists in the log but its rows were never folded (or were
-  evicted by `maxSteps`).
-- `POST task` on an existing session appends a turn; it does not clear earlier
-  turns (the dock simply renders the newest one).
-
-## Interactions (approvals and questions)
-
-When an approval or question targets the bound session **and** the dock input
-window is visible, the Host claims it and waits for `POST answer`. Otherwise it
-delegates to DSH's own UI. If the dock disappears while a request is claimed, the
-Host hands the request back to DSH (the client must not assume it keeps the
-claim). A client that renders its own approval UI should mirror the same rule:
-claim only while the UI is actually visible.
-
-## Errors
-
-```json
-{ "ok": false, "error": "Session not bound" }
-```
-
-Unknown routes return `404`; unauthenticated requests return `401`.
+| `bind` | `{ sessionId }` | Binds and summons; returns dock status |
+| `summon` | – | Shows the window |
+| `reset` | – | Restores the configured window size/position |
+| `reload-dock` | – | Reloads the app inside the iframe |
+| `restart` | – | Kills and respawns the window process |
+| `status` | – | `{ running, starting, error, download }` |
+| `theme` / `locale` | `{ theme }` / `{ locale }` | Adopt what the browser reports |
+| `web-url` | – | The shell page URL |

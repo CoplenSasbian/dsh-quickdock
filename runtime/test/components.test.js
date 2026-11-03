@@ -3,11 +3,11 @@
 /**
  * Two components, mounted from their own rows.
  *
- *   quickdock-service - the API (no Electron)
- *   quickdock-dock    - the windows, on top of the service
+ *   dsh-quickdock/service - the listener, the shell page and the browser bridge
+ *   dsh-quickdock/dock    - the Electron window on top of that service
  *
- * The package row itself mounts nothing; DSH inserts both components through the
- * package's cordis.patch.yml, which is what gives them separate switches.
+ * They are mounted from the same Host object but can be enabled separately, so a
+ * headless deployment never touches Electron.
  */
 
 const test = require('node:test');
@@ -22,21 +22,22 @@ const ROOT = pathToFileURL(path.join(__dirname, '..', '..', 'index.js')).href;
 
 /** Mount the service, and optionally the dock row on top of it. */
 async function mount(flags) {
-  const { ctx, routes } = createContext();
+  const { ctx } = createContext();
   const service = await import(SERVICE);
   const app = service.apply(ctx, config(flags));
   if (flags && flags.dock === true && app) {
     const dock = await import(DOCK);
     dock.apply(ctx, config(flags));
   }
-  return { app, ctx, routes };
+  return { app, ctx };
 }
 
 test('components: the service mounts without Electron', async () => {
-  const { app, routes } = await mount({});
+  const { app } = await mount({});
   assert.ok(app, 'the host object is returned');
   assert.deepStrictEqual(app.state.components, { service: true, dock: false });
-  assert.ok(routes.some((row) => row.path === '/quickdock'), 'routes are registered');
+  assert.ok(typeof app.handleHttp === 'function', 'the shell page and API are served by the host listener');
+  assert.strictEqual(app.dock, null, 'no supervisor in the service component');
   assert.deepStrictEqual(app.meta().components, { service: true, dock: false });
 });
 
@@ -63,15 +64,14 @@ test('components: a headless mount never builds a supervisor', async () => {
   const { app } = await mount({});
   assert.strictEqual(app.dock, null, 'no supervisor');
   assert.strictEqual(app.dockComponent.enabled, false);
-  // The page renderer stays: it is plain HTML and the API serves it.
-  assert.ok(app.page, 'the service still renders pages');
+  assert.ok(app.page, 'the service still renders the shell page');
 });
 
 test('components: the package row mounts both components', async () => {
   const { apply } = await import(ROOT);
   const { ctx } = createContext();
   const app = apply(ctx, config({}));
-  assert.ok(app, 'the row must mount so the API exists from start-up');
+  assert.ok(app, 'the row must mount so the page exists from start-up');
   assert.deepStrictEqual(app.state.components, { service: true, dock: true });
 });
 

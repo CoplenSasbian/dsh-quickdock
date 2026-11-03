@@ -60,14 +60,14 @@ function parseConfig(argv, env) {
   const token = first(args, environment, ['quickdock-token', 'token'], ['DSH_QUICKDOCK_TOKEN']);
   const port = first(args, environment, ['quickdock-port', 'port'], ['DSH_QUICKDOCK_PORT']);
   let url = first(args, environment, ['quickdock-url', 'url'], ['DSH_QUICKDOCK_URL']) || inline.url;
-  if (!url && port && token) url = 'http://127.0.0.1:' + positiveInteger(port, 0) + '/quickdock?t=' + encodeURIComponent(token);
+  // No token any more: the fixed loopback port is the whole handshake.
+  if (!url && port) url = 'http://127.0.0.1:' + positiveInteger(port, 0) + '/quickdock';
   if (!url) throw new Error('Missing QuickDock URL (--quickdock-url or DSH_QUICKDOCK_URL)');
   const parsed = new URL(url);
   // The dock only ever loads the Host's loopback page.
   if (!['http:', 'https:'].includes(parsed.protocol) || !['127.0.0.1', 'localhost', '::1', '[::1]'].includes(parsed.hostname)) {
     throw new Error('QuickDock only loads a loopback HTTP URL');
   }
-  if (token && !parsed.searchParams.has('t')) parsed.searchParams.set('t', token);
 
   const hostPid = positiveInteger(first(args, environment, ['quickdock-host-pid', 'host-pid', 'hostPid'], ['DSH_QUICKDOCK_HOST_PID']), 0);
   if (!hostPid) throw new Error('Missing valid host PID (--quickdock-host-pid or DSH_QUICKDOCK_HOST_PID)');
@@ -90,6 +90,12 @@ function parseConfig(argv, env) {
     dock: inline.dock !== false,
     // The dedicated task window is opt-in: the card also fits above the composer.
     todoWindow: inline.todoWindow === true,
+    // Draw pin/close over a foreign page (dockTarget: 'webui').
+    chrome: inline.chrome === true,
+    // 'system' lets the OS draw close/minimise/maximise (window controls overlay).
+    controls: inline.controls === 'system' ? 'system' : 'custom',
+    // An opaque window: the frame shell paints its own background and hosts an iframe.
+    opaque: inline.opaque === true,
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,
     focusOnSummon: inline.focusOnSummon === true,
     rememberGeometry: inline.rememberGeometry !== false,

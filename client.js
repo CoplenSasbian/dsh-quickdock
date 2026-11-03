@@ -36,11 +36,10 @@ var MESSAGES = {
     'client.dockFailed': 'QuickDock request failed: {reason}',
     'client.downloading': 'QuickDock is downloading its desktop runtime {percent}% ({mb}/{total} MB)',
     'client.more': 'More dock actions',
-    'client.restartService': 'Restart the service (reloads page assets)',
+    'client.reloadApp': 'Reload the app',
+    'client.reloadFailed': 'Reload failed: {reason}',
     'client.restartDock': 'Restart the dock window',
     'client.restartFailed': 'Restart failed: {reason}',
-    'client.hideDock': 'Close the dock window',
-    'client.hideFailed': 'Close failed: {reason}',
     'client.resetWindows': 'Reset the window size',
     'client.resetFailed': 'Reset failed: {reason}'
   },
@@ -54,11 +53,10 @@ var MESSAGES = {
     'client.dockFailed': 'QuickDock 请求失败：{reason}',
     'client.downloading': 'QuickDock 正在下载桌面运行时 {percent}%（{mb}/{total} MB）',
     'client.more': '更多 Dock 操作',
-    'client.restartService': '重启服务（重读页面资源）',
+    'client.reloadApp': '重新加载应用',
+    'client.reloadFailed': '重新加载失败：{reason}',
     'client.restartDock': '重启 Dock 窗口',
     'client.restartFailed': '重启失败：{reason}',
-    'client.hideDock': '关闭 Dock 窗口',
-    'client.hideFailed': '关闭失败：{reason}',
     'client.resetWindows': '重置窗口大小',
     'client.resetFailed': '重置失败：{reason}'
   }
@@ -293,17 +291,6 @@ function SendToDock(props) {
     setMenu(box ? { top: Math.round(box.bottom + 4), right: Math.round(window.innerWidth - box.right) } : { top: 0, right: 0 })
   }
 
-  const hide = async (event) => {
-    event.stopPropagation()
-    setMenu(null)
-    try {
-      const result = await bridge('hide', {})
-      if (result && result.error) showError(t('client.hideFailed', { reason: result.error }))
-    } catch (error) {
-      showError(t('client.hideFailed', { reason: String(error && error.message || error) }))
-    }
-  }
-
   const resetWindows = async (event) => {
     event.stopPropagation()
     setMenu(null)
@@ -315,14 +302,14 @@ function SendToDock(props) {
     }
   }
 
-  const restartService = async (event) => {
+  const reloadApp = async (event) => {
     event.stopPropagation()
     setMenu(null)
     try {
-      const result = await bridge('restart-service', {})
-      if (result && result.error) showError(t('client.restartFailed', { reason: result.error }))
+      const result = await bridge('reload-dock', {})
+      if (result && result.error) showError(t('client.reloadFailed', { reason: result.error }))
     } catch (error) {
-      showError(t('client.restartFailed', { reason: String(error && error.message || error) }))
+      showError(t('client.reloadFailed', { reason: String(error && error.message || error) }))
     }
   }
 
@@ -337,10 +324,11 @@ function SendToDock(props) {
     }
   }
 
+  // Only the actions that still mean something: the window has its own close
+  // button, and reloading the app is lighter than restarting the process.
   const menuItems = [
-    { key: 'hide', label: t('client.hideDock'), onClick: hide },
     { key: 'reset', label: t('client.resetWindows'), onClick: resetWindows },
-    { key: 'service', label: t('client.restartService'), onClick: restartService },
+    { key: 'reload', label: t('client.reloadApp'), onClick: reloadApp },
     { key: 'restart', label: t('client.restartDock'), onClick: restart }
   ]
 
@@ -648,76 +636,6 @@ function syncTheme(tctx) {
   }
 }
 
-/* ---------------- command bus ---------------- */
-
-/**
- * "Open session in DSH" command bus.
- *
- * The dock is a separate process and cannot drive the SPA; this plugin runs in
- * the SPA. The Host forwards the command over a lightweight SSE stream that
- * only carries occasional events (hence SSE rather than polling). Reconnects
- * after 3s when the stream drops.
- */
-function connectCommandBus(onCommand) {
-  var source = null
-  var retry = null
-  var stopped = false
-
-  function schedule() {
-    if (stopped || retry) return
-    retry = setTimeout(function () {
-      retry = null
-      open()
-    }, 3000)
-  }
-
-  function open() {
-    if (stopped) return
-    bridge('web-url').then(function (body) {
-      var token = ''
-      try {
-        token = new URL(body && body.url, location.href).searchParams.get('t') || ''
-      } catch (error) {}
-      if (!token) throw new Error('bus token unavailable')
-      if (stopped) return
-      source = new EventSource('/quickdock/api/bus?t=' + encodeURIComponent(token))
-      source.addEventListener('command', function (event) {
-        var command = null
-        try {
-          command = JSON.parse(event.data)
-        } catch (error) {}
-        if (command && command.type === 'open-session' && command.sessionId) {
-          try {
-            onCommand(command.sessionId)
-          } catch (error) {
-            console.error('[dsh-quickdock] open-session failed:', error)
-          }
-        }
-      })
-      source.onerror = function () {
-        try {
-          source.close()
-        } catch (error) {}
-        source = null
-        schedule()
-      }
-    }).catch(function () {
-      schedule()
-    })
-  }
-
-  open()
-  return function stop() {
-    stopped = true
-    if (retry) clearTimeout(retry)
-    if (source) {
-      try {
-        source.close()
-      } catch (error) {}
-    }
-  }
-}
-
 /* ---------------- download badge (sidebar footer) ---------------- */
 
 /**
@@ -776,7 +694,159 @@ function DownloadBadge() {
 
 /* ---------------- apply ---------------- */
 
+/**
+ * True when this page is the app *inside* the dock window.
+ *
+ * Two signals, because the SPA may rewrite its own URL after boot (dropping the
+ * query before client modules run):
+ *   - `?dock=1`, appended by the frame shell;
+ *   - this document is an iframe (`window.self !== window.top`).
+ */
+function insideDockWindow() {
+  try {
+    if (new URLSearchParams(location.search).has('dock')) return true
+  } catch (error) { /* ignore */ }
+  try {
+    return window.self !== window.top
+  } catch (error) {
+    return false
+  }
+}
+
+/** Style element id, so a second apply() does not stack sheets. */
+const DOCK_STYLE_ID = PLUGIN_ID + '-dock-layout'
+
+/**
+ * Layout fixes that only make sense in the dock window.
+ *
+ * At dock width the shipped sidebar squeezes the conversation into a sliver, so
+ * while it is expanded it covers the whole window instead; picking a session
+ * then collapses it, which is what a dock-sized window wants.
+ *
+ * The frame carries `data-sidebar-collapsed="true"` exactly while the sidebar is
+ * a rail, so the rule can key off the app's own state instead of measuring.
+ */
+function applyDockMode() {
+  if (document.getElementById(DOCK_STYLE_ID)) return
+  const style = document.createElement('style')
+  style.id = DOCK_STYLE_ID
+  style.textContent = `
+html[data-qd-dock] [class*="_frame"][data-rightbar-collapsed]:not([data-sidebar-collapsed="true"]) {
+  grid-template-columns: 0 1fr 0 !important;
+}
+html[data-qd-dock] [class*="_frame"][data-rightbar-collapsed]:not([data-sidebar-collapsed="true"]) [class*="sidebarCol"] {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  z-index: 60 !important;
+  background: var(--dsw-alias-bg-base, #151517) !important;
+}
+`
+  try {
+    document.head.appendChild(style)
+  } catch (error) {
+    return
+  }
+  document.documentElement.setAttribute('data-qd-dock', '1')
+
+  // A session picked from the full-window sidebar should leave the conversation
+  // visible again: collapse on the next tick, after the app handled the click.
+  // The toggle is addressed by its class (inside the sidebar column), not by its
+  // aria-label, which is localized.
+  document.addEventListener('click', function (event) {
+    const target = event.target
+    if (!target || typeof target.closest !== 'function') return
+    if (!target.closest('[class*="sessionRow"]')) return
+    const frame = document.querySelector('[class*="_frame"][data-rightbar-collapsed]')
+    if (!frame || frame.hasAttribute('data-sidebar-collapsed')) return
+    const toggle = findToggle()
+    if (!toggle) return
+    setTimeout(function () { try { toggle.click() } catch (error) { /* ignore */ } }, 0)
+  }, true)
+
+  // The dock window opens on the conversation: the sidebar state is shared with
+  // the main window through localStorage, so an expanded sidebar there would
+  // cover the whole dock on every start. Collapse it once, when it is found.
+  let attempts = 0
+  const collapseOnStart = setInterval(function () {
+    attempts += 1
+    const frame = document.querySelector('[class*="_frame"][data-rightbar-collapsed]')
+    if (frame && !frame.hasAttribute('data-sidebar-collapsed')) {
+      const toggle = findToggle()
+      if (toggle) {
+        try { toggle.click() } catch (error) { /* ignore */ }
+      }
+    }
+    if (attempts > 30) clearInterval(collapseOnStart)
+  }, 100)
+
+  /* ---- shell <-> app channel (the dock title bar drives the sidebar) ---- */
+
+  /**
+   * Report the sidebar state to the shell so its button can reflect it.
+   * `window.parent` is our frame shell page; postMessage is the only channel
+   * because the two documents are different origins.
+   */
+  function reportSidebarState() {
+    const frame = document.querySelector('[class*="_frame"][data-rightbar-collapsed]')
+    const expanded = frame ? !frame.hasAttribute('data-sidebar-collapsed') : false
+    try { window.parent.postMessage({ type: 'quickdock:sidebar-state', expanded }, '*') } catch (error) { /* ignore */ }
+  }
+
+  window.addEventListener('message', function (event) {
+    // Only our embedding shell may drive the layout.
+    if (event.source !== window.parent) return
+    const data = event.data
+    if (!data || data.type !== 'quickdock:toggle-sidebar') return
+    const toggle = findToggle()
+    if (toggle) {
+      try { toggle.click() } catch (error) { /* ignore */ }
+    }
+    setTimeout(reportSidebarState, 80)
+  })
+
+  // Any click may have toggled the rail (its own button, a session row, ...).
+  document.addEventListener('click', function () { setTimeout(reportSidebarState, 80) }, true)
+  setTimeout(reportSidebarState, 400)
+  setTimeout(reportSidebarState, 1200)
+}
+
+/** The sidebar rail/expanded toggle, independent of the active locale. */
+function findToggle() {
+  const column = document.querySelector('[class*="sidebarCol"]')
+  return (column && column.querySelector('button[class*="_toggle"]'))
+    || document.querySelector('button[class*="_toggle"]')
+}
+
 function apply(ctx) {
+  if (insideDockWindow()) {
+    // This page is the dock, not the window that opens it: no header button, no
+    // download badge - only the layout fixes below.
+    applyDockMode()
+    try {
+      ctx.inject(['uiWorkspace'], function (uiCtx) {
+        // The Dock button in the main window bound a session: follow it. The shell
+        // forwards the target over postMessage because the frames are cross-origin.
+        window.addEventListener('message', function (event) {
+          if (event.source !== window.parent) return
+          const data = event.data
+          if (!data || data.type !== 'quickdock:open-session' || !data.sessionId) return
+          try {
+            uiCtx.uiWorkspace.openSession(String(data.sessionId))
+          } catch (error) {
+            console.warn('[dsh-quickdock] open-session failed:', error)
+          }
+        })
+        // Ask the shell for the target once this app can navigate.
+        setTimeout(function () {
+          try { window.parent.postMessage({ type: 'quickdock:ready' }, '*') } catch (error) { /* ignore */ }
+        }, 300)
+      })
+    } catch (error) {
+      console.warn('[dsh-quickdock] uiWorkspace unavailable in the dock window:', error)
+    }
+    return
+  }
   try {
     ctx.slots.inject(HEADER_SLOT, () => ctx.slots.register({
       name: HEADER_SLOT,
@@ -815,22 +885,7 @@ function apply(ctx) {
   } catch (error) {
     console.warn('[dsh-quickdock] locale service unavailable:', error)
   }
-  // Receiver for "open this session in DSH" (absent uiWorkspace = no feature).
-  try {
-    ctx.inject(['uiWorkspace'], function (uiCtx) {
-      var stop = connectCommandBus(function (sessionId) {
-        uiCtx.uiWorkspace.openSession(sessionId)
-        try {
-          window.focus()
-        } catch (error) {}
-      })
-      uiCtx.effect(function () {
-        return stop
-      }, 'quickdock: command bus')
-    })
-  } catch (error) {
-    console.warn('[dsh-quickdock] uiWorkspace unavailable:', error)
-  }
+
 }
 
 return {

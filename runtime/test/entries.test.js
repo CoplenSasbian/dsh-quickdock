@@ -4,10 +4,10 @@
  * Two entries, two switches.
  *
  * DSH loads plugins by module specifier, so the package exposes
- *   dsh-quickdock/service - the Host API
- *   dsh-quickdock/dock    - the windows, attached to that service
- * Each is its own entry in the plugin list, which is the "component switch" the
- * user asked for; index.js still mounts both for a single-entry install.
+ *   dsh-quickdock/service - the listener, the shell page and the bridge
+ *   dsh-quickdock/dock    - the window, attached to that service
+ * Each is its own entry in the plugin list, which is the "component switch";
+ * index.js still mounts both for a single-entry install.
  */
 
 const test = require('node:test');
@@ -24,9 +24,9 @@ const INDEX = pathToFileURL(path.join(__dirname, '..', '..', 'index.js')).href;
 /** Import one entry and apply it to a fresh mock context. */
 async function mountEntry(entry, overrides) {
   const module = await import(entry);
-  const { ctx, routes, services } = createContext();
+  const { ctx, services } = createContext();
   const app = module.apply(ctx, config(overrides));
-  return { module, app, ctx, routes, services };
+  return { module, app, ctx, services };
 }
 
 test('entries: each one declares a name and a config schema', async () => {
@@ -39,23 +39,21 @@ test('entries: each one declares a name and a config schema', async () => {
 
 test('entries: the service declares the services it reads', async () => {
   const service = await import(SERVICE);
-  // Reading ctx.webServer/ctx.connection without declaring them fails activation
-  // with 'cannot get property "webServer" without inject'.
-  assert.deepStrictEqual(service.inject, ['webServer', 'connection']);
+  // Only the browser bridge needs a DSH service: the shell page and its API run
+  // on the plugin's own fixed loopback port.
+  assert.deepStrictEqual(service.inject, ['connection']);
 });
 
-test('entries: the service mounts the API and no windows', async () => {
-  const { app, routes } = await mountEntry(SERVICE, {});
+test('entries: the service mounts the shell and no window', async () => {
+  const { app } = await mountEntry(SERVICE, {});
   assert.ok(app, 'the host exists');
   assert.deepStrictEqual(app.state.components, { service: true, dock: false });
-  assert.ok(routes.some((row) => row.path === '/quickdock'));
+  assert.strictEqual(app.state.sessionId, null, 'nothing is bound yet');
   assert.strictEqual(app.dock, null, 'no supervisor in the service entry');
 });
 
 test('entries: the package row mounts both components', async () => {
   const { app } = await mountEntry(INDEX, {});
-  // A component row was tried and cost the header Dock button: DSH builds the
-  // client roster from bundle rows, and a subpath is not a package specifier.
   assert.ok(app, 'the package row must mount');
   assert.deepStrictEqual(app.state.components, { service: true, dock: true });
 });

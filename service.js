@@ -13,8 +13,8 @@ import { configSchema } from './host/config-schema.js'
 
 export const name = 'dsh-quickdock (service)'
 
-/** The Host registers routes and a fetch bridge, so both services are required. */
-export const inject = ['webServer', 'connection']
+/** The Host serves its own loopback port; only the browser bridge needs DSH. */
+export const inject = ['connection']
 
 /** The service entry never mounts windows; the dock row does that. */
 export const Config = Schema.object(configSchema)

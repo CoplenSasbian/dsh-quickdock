@@ -3,6 +3,40 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [0.4.0] - 2026-11-03
+
+The dock is now a window around DSH's own Web UI instead of a re-implementation.
+
+### Added
+
+- Frame shell page (`GET /quickdock?view=frame`) on a fixed loopback port: a
+  draggable title bar with a sidebar toggle, pin and the OS close/minimise
+  buttons, and the Web UI in an iframe (`/?token=…&dock=1`).
+- The Dock button binds the session you are looking at; the shell forwards it to
+  the app over `postMessage` (`quickdock:open-session`), so an already-open dock
+  window follows the main window.
+- Header menu: "Reset window size", "Reload the app" (reloads the iframe only)
+  and "Restart the dock window".
+- Dock-only layout rules: at dock width the expanded sidebar covers the whole
+  window and collapses when a session is picked.
+
+### Changed
+
+- `port` (default `47910`) replaces the random DSH web-server origin; there is no
+  token any more - the address is the handshake.
+- `windowControls: system` draws the OS window buttons over the title bar,
+  including a native border and shadow; `minimizable` is enabled.
+- The dock window is opaque (`transparent: false`) because it hosts a foreign page.
+
+### Removed
+
+- The self-drawn dock UI (`web/`), its render layer and build script.
+- The Host-side fold engine (`step-folded`, stream buffer, event log, interaction
+  broker, session index, catalogs) - the app renders all of that itself now.
+- The dock API (`/api/state`, `/stream`, `/turns`, `/task`, `/answer`, …); only
+  `dock-target` and `meta` remain. See `API.md`.
+- The command bus and the "open this session in DSH" bridge action.
+
 ## [Unreleased]
 
 ### Added

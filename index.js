@@ -1,13 +1,14 @@
 /**
  * dsh-quickdock — Host half.
  *
- * Responsibilities live in host/: page + API hosting, session event folding,
- * approval interception, Electron resolution and dock supervision. This module
- * only declares the plugin contract (name, injected services, config schema).
+ * Responsibilities live in host/: the shell page and its listener, the session
+ * target the window follows, Electron resolution and window supervision. This
+ * module only declares the plugin contract (name, injected services, config
+ * schema).
  *
  * Hard rules:
  *  - never import a @deepseek-ai/dsh-client-* runtime package
- *  - read session/event only; no new event types are written
+ *  - the dock content is DSH's own Web UI; do not model sessions here
  */
 import Schema from '@deepseek-ai/schemastery'
 
@@ -17,8 +18,12 @@ import { setHost } from './host/shared.js'
 
 export const name = 'dsh-quickdock'
 
-/** Required host services: HTTP hosting and the browser connection bridge. */
-export const inject = ['webServer', 'connection']
+/**
+ * Required host services: the browser connection bridge. The dock page and its
+ * API have their own loopback listener (config.port), so DSH's web server is no
+ * longer needed.
+ */
+export const inject = ['connection']
 
 export const Config = Schema.object(configSchema)
 

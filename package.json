@@ -1,7 +1,7 @@
 {
   "name": "dsh-quickdock",
-  "version": "0.3.0",
-  "description": "QuickDock: an always-available dock in the corner of the screen (composer + run log), opened from a DSH session header.",
+  "version": "0.4.0",
+  "description": "QuickDock: a small always-on-top window around DSH's own Web UI, opened from a session header and pinned over other apps.",
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -20,7 +20,6 @@
     "client.js",
     "cordis.patch.yml",
     "API.md",
-    "web",
     "runtime",
     "host",
     "locale",
@@ -30,12 +29,10 @@
   "scripts": {
     "test": "node scripts/run-tests.mjs",
     "check": "node scripts/check.mjs",
-    "verify": "node scripts/run-tests.mjs && node scripts/check.mjs && node scripts/smoke.mjs",
-    "dev": "node --import ./scripts/register-hook.mjs scripts/dev-harness.mjs",
+    "clean-dsh-cookies": "node scripts/clean-dsh-cookies.mjs",
+    "verify": "node scripts/run-tests.mjs && node scripts/check.mjs",
     "ensure-electron": "node scripts/ensure-electron.mjs",
-    "lint": "eslint .",
-    "smoke": "node scripts/smoke.mjs",
-    "build:render": "node scripts/build-render.mjs"
+    "lint": "eslint ."
   },
   "engines": {
     "dsh": ">=0.2.0"
@@ -67,41 +64,6 @@
     "plugin",
     "electron",
     "dock",
-    "i18n"
-  ],
-  "devDependencies": {
-    "@deepseek-ai/dsh-client-store": "^0.2.1-rc.5",
-    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.1-rc.5",
-    "@deepseek-ai/dsh-util-code-language": "^0.2.1-rc.5",
-    "@deepseek-ai/dsh-util-workspace-path": "^0.2.1-rc.5",
-    "@rollup/plugin-commonjs": "^29.0.3",
-    "@rollup/plugin-node-resolve": "^16.0.3",
-    "@rollup/plugin-replace": "^6.0.3",
-    "@shikijs/engine-javascript": "^4.5.0",
-    "@shikijs/langs": "^4.5.0",
-    "anser": "^2.3.5",
-    "clsx": "^2.1.1",
-    "diff": "^9.0.0",
-    "eslint": "^9.14.0",
-    "katex": "^0.19.1",
-    "mdast-util-from-markdown": "^2.1.0",
-    "mdast-util-gfm": "^3.1.0",
-    "mdast-util-math": "^3.0.0",
-    "micromark-core-commonmark": "^2.0.4",
-    "micromark-extension-gfm": "^3.0.0",
-    "micromark-extension-math": "^3.1.0",
-    "micromark-factory-space": "^2.1.0",
-    "micromark-util-character": "^2.1.1",
-    "micromark-util-classify-character": "^2.0.1",
-    "micromark-util-sanitize-uri": "^2.0.1",
-    "micromark-util-symbol": "^2.0.1",
-    "postcss": "^8.5.32",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "rollup": "^4.67.3",
-    "rollup-plugin-postcss": "^4.0.2",
-    "shiki": "^4.5.0",
-    "simple-icons": "^15.22.0",
-    "terser": "^5.51.2"
-  }
+    "always-on-top"
+  ]
 }

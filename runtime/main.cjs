@@ -47,6 +47,60 @@ function eventWebContents(event) {
 }
 
 /**
+ * Window chrome drawn over a foreign page (`config.chrome`).
+ *
+ * DSH's Web UI has no dock buttons, so the runtime floats two of them: pin and
+ * close. Styles go through `insertCSS` because a page CSP rejects inline styles,
+ * and the bar is rebuilt on every load (a reload would otherwise drop it).
+ */
+const DOCK_CHROME_CSS = `
+.qd-winbar{position:fixed;top:8px;right:10px;z-index:2147483647;display:flex;gap:6px;padding:4px;border-radius:11px;background:rgba(24,24,27,.72);box-shadow:0 6px 18px rgba(0,0,0,.28);-webkit-app-region:drag}
+.qd-winbar--system{right:148px}
+.qd-winbar .qd-winbtn{-webkit-app-region:no-drag;width:26px;height:26px;border:0;border-radius:8px;background:transparent;color:#e9e9ec;font:15px/1 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s ease}
+.qd-winbar .qd-winbtn:hover{background:rgba(255,255,255,.16)}
+.qd-winbar .qd-winbtn[data-on="1"]{background:rgba(88,158,255,.45);color:#fff}
+.qd-winbar .qd-winbtn[data-action="close"]:hover{background:rgba(232,72,72,.75);color:#fff}
+`;
+
+/**
+ * Build the chrome script for one window.
+ * @param {boolean} systemControls true when the OS draws close/min/max itself.
+ * @returns {string} script that appends the bar.
+ */
+function dockChromeScript(systemControls) {
+  return `
+(() => {
+  const api = window.quickDock;
+  if (!api || document.getElementById('__qd_winbar__')) return;
+  const bar = document.createElement('div');
+  bar.id = '__qd_winbar__';
+  bar.className = 'qd-winbar' + (${systemControls} ? ' qd-winbar--system' : '');
+  const make = (action, glyph, title) => {
+    const button = document.createElement('button');
+    button.className = 'qd-winbtn';
+    button.dataset.action = action;
+    button.title = title;
+    button.textContent = glyph;
+    button.addEventListener('click', () => {
+      if (action === 'close') { api.hide(); return; }
+      const on = button.dataset.on !== '1';
+      button.dataset.on = on ? '1' : '0';
+      Promise.resolve(api.setAlwaysOnTop(on)).catch(() => { button.dataset.on = on ? '0' : '1'; });
+    });
+    return button;
+  };
+  bar.append(make('pin', '⌖', 'Pin on top'));
+  // With the OS controls there is nothing to close: the system button does it.
+  if (!${systemControls}) bar.append(make('close', '✕', 'Close'));
+  document.body.appendChild(bar);
+  Promise.resolve(api.getState()).then((state) => {
+    if (state && state.alwaysOnTop) bar.querySelector('[data-action="pin"]').dataset.on = '1';
+  }).catch(() => {});
+})();
+`;
+}
+
+/**
  * BrowserWindow options shared by both windows.
  *
  * Key items:
@@ -173,7 +227,34 @@ class DockRuntime {
     trace('restored bounds: ' + JSON.stringify(restored.bounds)
       + ' scale=' + (restored.display && restored.display.scaleFactor)
       + ' workArea=' + JSON.stringify(restored.display && restored.display.workArea));
-    this.win = new BrowserWindow(sharedWindowOptions(Object.assign({ title: 'QuickDock' }, restored.bounds)));
+    // 'system' draws the OS window controls (close/minimise/maximise) with the
+    // page underneath; the window must be opaque for that overlay to composite.
+    const systemControls = this.config.controls === 'system';
+    const chromeOptions = systemControls
+      ? {
+          titleBarStyle: 'hidden',
+          // Matches the shell's 34px bar so the OS buttons sit inside it. The colour
+          // mirrors DSH's dark layer-1 surface the bar paints.
+          titleBarOverlay: { color: '#1b1b1c', symbolColor: '#e9e9ec', height: 34 },
+          transparent: false,
+          backgroundColor: '#1b1b1c',
+          roundedCorners: true,
+          // The Windows frame itself: native resize border and drop shadow.
+          thickFrame: true,
+          hasShadow: true,
+          // Windows only draws a control when the window allows it: the close
+          // button stayed alone until minimise was enabled.
+          minimizable: true,
+        }
+      : {};
+    // The frame shell (dockTarget: 'webui') paints its own background and hosts an
+    // iframe: an opaque window avoids transparency quirks over foreign content.
+    if (this.config.opaque) {
+      chromeOptions.transparent = false;
+      chromeOptions.backgroundColor = chromeOptions.backgroundColor || '#1b1b1c';
+      chromeOptions.roundedCorners = true;
+    }
+    this.win = new BrowserWindow(sharedWindowOptions(Object.assign({ title: 'QuickDock' }, restored.bounds, chromeOptions)));
     prepareWindow(this.win, this.store);
     // Record initial geometry once: size is fixed, position changes while dragging and must persist.
     this.remember();
@@ -307,6 +388,8 @@ class DockRuntime {
     wc.on('did-finish-load', () => {
       this.clearTimer(this.showFallback);
       this.showFallback = this.later(() => this.show(), this.config.showFallbackMs);
+      // A foreign page has no dock buttons of its own: draw the window chrome.
+      void this.installWindowChrome(this.win);
     });
     wc.on('render-process-gone', (_event, details) => {
       this.status('error', { reason: 'render-process-gone', details: details && details.reason });
@@ -437,9 +520,11 @@ class DockRuntime {
     this.later(() => this.pollHost(), this.config.hostPollMs);
     this.later(() => this.pollHitTest(), this.config.hitPollMs);
 
-    await this.win.loadURL(this.config.url + (this.config.layout === 'unified' ? '&layout=unified' : ''));
-    trace('loadURL done: ' + this.config.url);
+    // The page URL no longer carries a query string (no token), so the separator
+    // is computed once and used for every window.
     const sep = this.config.url.indexOf('?') >= 0 ? '&' : '?';
+    await this.win.loadURL(this.config.url + (this.config.layout === 'unified' ? sep + 'layout=unified' : ''));
+    trace('loadURL done: ' + this.config.url);
     if (this.displayWin) {
       await this.displayWin.loadURL(this.config.url + sep + 'view=display');
       trace('display loadURL done');
@@ -708,6 +793,29 @@ class DockRuntime {
   releaseClickThrough(win) {
     if (this.noClickThrough || !win || win.isDestroyed()) return;
     try { win.setIgnoreMouseEvents(false); } catch (_) {}
+  }
+
+  /**
+   * Draw the dock chrome (pin + close) over a foreign page.
+   *
+   * `insertCSS` is idempotent per load in practice and bypasses the page CSP;
+   * `executeJavaScript` re-adds the bar after every navigation because DSH's SPA
+   * replaces the document on route changes and on reload.
+   * @param {object} win BrowserWindow that hosts the foreign page.
+   * @returns {Promise<void>} resolves when the chrome is in place.
+   */
+  async installWindowChrome(win) {
+    const systemControls = this.config.controls === 'system';
+    // Only an intrinsic page asks for the injected bar; the frame shell draws its
+    // own title bar, and injecting here would duplicate every button.
+    if (!this.config.chrome || !win || win.isDestroyed()) return;
+    try {
+      await win.webContents.insertCSS(DOCK_CHROME_CSS);
+      await win.webContents.executeJavaScript(dockChromeScript(systemControls), true);
+      trace('window chrome installed (system controls=' + systemControls + ')');
+    } catch (error) {
+      trace('window chrome failed: ' + String((error && error.message) || error));
+    }
   }
 
   /** Show/hide the display window (hidden when there is no execution content). */
@@ -1062,6 +1170,9 @@ class DockRuntime {
     if (!this.win || this.destroyed) return;
     this.clearTimer(this.showFallback);
     this.reinforceSkipTaskbar();
+    // A minimised window has no taskbar entry here (skipTaskbar), so summoning is
+    // the only way back: restore before showing.
+    if (this.win.isMinimized()) this.win.restore();
     // Same rule as the display window: never show while click-through is armed
     // (only when it is actually being shown; a re-summon keeps its state).
     if (!this.win.isVisible()) this.releaseClickThrough(this.win);

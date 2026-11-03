@@ -1,152 +1,78 @@
 /**
  * QuickDock Host composition root.
  *
- * The plugin entry only builds this object: every responsibility lives in a
- * collaborator (adapter, repository, hub, broker, supervisor) and is wired here
- * once. Construction is side-effect free; start() subscribes and registers.
+ * The plugin is a window around DSH's own Web UI: it owns a fixed loopback
+ * listener that serves one shell page (title bar + iframe), a small bridge the
+ * Client half uses, and the Electron supervisor that shows the window. All dock
+ * content comes from DSH itself, so no session data is modelled here.
  */
 
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createApiRouter } from './api.js'
 import { createBridgeHandler } from './bridge.js'
-import { CatalogService } from './catalogs.js'
-import {
-  API_PREFIX,
-  API_VERSION,
-  BRIDGE_PATH,
-  CATALOG_WARMUP_MS,
-  INDEX_TICKER_MS,
-  MAX_TRACKED_SESSIONS,
-  PAGE_PATH,
-  SETTINGS_SYNC_MS,
-  STREAM_FLUSH_MS,
-  VIEWS
-} from './constants.js'
+import { API_PREFIX, API_VERSION, BIND_HOST, BRIDGE_PATH, DEFAULT_PORT, PAGE_PATH } from './constants.js'
 import { DshFacade } from './dsh.js'
 import { ElectronResolver } from './electron-resolver.js'
-import { EventHub } from './event-hub.js'
-import { DELEGATE, InteractionBroker } from './interactions.js'
 import { LocaleController } from './locale.js'
 import { PageRenderer } from './page.js'
 import { createDockComponent } from './dock-component.js'
 import { readVersion } from './version.js'
-import { SessionIndex } from './session-index.js'
-import { createSnapshotBuilder } from './snapshot.js'
-import { StreamBuffer } from './stream-buffer.js'
 import { ThemeStore } from './theme.js'
 import { createTrace, traceLogPath } from './trace.js'
 
-const require = createRequire(import.meta.url)
-const { StepFolder } = require('../runtime/step-folder.js')
-
-/** Tools whose result body is the session goal. */
-const GOAL_TOOLS = /^(create_goal|get_goal|update_goal)$/i
-const { EventLog } = require('./event-log.js')
-
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
-
-/** Local IANA zone (DSH accepts UTC or IANA names only). */
-function localTimeZone() {
-  try {
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    return typeof zone === 'string' && zone ? zone : 'UTC'
-  } catch (_) {
-    return 'UTC'
-  }
-}
+const require = createRequire(import.meta.url)
 
 export class QuickDockHost {
   /**
-   * @param {object} ctx Cordis host context (`webServer` and `connection` injected).
+   * @param {object} ctx Cordis host context (`connection` injected).
    * @param {object} config validated plugin config.
    */
   constructor(ctx, config) {
     this.ctx = ctx
     this.config = config
     this.dsh = new DshFacade(ctx)
-    this.token = randomBytes(32).toString('base64url')
     this.tracePath = traceLogPath()
     this.trace = createTrace({ path: this.tracePath })
     this.disposers = []
-    this.streamFlushTimer = null
+    /** The loopback listener that serves the shell page and the API. */
+    this.server = null
 
     this.state = {
-      workspaceId: config.defaultWorkspaceId || null,
       sessionId: null,
-      newSession: true,
-      fork: false,
-      folders: new Map(),
-      interaction: null,
-      settings: {
-        permission: 'workspace-write',
-        model: '',
-        reasoning: '',
-        agentPreset: config.agentPreset || ''
-      },
-      catalogs: { permissions: [], models: [], reasoning: [], agents: [] },
-      locale: 'en',
+      // The loopback listener: one address, no token (see config.port).
+      server: { port: Number(config.port) || DEFAULT_PORT, ok: false, error: '' },
       // running: process alive; visible: a window is actually on screen.
       dock: { running: false, visible: false, alwaysOnTop: config.alwaysOnTop, error: '' },
       // Desktop runtime download, surfaced in the DSH sidebar footer while active.
-      download: { active: false, received: 0, total: 0, ok: false, error: '' }
+      download: { active: false, received: 0, total: 0, ok: false, error: '' },
+      components: { service: false, dock: false },
+      version: null
     }
+    /** Bumped by postBind: the dock window follows this session. */
+    this.dockTargetSeq = 0
+    /** Bumped on request: the dock shell reloads the app in its iframe. */
+    this.dockReloadSeq = 0
+    this.lastDownloadPublishAt = 0
 
-    this.publish = () => this.hub.publishState(this.snapshot())
+    this.publish = () => { /* state is read directly; nothing to push */ }
 
     this.locale = new LocaleController({
       preference: config.locale,
-      onChange: (locale) => this.#onLocaleChange(locale)
+      onChange: () => this.publish()
     })
-    this.state.locale = this.locale.locale
 
-    this.hub = new EventHub({ onStateClient: () => void this.index.refresh() })
-    this.index = new SessionIndex({
-      dsh: this.dsh,
-      t: (key, params) => this.locale.t(key, params),
-      trace: this.trace,
-      publish: () => this.publish()
-    })
-    this.stream = new StreamBuffer()
-    // Every event, not only the ones the dock renders (see host/event-log.js).
-    this.events = new EventLog()
     this.theme = new ThemeStore({
       // 'auto' keeps the built-in palette until the Client half reports one.
       fallback: config.theme,
       getSnapshot: () => this.dsh.theme?.getTheme?.(),
       onChange: (payload) => {
-        this.trace('theme -> dock: ' + payload.colorScheme + ' (' + Object.keys(payload.tokens).length + ' tokens)')
-        this.hub.publishTheme(payload)
+        this.trace('theme -> shell: ' + payload.colorScheme + ' (' + Object.keys(payload.tokens).length + ' tokens)')
       }
-    })
-    this.broker = new InteractionBroker({
-      state: this.state,
-      timeoutMs: Number(config.approvalTimeoutMs) || 300000,
-      publish: () => this.publish(),
-      summon: () => this.#summonDock(),
-      trace: this.trace
-    })
-    this.catalogService = new CatalogService({
-      state: this.state,
-      dsh: this.dsh,
-      t: (key, params) => this.locale.t(key, params),
-      trace: this.trace,
-      logger: this.dsh.logger,
-      publish: () => this.publish()
-    })
-    this.snapshotBuilder = createSnapshotBuilder({
-      config,
-      state: this.state,
-      dsh: this.dsh,
-      index: this.index,
-      hub: this.hub,
-      stream: this.stream,
-      goal: () => this.sessionGoal(),
-      // DSH's todo projection, or null when it has nothing to say.
-      plan: () => this.projectedPlan()
     })
 
     this.resolver = new ElectronResolver({
@@ -158,8 +84,8 @@ export class QuickDockHost {
       t: (key, params) => this.locale.t(key, params),
       requireResolve: (specifier) => require.resolve(specifier)
     })
-    this.lastDownloadPublishAt = 0
     this.resolver.onProgress = (event) => this.#onDownloadProgress(event)
+
     // The window component owns the supervisor; a headless mount never creates one.
     this.dockComponent = createDockComponent({
       config,
@@ -172,24 +98,16 @@ export class QuickDockHost {
       publish: () => this.publish(),
       pageUrl: () => this.pageUrl(),
       rootDir: ROOT_DIR,
-      token: this.token,
-      // A hidden/closed/crashed dock can no longer answer: hand the pending
-      // approval back to DSH instead of waiting for the timeout.
-      onInactive: () => this.broker.reset()
+      token: ''
     })
-    // Serving HTML needs no Electron, so the service owns the page renderer; the
-    // dock component only owns the window and its supervisor.
+
     this.page = new PageRenderer({
-      rootDir: ROOT_DIR,
       theme: this.theme,
       locale: this.locale,
-      trace: this.trace,
-      // Height of the docked pane when the unified layout shares one window.
-      displayHeight: this.config.displayHeight
+      trace: this.trace
     })
     this.api = createApiRouter({
       app: this,
-      token: this.token,
       trace: this.trace,
       logger: this.dsh.logger
     })
@@ -201,40 +119,77 @@ export class QuickDockHost {
     return this.locale.t(key, params)
   }
 
-  /** Current state snapshot pushed to dock pages. */
-  snapshot() {
-    return this.snapshotBuilder()
+  /* ------------------------------ addressing ------------------------------ */
+
+  /** The loopback port the listener uses (0 disables it, used by tests). */
+  serverPort() {
+    const value = Number(this.config?.port)
+    return Number.isFinite(value) ? Math.trunc(value) : DEFAULT_PORT
   }
 
-  /** Absolute page URL (token included) used by the dock process and by tests. */
+  /**
+   * DSH's own Web UI URL, carrying the launch token and the dock marker.
+   *
+   * `connection.authenticatedUrl` is the supported way to hand a browser-capable
+   * client the page: without it the origin answers 401.
+   */
+  webUiUrl() {
+    const base = this.dsh.webApp?.getAdvertisedUrl?.() || this.dsh.webServer?.getOrigin?.()
+    if (!base) return null
+    let url = base
+    try {
+      const authed = this.dsh.connection?.authenticatedUrl?.(base)
+      if (authed) url = authed
+    } catch (_) { /* fall back to the plain origin */ }
+    try {
+      const parsed = new URL(url)
+      // Marker for the page inside the iframe: the dock-only customisations key
+      // off it, so the normal window is untouched.
+      parsed.searchParams.set('dock', '1')
+      return parsed.href
+    } catch (_) {
+      return url
+    }
+  }
+
+  /**
+   * Which session the dock window should show, and whether it should reload.
+   *
+   * The dock window is a separate app instance (in an iframe), so the Dock button
+   * cannot simply "be" the conversation: the shell polls this and forwards the
+   * change to the app, which navigates to it explicitly.
+   * @returns {{sessionId: string, seq: number, reloadSeq: number}} target and counters.
+   */
+  dockTargetInfo() {
+    return { sessionId: this.state.sessionId || '', seq: this.dockTargetSeq, reloadSeq: this.dockReloadSeq }
+  }
+
+  /** Ask an already-open dock window to reload the app inside its iframe. */
+  requestDockReload() {
+    this.dockReloadSeq += 1
+    return { ok: true, running: Boolean(this.dock && this.dock.alive) }
+  }
+
+  /** The shell page address (no token: the fixed port is the handshake). */
   pageUrl() {
-    return this.dsh.webServer.getOrigin() + PAGE_PATH + '?t=' + this.token
+    const port = (this.state.server && this.state.server.port) || this.serverPort()
+    return 'http://' + BIND_HOST + ':' + port + PAGE_PATH + '?view=frame'
   }
 
   /* ------------------------------ lifecycle ------------------------------ */
 
-  /** Subscribe, register routes and warm catalogs. */
   /**
    * Mount the requested components.
-   *
-   * 'service' is the client-agnostic API (routes, SSE, folds, interactions) and
-   * 'dock' is the window supervisor on top of it. They are mounted from the same
-   * Host object but can be enabled separately, so the API can run headless.
    * @param {{service?: boolean, dock?: boolean}} [components] what to mount.
    */
   start(components) {
-    setTimeout(() => this.#probeClientModules(), 1200)
     const service = components ? components.service !== false : true
     const dock = service && (components ? components.dock !== false : true)
     this.state.components = { service, dock }
     if (this.dockComponent) this.dockComponent.mount({ dock })
     if (service) {
-      this.#watchEvents()
-      this.#registerRoutes()
+      this.#startServer()
       this.#registerBridge()
-      this.catalogService.refreshAll()
-      void this.index.refresh()
-      this.#startTimers()
     }
     const version = readVersion(ROOT_DIR)
     this.state.version = version
@@ -242,6 +197,11 @@ export class QuickDockHost {
       + ' commit=' + (version.hash || 'unknown') + ' startedAt=' + version.startedAt
       + ' components=' + (service ? 'service' : '-') + (dock ? '+dock' : ''))
     this.dsh.logger?.info?.('quickdock: host half loaded ' + (version.hash || ''))
+    // Resident mode: the window is up before the first Dock click.
+    if (service && dock && this.config.autoLaunch) {
+      const launchTimer = setTimeout(() => this.dock?.summon(), 600)
+      this.#disposeOn(() => clearTimeout(launchTimer), 'quickdock: launch timer')
+    }
   }
 
   /** The Electron supervisor (null when the dock component is not mounted). */
@@ -249,34 +209,23 @@ export class QuickDockHost {
     return this.dockComponent ? this.dockComponent.dock : null
   }
 
-/** Summon the windows, unless the dock component is disabled. */
-  #summonDock() {
-    if (!this.dockEnabled || !this.dockComponent) {
-      this.trace('dock component disabled: summon ignored')
-      return false
-    }
-    return this.dockComponent.summon()
-  }
-
   /**
    * Mount the window component on an already running Host.
    *
-   * This is what `dsh-quickdock/dock` calls: the service entry owns the API and
-   * the dock entry only adds the windows.
+   * This is what `dsh-quickdock/dock` calls: the service entry owns the listener
+   * and the bridge, the dock entry only adds the windows.
    * @returns {boolean} whether the component is mounted.
    */
   mountDock() {
     if (!this.dockComponent) return false
     if (this.state.components) this.state.components.dock = true
     const mounted = this.dockComponent.mount({ dock: true })
-    // Mount only: the window appears when a session binds or the user asks for it.
     if (mounted) {
       const supervisor = this.dock
       if (supervisor && typeof supervisor.applyWindow === 'function') {
         supervisor.applyWindow({ alwaysOnTop: this.state.dock.alwaysOnTop })
       }
     }
-    this.publish()
     return mounted
   }
 
@@ -284,12 +233,6 @@ export class QuickDockHost {
   unmountDock() {
     if (this.dockComponent) this.dockComponent.dispose()
     if (this.state.components) this.state.components.dock = false
-    this.publish()
-  }
-
-  /** Whether the window component is mounted. */
-  get dockEnabled() {
-    return Boolean(this.state.components && this.state.components.dock)
   }
 
   /** Snapshot of the runtime download, polled by the Client footer badge. */
@@ -298,10 +241,9 @@ export class QuickDockHost {
   }
 
   /**
-   * Track the runtime download for the UI.
-   *
-   * Progress is throttled: the footer only needs a few updates per second, and
-   * publishing per chunk would flood every connected page.
+   * Track the runtime download for the UI (throttled: the footer only needs a
+   * few updates per second).
+   * @param {object} event progress event from the resolver.
    */
   #onDownloadProgress(event) {
     const download = this.state.download
@@ -309,7 +251,6 @@ export class QuickDockHost {
       download.active = false
       download.ok = Boolean(event.ok)
       download.error = event.error ? String(event.error) : ''
-      this.publish()
       return
     }
     if (!event) return
@@ -317,19 +258,14 @@ export class QuickDockHost {
     download.received = Number(event.received) || 0
     download.total = Number(event.total) || 0
     const now = Date.now()
-    if (now - this.lastDownloadPublishAt >= 400) {
-      this.lastDownloadPublishAt = now
-      this.publish()
-    }
+    if (now - this.lastDownloadPublishAt >= 400) this.lastDownloadPublishAt = now
   }
 
   /**
    * Prepare the Electron runtime in the background, right after the host mounts.
    *
-   * Only the desktop window needs Electron, and fetching it is ~100 MB, so doing
-   * it here keeps the first Dock click instant instead of stalling it behind a
-   * download. Failures stay in the log: the click path retries and reports them
-   * with a localized message, so nothing is silently swallowed.
+   * Only the window needs Electron, and fetching it is ~100 MB, so doing it here
+   * keeps the first Dock click instant instead of stalling behind a download.
    */
   prefetchElectron() {
     if (this.config?.prefetchElectron === false) return
@@ -346,87 +282,88 @@ export class QuickDockHost {
       .then((exe) => this.trace('electron prefetch: ready at ' + exe + ' (' + (Date.now() - started) + ' ms)'))
       .catch((error) => {
         this.trace('electron prefetch: failed: ' + String(error?.message || error))
-        // The first frame usually names the loader or module that broke.
         this.trace('electron prefetch stack: ' + String(error?.stack || '').split('\n').slice(0, 4).join(' | '))
       })
   }
 
-  #watchEvents() {
-    this.ctx.on('theme/change', (snapshot) => {
-      this.theme.acceptSnapshot(snapshot)
+  /* ------------------------------ transport ------------------------------ */
+
+  /**
+   * Serve the shell page and the API on a fixed loopback port.
+   *
+   * One address, no token: the port in the config is the whole handshake. The
+   * cost is that anything on this machine can call the API; that is the trade the
+   * fixed port buys, and `port` is the one setting to change when it is taken.
+   */
+  #startServer() {
+    const port = this.serverPort()
+    if (!(port > 0)) {
+      this.trace('server disabled: port=' + port)
+      return
+    }
+    this.server = createServer((req, res) => { void this.handleHttp(req, res) })
+    this.server.on('error', (error) => {
+      const code = String(error?.code || 'error')
+      this.state.server.ok = false
+      this.state.server.error = code
+      this.trace('server error on ' + BIND_HOST + ':' + port + ': ' + code
+        + (code === 'EADDRINUSE' ? ' (port busy: set config.port to a free port)' : ''))
+      this.dsh.logger?.warn?.('quickdock: cannot listen on %s:%s (%s); set config.port', BIND_HOST, port, code)
     })
-    this.ctx.on('session/event', (session, event) => this.#onSessionEvent(session, event))
-    this.ctx.on('agent/status', (payload) => this.#onAgentStatus(payload))
-    this.ctx.on('agent/assistant-stream', (payload) => this.#onAssistantStream(payload))
-
-    // Permission / model / reasoning can be changed in DSH's own UI while the
-    // dock is bound. They live in the session's projections, which announce
-    // themselves here, so the dock follows instead of keeping its last choice.
-    this.#subscribeProjectionFeed()
-
-    // Must prepend: DSH's own approval UI registers earlier in the waterfall.
-    this.ctx.on('approval/request', async (request, next) => {
-      if (!this.#dockCanAnswer(request)) return next()
-      this.trace('approval -> dock: ' + (request.toolName || '?') + ' ' + (request.reason || ''))
-      const decision = await this.broker.ask({
-        kind: 'approval',
-        toolName: request.toolName,
-        reason: request.reason ?? '',
-        // DSH already localizes this text for sandbox escalations.
-        displayReason: request.displayReason,
-        callId: request.callId ?? ''
-      }, request.signal)
-      // The dock went away before answering: DSH must take the request over,
-      // otherwise the user has no dialog left to allow it.
-      if (decision === DELEGATE) {
-        this.trace('approval -> DSH: dock is gone')
-        return next()
-      }
-      if (decision === null) return 'cancelled'
-      return decision ? 'allowed-once' : 'rejected'
-    }, { prepend: true })
-
-    this.ctx.on('user-questions/request', async (request, next) => {
-      if (!this.#dockCanAnswer(request)) return next()
-      const answer = await this.broker.ask({
-        kind: 'question',
-        questions: request.questions ?? []
-      }, request.signal)
-      if (answer === DELEGATE) return next()
-      // No answer (timeout / aborted): leave the request pending for DSH.
-      if (answer === null) return { pending: true }
-      return answer
-    }, { prepend: true })
+    this.server.listen(port, BIND_HOST, () => {
+      const address = this.server?.address()
+      const bound = address && typeof address === 'object' ? address.port : port
+      this.state.server.port = bound
+      this.state.server.ok = true
+      this.state.server.error = ''
+      this.trace('server listening on http://' + BIND_HOST + ':' + bound)
+    })
+    this.#disposeOn(() => {
+      const server = this.server
+      this.server = null
+      if (!server) return
+      try { server.close() } catch (_) { /* already closed */ }
+    }, 'quickdock: http server')
   }
 
-  #registerRoutes() {
-    this.ctx.effect(() => this.ctx.webServer.register({
-      kind: 'prefix',
-      path: PAGE_PATH,
-      handler: async (req, res) => {
-        const url = new URL(req.url ?? '/', 'http://x')
-        if (url.pathname === PAGE_PATH || url.pathname === PAGE_PATH + '/') {
-          if (url.searchParams.get('t') !== this.token) {
-            res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
-            res.end('invalid token')
-            return
-          }
-          const wanted = url.searchParams.get('view')
-          const view = wanted === VIEWS.display ? VIEWS.display
-            : wanted === VIEWS.todo ? VIEWS.todo
-              : VIEWS.input
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
-          res.end(this.page.render(view))
-          return
-        }
-        if (url.pathname.startsWith(API_PREFIX)) {
-          await this.api.handle(req, res, url)
-          return
-        }
-        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
-        res.end('not found')
+  /**
+   * Serve one page or API request.
+   * @param {import('node:http').IncomingMessage} req request.
+   * @param {import('node:http').ServerResponse} res response.
+   */
+  async handleHttp(req, res) {
+    const url = new URL(req.url ?? '/', 'http://' + BIND_HOST)
+    // The frame shell is on its own port; keep the wildcard so any local page or
+    // IDE webview can read the two read-only endpoints.
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Max-Age': '600'
+      })
+      res.end()
+      return
+    }
+    if (url.pathname === PAGE_PATH || url.pathname === PAGE_PATH + '/') {
+      const source = this.webUiUrl()
+      if (!source) {
+        res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('the DSH Web UI is not available in this composition')
+        return
       }
-    }), 'quickdock: page + api routes')
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end(this.page.renderFrame(source, {
+        systemControls: this.config?.windowControls === 'system'
+      }))
+      return
+    }
+    if (url.pathname.startsWith(API_PREFIX)) {
+      await this.api.handle(req, res, url)
+      return
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+    res.end('not found')
   }
 
   #registerBridge() {
@@ -438,965 +375,64 @@ export class QuickDockHost {
     }), 'quickdock: browser bridge route')
   }
 
-  #startTimers() {
-    // Session titles and running flags drift while a page is open.
-    const indexTimer = setInterval(() => {
-      if (!this.hub.sseSize) return
-      void this.index.refresh()
-    }, INDEX_TICKER_MS)
-    if (indexTimer.unref) indexTimer.unref()
-    this.#disposeOn(() => clearInterval(indexTimer), 'quickdock: session index ticker')
-
-    const catalogTimer = setTimeout(() => void this.catalogService.refreshModels(), CATALOG_WARMUP_MS)
-    this.#disposeOn(() => clearTimeout(catalogTimer), 'quickdock: catalog timer')
-
-    // DSH's own UI writes permission / model / reasoning on the SESSION, not on
-    // the dock, so the dock's copy goes stale unless it is re-read. The
-    // projection feed covers most changes as they commit; this ticker catches
-    // whatever the feed does not announce.
-    const settingsTimer = setInterval(() => {
-      // A cold composition may mount the plugin before the projections service
-      // is ready: the feed is retried here until it subscribes.
-      this.#subscribeProjectionFeed()
-      if (!this.hub.sseSize || !this.state.sessionId) return
-      if (this.#adoptSessionSettings(this.state.sessionId)) this.publish()
-    }, SETTINGS_SYNC_MS)
-    if (settingsTimer.unref) settingsTimer.unref()
-    this.#disposeOn(() => clearInterval(settingsTimer), 'quickdock: settings sync ticker')
-
-    if (this.config.autoLaunch) {
-      const launchTimer = setTimeout(() => void this.dock?.spawnDock(), 500)
-      this.#disposeOn(() => clearTimeout(launchTimer), 'quickdock: launch timer')
-      const retryTimer = setInterval(() => {
-        if (!this.dock?.child && !this.dock?.stopping) void this.dock?.spawnDock()
-      }, 30000)
-      if (retryTimer.unref) retryTimer.unref()
-      this.#disposeOn(() => clearInterval(retryTimer), 'quickdock: dock retry timer')
-    }
-
-    this.#disposeOn(() => {
-      if (this.streamFlushTimer) clearTimeout(this.streamFlushTimer)
-      this.hub.dispose()
-      this.broker.reset()
-      this.dock?.stop()
-    }, 'quickdock: dock lifecycle')
-  }
-
   #disposeOn(dispose, label) {
     this.ctx.effect(() => dispose, label)
   }
 
-  /* ------------------------------ events ------------------------------ */
+  /* ------------------------------ operations ------------------------------ */
 
-  #onLocaleChange(locale) {
-    this.state.locale = locale
-    this.hub.publishLocale(this.locale.snapshot())
-    this.publish()
-  }
-
-  #onSessionEvent(session, event) {
-    // Titles change as the conversation grows; the index follows slowly.
-    this.index.maybeRefresh()
-    // The pass-through log keeps every event of every session, whatever the dock
-    // renders: another client (an IDE plugin) filters on its own side.
-    const logged = this.events.append(session?.id, event)
-    if (logged && session?.id === this.state.sessionId) this.hub.publishEvent(logged)
-    if (!this.state.sessionId || session?.id !== this.state.sessionId) return
-    if (event?.type === 'turn/start') this.#clearStream()
-    this.#ensureFolder(session.id)
-    this.state.folders.get(session.id).apply(event)
-    // A turn header or a permission event can carry a settings change the
-    // projection feed may not announce; re-read the session's own values.
-    this.#adoptSessionSettings(session.id)
-    this.publish()
-  }
-
-  /**
-   * Listen to the session projection feed (idempotent).
-   *
-   * DSH announces every committed projection change here, which is what makes
-   * permission / model / reasoning follow DSH's own UI. The service can still be
-   * missing when the plugin mounts in a cold composition, so the caller retries;
-   * until then the settings ticker carries the sync.
-   */
-  #subscribeProjectionFeed() {
-    if (this.projectionFeed) return true
-    try {
-      const projections = this.dsh.projections
-      if (!projections || typeof projections.onChanged !== 'function') {
-        this.trace('projection feed unavailable: settings sync falls back to the ticker')
-        return false
-      }
-      this.ctx.effect(() => projections.onChanged((session) => {
-        if (this.#adoptSessionSettings(session?.id)) this.publish()
-      }), 'quickdock: session settings changes')
-      this.projectionFeed = true
-      this.trace('projection feed subscribed: settings follow DSH')
-      return true
-    } catch (error) {
-      this.trace('projection subscription failed: ' + String((error && error.message) || error))
-      return false
-    }
-  }
-
-  /**
-   * Adopt the permission / model / reasoning the bound session actually has.
-   *
-   * DSH's own UI writes these on the session, not on the dock, so the dock kept
-   * showing whatever it last sent. Returns whether the dock's copy changed; the
-   * caller publishes.
-   * @param {string} [sessionId] session to read (only the bound one is adopted).
-   * @returns {boolean} whether the dock's settings changed.
-   */
-  #adoptSessionSettings(sessionId) {
-    const id = String(sessionId || this.state.sessionId || '')
-    if (!id || id !== this.state.sessionId) return false
-    const settings = this.state.settings
-    const before = [settings.permission, settings.model, settings.reasoning].join('\u0000')
-    this.catalogService.syncSettingsFromSession(id)
-    const after = [settings.permission, settings.model, settings.reasoning].join('\u0000')
-    if (after === before) return false
-    this.trace('settings from DSH: permission=' + settings.permission
-      + ' model=' + (settings.model || '-') + ' reasoning=' + (settings.reasoning || '-'))
-    return true
-  }
-
-  #onAgentStatus(payload) {
-    const agent = payload?.agent
-    // Running flags belong to every session, not just the bound one.
-    this.index.maybeRefresh({ force: true })
-    if (!this.state.sessionId || agent?.id !== this.state.sessionId) return
-    if (agent.status !== 'running') this.#clearStream()
-    this.publish()
-  }
-
-  #onAssistantStream(payload) {
-    if (!this.state.sessionId || !payload?.frame) return
-    const sessionId = payload.agent?.id ?? payload.agent?.session?.id ?? null
-    if (sessionId && sessionId !== this.state.sessionId) return
-    try {
-      this.stream.apply(payload.frame)
-    } catch (error) {
-      this.trace('stream frame failed: ' + String(error?.message || error))
-    }
-    this.#scheduleStreamFlush()
-  }
-
-  #clearStream() {
-    if (!this.stream.clear()) return
-    this.#scheduleStreamFlush()
-  }
-
-  #scheduleStreamFlush() {
-    if (this.streamFlushTimer) return
-    this.streamFlushTimer = setTimeout(() => {
-      this.streamFlushTimer = null
-      this.publish()
-    }, STREAM_FLUSH_MS)
-    if (this.streamFlushTimer.unref) this.streamFlushTimer.unref()
-  }
-
-  #ensureFolder(sessionId) {
-    if (this.state.folders.has(sessionId)) return this.state.folders.get(sessionId)
-    // Switching sessions is a client capability, so several sessions can keep
-    // folded turns; bound the memory by evicting the oldest tracked one.
-    while (this.state.folders.size >= MAX_TRACKED_SESSIONS) {
-      const oldest = this.state.folders.keys().next().value
-      if (oldest === undefined || oldest === sessionId) break
-      this.state.folders.delete(oldest)
-    }
-    const folder = new StepFolder(this.config.maxSteps, (id) => this.trace('fold: merged duplicate row ' + id))
-    this.state.folders.set(sessionId, folder)
-    return folder
-  }
-
-  #sessionIdOf(request) {
-    if (!this.probedAgent) {
-      this.probedAgent = true
-      try {
-        this.trace('agent shape: ' + JSON.stringify(request && request.agent).slice(0, 220))
-      } catch (_) { /* ignore */ }
-    }
-    return request?.agent?.session?.id ?? request?.agent?.id ?? null
-  }
-
-  /**
-   * Whether the dock may claim this request: same session, process alive and a
-   * window really visible. A hidden dock must delegate, otherwise DSH waits for
-   * approvalTimeoutMs with nothing on screen.
-   */
-  #dockCanAnswer(request) {
-    const sessionId = this.#sessionIdOf(request)
-    const bound = this.state.sessionId
-    const live = Boolean(this.state.dock.running && this.state.dock.visible)
-    const sameSession = Boolean(sessionId && bound && sessionId === bound)
-    // Questions and approvals are only ours while the dock is up and looking at
-    // this very session; everything else is delegated back to DSH.
-    this.trace('delegate check: request=' + JSON.stringify(sessionId) + ' bound=' + JSON.stringify(bound)
-      + ' dock=' + live + ' -> ' + (sameSession && live ? 'dock' : 'DSH'))
-    return sameSession && live
-  }
-
-  /* ------------------------------ api actions ------------------------------ */
-
+  /** Adopt a theme reported by the Client half (used by the shell page). */
   acceptTheme(payload) {
     return this.theme.accept(payload)
   }
 
+  /** Adopt a locale reported by the Client half. */
   acceptLocale(value) {
     return this.locale.accept(value)
   }
 
-  answer(body) {
-    return this.broker.answer(body)
-  }
-
-  /** Catalog snapshot for the page menus. */
-  catalogs() {
-    return this.state.catalogs
-  }
-
-  refreshModels() {
-    return this.catalogService.refreshModels()
-  }
-
-  stepDetail(id, sessionId) {
-    const target = sessionId || this.state.sessionId
-    const folder = target ? this.state.folders.get(target) : null
-    return folder?.detailOf?.(id) || { args: '', result: '' }
-  }
-
-  /* --------------------------- client capabilities --------------------------- */
-
-  /**
-   * Capability manifest for non-dock clients (IDE plugins, editors).
-   *
-   * The dock is one client of this API. It does not expose switching or history,
-   * but the Host supports both: clients may select any workspace/session and
-   * read every turn. `state.steps` always carries the latest turn (what the dock
-   * renders); older turns come from /turns and /turn.
-   */
-  meta() {
-    return {
-      name: 'dsh-quickdock',
-      apiVersion: API_VERSION,
-      // Which components this instance mounted: a headless client can tell an
-      // API-only server from one that also owns the windows.
-      components: Object.assign({ service: true, dock: false }, this.state.components || {}),
-      capabilities: [
-        'state', 'stream', 'workspaces', 'sessions', 'select', 'bind', 'task',
-        'stop', 'turns', 'turn', 'step-detail', 'catalogs', 'settings', 'answer',
-        'theme', 'locale', 'events'
-      ],
-      // The dock UI binds the latest turn only; that is a client choice, not an
-      // API limit. Turn history is read through the two endpoints below.
-      turns: { latestInState: true, history: 'turns+turn', retention: 'maxSteps' },
-      // Complete per-session event stream; clients filter (see /events).
-      events: { replay: 'events', push: 'stream?events=1', retention: 'maxEvents+maxBytes' },
-      interactions: { approvals: 'claim-and-delegate', questions: 'claim-and-delegate' }
-    }
-  }
-
-  /** Workspaces a client can switch to (sessions are listed separately). */
-  listWorkspaces() {
-    const workspaces = this.dsh.workspaces().map((workspace) => ({
-      id: workspace.id,
-      name: workspace.name,
-      path: workspace.path,
-      sessionCount: workspace.sessionIds.length
-    }))
-    return { workspaceId: this.state.workspaceId, workspaces }
-  }
-
-  /**
-   * Sessions of one workspace (or every indexed session).
-   * @param {string} [workspaceId] undefined/empty = all workspaces.
-   */
-  listSessions(workspaceId) {
-    // Pickers deserve a fresh list; the refresh itself stays async/non-blocking.
-    this.index.maybeRefresh()
-    const workspaces = this.dsh.workspaces()
-    const workspace = workspaceId ? workspaces.find((row) => row.id === workspaceId) : null
-    if (workspaceId && !workspace) return { workspaceId, sessions: [] }
-    const allowed = workspace ? new Set(workspace.sessionIds) : null
-    const sessions = this.index.list().filter((row) => !allowed || allowed.has(row.sessionId))
-    if (allowed) {
-      const seen = new Set(sessions.map((row) => row.sessionId))
-      // A workspace can list a session the index has not seen yet (cold/blank).
-      for (const sessionId of allowed) {
-        if (seen.has(sessionId)) continue
-        sessions.push({
-          sessionId,
-          title: this.index.title(sessionId),
-          cwd: '',
-          updatedAt: 0,
-          running: false,
-          blank: true
-        })
-      }
-      sessions.sort((a, b) => b.updatedAt - a.updatedAt)
-    }
-    return {
-      workspaceId: workspace ? workspace.id : (workspaceId || null),
-      sessions: sessions.map((row) => ({
-        sessionId: row.sessionId,
-        title: row.title || this.index.title(row.sessionId),
-        cwd: row.cwd,
-        updatedAt: row.updatedAt,
-        running: row.running,
-        blank: row.blank
-      }))
-    }
-  }
-
-  /**
-   * Every turn of a session, newest last.
-   *
-   * Rows are only folded for sessions the Host attached to (the bound session);
-   * the previews come from DSH's `turnOutline` projection, which covers the whole
-   * log. A turn with `rows > 0` can be read with /turn.
-   * @param {string} [sessionId] defaults to the bound session.
-   */
-  listTurns(sessionId) {
-    const id = String(sessionId || this.state.sessionId || '')
-    if (!id) return { sessionId: null, outline: false, turns: [] }
-    const live = this.dsh.session(id)
-    const values = live ? this.dsh.projectionValues(live, ['turnOutline']) : {}
-    const outline = Array.isArray(values.turnOutline) ? values.turnOutline : null
-    const folder = this.state.folders.get(id) || null
-    const observed = new Map(folder ? folder.turnList().map((entry) => [entry.turn, entry]) : [])
-    const turns = []
-    const listed = new Set()
-    if (outline) {
-      for (const entry of outline) {
-        if (!entry || typeof entry.turn !== 'number') continue
-        const local = observed.get(entry.turn)
-        listed.add(entry.turn)
-        turns.push({
-          turn: entry.turn,
-          seq: Number(entry.seq) || 0,
-          prompt: typeof entry.prompt === 'string' ? entry.prompt : '',
-          response: typeof entry.response === 'string' ? entry.response : '',
-          rows: local ? local.rows : 0,
-          startedAt: local ? local.startedAt : '',
-          endedAt: local ? local.endedAt : ''
-        })
-      }
-    }
-    if (folder) {
-      for (const entry of folder.turnList()) {
-        if (listed.has(entry.turn)) continue
-        turns.push(Object.assign({ prompt: '', response: '' }, entry))
-      }
-    }
-    turns.sort((a, b) => a.turn - b.turn)
-    // The dock's "load earlier turns" pill depends on this list; log its size so a
-    // missing pill can be diagnosed from dock.log.
-    this.trace('turns(' + id + '): outline=' + (outline ? outline.length : 'none')
-      + ' local=' + observed.size + ' total=' + turns.length)
-    // One-shot probe: which projections and session fields could carry the rows
-    // of turns this fold never saw.
-    this.#probeHistory(live)
-    this.#probeGoal()
-    return { sessionId: id, outline: Boolean(outline), turns }
-  }
-
-  /**
-   * Rows of one turn of the bound session (all turns are retained backend-side;
-   * the dock simply renders the latest).
-   * @param {string|number} value turn number; empty = latest.
-   */
-  /** Log what history sources a live session exposes (temporary diagnostic). */
-  /** One-shot probe: where could the session goal live? */
-  /**
-   * The session's goal, when the host can see one.
-   *
-   * DSH keeps goals behind a service the plugin is not guaranteed to have, so
-   * every candidate is tried and a missing one simply means "no goal line".
-   * @returns {{objective: string, phase: string}|null} goal or null.
-   */
-  sessionGoal() {
-    if (!this.state.sessionId) return null
-    // The projection is the real source: 'goal' answers with {goal: {...}} once a
-    // goal exists (probed in host.log), while no goal service is registered.
-    try {
-      const live = this.dsh.session(this.state.sessionId)
-      if (live && typeof this.dsh.projectionValues === 'function') {
-        const values = this.dsh.projectionValues(live, ['goal', 'sessionGoal', 'goalState'])
-        const raw = values && values.goal
-        const goal = raw && raw.goal ? raw.goal : raw
-        const objective = goal && typeof goal.objective === 'string' ? goal.objective.trim() : ''
-        if (objective) {
-          return { objective, phase: String(goal.phase || 'active') }
-        }
-      }
-    } catch (_) { /* fall through to the services */ }
-    for (const name of ['goals', 'goal', 'sessionGoals', 'goalService']) {
-      try {
-        const service = this.ctx.get(name)
-        if (!service) continue
-        const read = service.get || service.current || service.of
-        const value = typeof read === 'function' ? read.call(service, this.state.sessionId) : null
-        if (!value) continue
-        const objective = String(value.objective || value.text || '').trim()
-        if (!objective) continue
-        return { objective, phase: String(value.phase || 'active') }
-      } catch (_) { /* try the next candidate */ }
-    }
-    return null
-  }
-
-  /**
-   * Ask DSH's client-module registry what it thinks this package contributes.
-   *
-   * The Dock button lives in client.js, and DSH serves a package's client bundle
-   * for the entry named after the package. When the button goes missing this is
-   * the only place that says why, so it runs once per Host.
-   */
-  #probeClientModules() {
-    if (this.probedModules) return
-    this.probedModules = true
-    try {
-      const registry = this.ctx.get('clientModules')
-      if (!registry) {
-        this.trace('clientModules service = missing')
-        return
-      }
-      for (const method of ['entries', 'roster', 'describe', 'list']) {
-        const fn = registry[method]
-        if (typeof fn !== 'function') continue
-        try {
-          const value = fn.call(registry)
-          this.trace('clientModules.' + method + ' = ' + JSON.stringify(value).slice(0, 900))
-        } catch (error) {
-          this.trace('clientModules.' + method + ' threw: ' + String(error && error.message || error))
-        }
-      }
-    } catch (error) {
-      this.trace('clientModules probe failed: ' + String((error && error.message) || error))
-    }
-  }
-
-  #probeGoal() {
-    if (this.probedGoal) return
-    this.probedGoal = true
-    for (const name of ['goals', 'goal', 'goalService', 'sessionGoals', 'goalStore', 'agentGoals']) {
-      let shape = 'missing'
-      try {
-        const service = this.ctx.get(name)
-        if (service) shape = typeof service + ':' + Object.keys(service || {}).join('|')
-      } catch (error) {
-        shape = 'threw'
-      }
-      this.trace('goal probe service ' + name + ' = ' + shape)
-    }
-    for (const key of ['goal', 'sessionGoal', 'goalState']) {
-      try {
-        const live = this.dsh.session(this.state.sessionId)
-        const value = this.dsh.projectionValues(live, [key])[key]
-        this.trace('goal probe projection ' + key + ' = '
-          + (value === undefined ? 'undefined' : JSON.stringify(value).slice(0, 160)))
-      } catch (error) {
-        this.trace('goal probe projection ' + key + ' threw')
-      }
-    }
-  }
-
-  #probeHistory(live) {
-    if (!live || this.probedHistory) return
-    this.probedHistory = true
-    try {
-      this.trace('probe session keys: ' + Object.keys(live).join(','))
-      const snap = live.eventsSnapshot
-      this.trace('probe eventsSnapshot: kind=' + (Array.isArray(snap) ? 'array:' + snap.length : typeof snap))
-      if (Array.isArray(snap) && snap.length) {
-        const sample = snap[0]
-        this.trace('probe event sample keys: ' + Object.keys(sample || {}).join(',')
-          + ' type=' + (sample && sample.type))
-      }
-      const log = live.log
-      this.trace('probe log keys: ' + Object.keys(log || {}).join(','))
-    } catch (error) {
-      this.trace('probe threw: ' + String(error && error.message))
-    }
-    try {
-      this.trace('probe projections: ' + Object.keys(this.dsh.projections || {}).join(','))
-    } catch (_) { /* ignore */ }
-    for (const key of ['messages', 'conversation', 'history', 'turnMessages', 'items', 'events', 'log']) {
-      try {
-        const value = this.dsh.projectionValues(live, [key])[key]
-        const shape = Array.isArray(value) ? 'array:' + value.length : typeof value
-        this.trace('probe projection ' + key + ' = ' + shape)
-      } catch (error) {
-        this.trace('probe projection ' + key + ' threw: ' + String(error && error.message))
-      }
-    }
-  }
-
-  /**
-   * Rows of a turn the live fold never saw, rebuilt from the session snapshot.
-   *
-   * The dock attaches mid-session, so its folder only holds events received
-   * after binding; DSH keeps the whole event list on the session object, and
-   * folding that list for one turn is cheap.
-   * @param {string} sessionId session id.
-   * @param {number} turn turn number.
-   * @returns {object[]|null} rows, or null when no snapshot is available.
-   */
-  #foldTurnFromSnapshot(sessionId, turn) {
-    const live = this.dsh.session(sessionId)
-    const events = live && Array.isArray(live.eventsSnapshot) ? live.eventsSnapshot : null
-    if (!events || !events.length) return null
-    const folder = new StepFolder(this.config.maxSteps)
-    let folded = 0
-    for (const event of events) {
-      if (!event || typeof event.type !== 'string') continue
-      try {
-        folder.apply(event)
-        folded += 1
-      } catch (_) { /* a malformed event must not break the read */ }
-      // Stop once the next turn has started: the replay keeps only its newest
-      // maxSteps rows, so folding on past the target would evict the very rows
-      // this read exists to return (that made every older turn come back empty).
-      const latest = folder.latestTurn()
-      if (latest !== null && latest > turn) break
-    }
-    const rows = folder.rows(turn)
-    this.trace('fold from snapshot(' + sessionId + ' turn ' + turn + '): events=' + events.length
-      + ' folded=' + folded + ' rows=' + (rows ? rows.length : 0))
-    return rows && rows.length ? rows : null
-  }
-
-  /**
-   * The agent's plan and goal, asked for on demand.
-   *
-   * They are persistent (todo/write is written to the session log), so a client
-   * that missed the event must be able to ask for them instead of waiting.
-   * @param {string} [sessionId] defaults to the bound session.
-   * @returns {{todos: object[], goal: object|null, source: string}} current state.
-   */
-  /**
-   * The plan as DSH itself sees it, when a projection carries it.
-   *
-   * The dock must not disagree with the main window: if DSH hides the panel
-   * (empty plan), an echo of an older todo/write in our fold would keep showing
-   * a list DSH does not have.
-   * @returns {{todos: object[], goal: object|null}|null} null when absent.
-   */
-  projectedPlan() {
-    if (!this.state.sessionId) return null
-    try {
-      const live = this.dsh.session(this.state.sessionId)
-      if (!live || typeof this.dsh.projectionValues !== 'function') return null
-      // The official projection is 'todos' (dsh-tool-todo registers it on
-      // sessionProjections). Its wire value is the whole list or null, and it
-      // goes null at every turn/start - which is exactly why the main window
-      // drops the panel while the dock was still echoing its own fold.
-      const keys = ['todos', 'todo', 'plan']
-      const values = this.dsh.projectionValues(live, keys) || {}
-      for (const key of keys) {
-        if (!Object.prototype.hasOwnProperty.call(values, key)) continue
-        const value = values[key]
-        if (value === null || value === undefined) return { todos: [], goal: null }
-        const list = Array.isArray(value) ? value : Array.isArray(value.todos) ? value.todos : null
-        if (!list) continue
-        return {
-          todos: list
-            .filter((row) => row && typeof row.content === 'string')
-            .map((row) => ({ content: row.content, status: String(row.status || 'pending') })),
-          goal: null
-        }
-      }
-      return null
-    } catch (_) {
-      return null
-    }
-  }
-
-  readPlan(sessionId) {
-    const target = String(sessionId || this.state.sessionId || '')
-    if (!target) return { todos: [], goal: null, source: 'none' }
-    const folder = this.state.folders.get(target) || null
-    // DSH's projection wins: it is what the main window is showing right now.
-    if (target === this.state.sessionId) {
-      const projected = this.projectedPlan()
-      if (projected) {
-        return { todos: projected.todos, goal: (folder && folder.goal) || this.sessionGoal(), source: 'projection' }
-      }
-    }
-    if (folder && folder.todos && folder.todos.length) {
-      return { todos: folder.todos, goal: folder.goal || null, source: 'fold' }
-    }
-    const live = this.dsh.session(target)
-    const events = live && Array.isArray(live.eventsSnapshot) ? live.eventsSnapshot : null
-    if (events && events.length) {
-      // Scan backwards: the newest write wins, no need to fold everything.
-      const scanned = new StepFolder(this.config.maxSteps)
-      let todos = folder && folder.todos && folder.todos.length ? folder.todos : null
-      let goal = (folder && folder.goal) || null
-      for (let index = events.length - 1; index >= 0 && (!todos || !goal); index -= 1) {
-        const event = events[index]
-        if (!event || typeof event.type !== 'string') continue
-        const isTodo = event.type === 'todo/write'
-        const isGoal = event.type === 'tool/ptc-dispatch'
-          ? GOAL_TOOLS.test(String((event.data && event.data.name) || ''))
-          : event.type === 'tool/result'
-        if (!isTodo && !isGoal) continue
-        scanned.apply(event)
-        if (isTodo && !todos && scanned.todos && scanned.todos.length) todos = scanned.todos
-        if (!goal && scanned.goal) goal = scanned.goal
-      }
-      goal = goal || this.sessionGoal()
-      return { todos: todos || [], goal, source: todos || goal ? 'snapshot' : 'empty' }
-    }
-    return { todos: [], goal: (folder && folder.goal) || this.sessionGoal(), source: 'empty' }
-  }
-
-  turnDetail(value, sessionId) {
-    const target = sessionId || this.state.sessionId
-    if (!target) return { sessionId: null, turn: null, observed: false, steps: [] }
-    const folder = this.state.folders.get(target) || null
-    const wantsTurn = value !== '' && value !== undefined && value !== null
-    // A session that was just attached has no folder yet (it is created by the
-    // first event), so history reads used to answer "nothing" until the next
-    // turn started. Fall back to the session snapshot instead.
-    if (!folder) {
-      const only = wantsTurn ? Number(value) : null
-      if (!Number.isFinite(only)) return { sessionId: target, turn: null, observed: false, steps: [] }
-      const rows = this.#foldTurnFromSnapshot(target, only)
-      return { sessionId: target, turn: only, observed: Boolean(rows), steps: rows || [] }
-    }
-    const turn = wantsTurn ? Number(value) : folder.latestTurn()
-    if (!Number.isFinite(turn)) {
-      return { sessionId: target, turn: null, observed: false, steps: [] }
-    }
-    if (wantsTurn && !folder.hasTurn(turn)) {
-      // A turn from before the dock attached: rebuild it from the session.
-      const rows = this.#foldTurnFromSnapshot(target, turn)
-      if (rows) return { sessionId: target, turn, observed: true, steps: rows }
-      return { sessionId: target, turn, observed: false, steps: [] }
-    }
-    const rows = folder.rows(turn)
-    // A turn the retention window touched keeps only its tail (or nothing), so
-    // the fold is only authoritative while it never evicted the turn. That is
-    // what made "load earlier turns" work once and then return empty batches:
-    // the second batch asked for turns whose rows were already gone.
-    if (rows.length && (!wantsTurn || folder.hasFullTurn(turn))) {
-      return { sessionId: target, turn, observed: true, steps: rows }
-    }
-    if (wantsTurn) {
-      const rebuilt = this.#foldTurnFromSnapshot(target, turn)
-      if (rebuilt) return { sessionId: target, turn, observed: true, steps: rebuilt }
-      return { sessionId: target, turn, observed: false, steps: [] }
-    }
-    return { sessionId: target, turn, observed: true, steps: rows }
-  }
-
-  /**
-   * Open the page's state stream.
-   * @param {object} req request (query carries `events=1` for raw event frames).
-   * @param {object} res response owned by the stream.
-   * @param {{events?: boolean}} [options] explicit opt-in from the router.
-   */
-  openStateStream(req, res, options = {}) {
-    this.hub.openStateStream(req, res, {
-      state: this.snapshot(),
-      theme: this.theme.current(),
-      locale: this.locale.snapshot()
-    }, { events: Boolean(options.events) })
-  }
-
-  /**
-   * Read the pass-through log. Clients filter; the Host never decides what is
-   * renderable.
-   * @param {{sessionId?: string, from?: string, limit?: string, type?: string}} query
-   */
-  listEvents(query = {}) {
-    const sessionId = query.sessionId || this.state.sessionId || ''
-    if (!sessionId) return { sessionId: '', events: [], latestSeq: 0, dropped: 0, retained: 0 }
-    return this.events.list(sessionId, {
-      from: query.from,
-      limit: query.limit,
-      type: query.type
-    })
-  }
-
-  /**
-   * Restart the whole dock service: drop the cached page assets, tear the
-   * process down and bring it back. Unlike restartDock this also picks up edits
-   * to web/*, which is what makes it useful while iterating on the page.
-   */
-  restartService() {
-    this.trace('service restart requested from the main window')
-    const dropped = this.page && typeof this.page.invalidate === 'function'
-      ? this.page.invalidate()
-      : 0
-    this.state.folders.clear()
-    this.stream.clear()
-    this.broker.reset()
-    this.dock?.stop()
-    const timer = setTimeout(() => {
-      this.#seedHistory(this.state.sessionId)
-      void this.#summonDock()
-    }, 500)
-    this.#disposeOn(() => clearTimeout(timer), 'quickdock: service restart timer')
-    return { dropped }
-  }
-
-  /**
-   * Restart the dock process: the window is torn down and a fresh one is
-   * summoned, which re-reads the page assets and the runtime.
-   */
+  /** Kill and respawn the window process. */
   restartDock() {
-    this.trace('restart requested from the main window')
     this.dock?.stop()
-    const timer = setTimeout(() => { void this.#summonDock() }, 500)
+    const timer = setTimeout(() => this.dock?.summon(), 400)
     this.#disposeOn(() => clearTimeout(timer), 'quickdock: restart timer')
   }
 
-  openBusStream(req, res) {
-    this.hub.openBusStream(req, res)
-  }
-
-  /** Tell the DSH main window to open the bound session. */
-  openSessionInDsh() {
-    const sessionId = this.state.sessionId
-    if (!sessionId) return { ok: false, error: this.t('host.noSession') }
-    if (!this.hub.busSize) return { ok: false, error: this.t('host.busOffline') }
-    this.hub.sendCommand({ type: 'open-session', sessionId })
-    this.trace('open-in-dsh: ' + sessionId)
-    return { ok: true }
-  }
-
-  /** Submit a task: fork/create a session, apply settings, queue the prompt. */
-  async postTask(body) {
-    const text = String(body?.text ?? '').trim()
-    if (!text) throw new Error(this.t('host.missingMessage'))
-    const controller = this.dsh.sessionController
-    if (!controller) throw new Error(this.t('host.noSessionController'))
-
-    const workspaceId = body?.workspaceId || this.state.workspaceId
-    const fork = body?.fork === true
-    let sessionId = body?.sessionId || (this.state.newSession ? null : this.state.sessionId)
-
-    if (fork && this.state.sessionId) {
-      const forked = await controller.fork({ sessionId: this.state.sessionId })
-      sessionId = forked.sessionId
-      this.state.sessionId = sessionId
-      this.state.newSession = false
-    } else if (!sessionId) {
-      const created = await controller.create({
-        ...(workspaceId ? { workspaceId } : {}),
-        ...(this.state.settings.agentPreset ? { agentPreset: this.state.settings.agentPreset } : {})
-      })
-      sessionId = created.sessionId
-      this.state.sessionId = sessionId
-      this.state.newSession = false
-      this.state.workspaceId = this.dsh.workspaceIdOf(sessionId) ?? workspaceId ?? this.state.workspaceId
-      // create() does not accept a permission preset.
-      this.catalogService.applyPermissionPreset(sessionId)
-    } else {
-      // A client may name a session it has not bound yet: follow it, so its
-      // events reach the folder and the newly opened turn becomes visible.
-      if (body?.sessionId && sessionId !== this.state.sessionId) {
-        this.state.sessionId = sessionId
-        this.state.newSession = false
-        this.state.workspaceId = this.dsh.workspaceIdOf(sessionId) ?? this.state.workspaceId
-        this.stream.clear()
-        this.catalogService.syncSettingsFromSession(sessionId)
-        this.broker.reset()
-      }
-      this.catalogService.applyPermissionPreset(sessionId)
-    }
-
-    // A model failure must not block the prompt (it is logged by the service).
-    await this.catalogService.applyModelSelection(sessionId)
-
-    // Keep the folded history: every prompt opens a new turn (turn/start), and
-    // the dock simply renders the newest one while other clients read the rest.
-    this.#ensureFolder(sessionId)
-
-    // prompt() calls signal.throwIfAborted() immediately: the signal is required.
-    const abort = new AbortController()
-    try {
-      await controller.prompt({
-        sessionId,
-        content: [{ type: 'text', text }],
-        requestId: 'qd-' + randomUUID(),
-        mode: this.config.submitMode === 'steer' ? 'steer' : 'queue',
-        clientTimeZone: localTimeZone()
-      }, abort.signal)
-    } catch (error) {
-      this.trace('prompt failed: ' + String(error?.message || error))
-      throw error
-    }
-
-    this.publish()
-    return { sessionId }
-  }
-
-  /** Switch workspace/session or start a blank conversation. */
-  postSelect(body) {
-    if (body?.workspaceId !== undefined) this.state.workspaceId = body.workspaceId || null
-    if (body?.sessionId !== undefined) {
-      this.state.sessionId = body.sessionId || null
-      this.state.newSession = body.newSession === true || !body.sessionId
-      if (this.state.sessionId) {
-        this.state.workspaceId = this.dsh.workspaceIdOf(this.state.sessionId) ?? this.state.workspaceId
-      }
-    }
-    if (body?.newSession === true) {
-      this.state.sessionId = null
-      this.state.newSession = true
-    }
-    this.stream.clear()
-    if (this.state.sessionId) {
-      // Show the session's real permission/model, not the dock's last choice.
-      this.catalogService.syncSettingsFromSession(this.state.sessionId)
-      this.#ensureFolder(this.state.sessionId)
-      this.broker.reset()
-    }
-    this.publish()
-    return {
-      ok: true,
-      workspaceId: this.state.workspaceId,
-      sessionId: this.state.sessionId,
-      newSession: this.state.newSession
-    }
-  }
-
-  /** Update a function key; bound sessions receive the change immediately. */
-  async postSettings(body) {
-    const errors = []
-    if (body?.permission !== undefined) {
-      this.state.settings.permission = String(body.permission)
-      if (this.state.sessionId && !this.catalogService.applyPermissionPreset(this.state.sessionId)) {
-        errors.push(this.t('host.permissionNotApplied'))
-      }
-    }
-    if (body?.model !== undefined) {
-      this.state.settings.model = String(body.model)
-      // Old effort ids may not exist on the new model.
-      if (body.reasoning === undefined) this.state.settings.reasoning = ''
-      if (this.state.sessionId && this.state.settings.model) {
-        if (!await this.catalogService.applyModelSelection(this.state.sessionId)) {
-          errors.push(this.t('host.modelNotApplied'))
-        }
-      }
-    }
-    if (body?.reasoning !== undefined) {
-      this.state.settings.reasoning = String(body.reasoning)
-      if (this.state.sessionId && this.state.settings.model) {
-        if (!await this.catalogService.applyModelSelection(this.state.sessionId)) {
-          errors.push(this.t('host.reasoningNotApplied'))
-        }
-      }
-    }
-    if (body?.agentPreset !== undefined) this.state.settings.agentPreset = String(body.agentPreset)
-    this.publish()
-    return errors.length ? { ok: false, error: errors.join('; ') } : { ok: true }
-  }
-
-  /** Stop the running turn of the bound session. */
-  async postStop() {
-    if (!this.state.sessionId) return { ok: false }
-    const controller = this.dsh.sessionController
-    if (!controller?.cancel) return { ok: false }
-    try {
-      this.stream.clear()
-      await controller.cancel({ sessionId: this.state.sessionId })
-    } catch (error) {
-      this.dsh.logger?.warn?.('quickdock: cancel failed: %s', String(error))
-      return { ok: false, error: String(error) }
-    }
-    this.publish()
-    return { ok: true }
-  }
-
-  /** Bind the dock to an existing session (the header button path). */
-  /** Log which event types a session actually has (one line, top dozen). */
-  #inventory(events) {
-    if (this.state.inventoried === events.length) return
-    this.state.inventoried = events.length
-    const counts = new Map()
-    for (const event of events) {
-      const type = event && typeof event.type === 'string' ? event.type : '?'
-      counts.set(type, (counts.get(type) || 0) + 1)
-    }
-    const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 24)
-    this.trace('event types: ' + top.map(([type, count]) => type + '(' + count + ')').join(' '))
-    const goalish = [...counts.keys()].filter((type) => /goal/i.test(type))
-    if (goalish.length) this.trace('goal-ish event types: ' + goalish.join(' '))
-  }
-
-  /** Seed goal + plan from the events a freshly attached session already has. */
-  #seedHistory(sessionId) {
-    try {
-      this.#seedHistoryInner(sessionId)
-    } catch (error) {
-      this.trace('seed history failed: ' + String((error && error.stack) || error))
-    }
-  }
-
-  #seedHistoryInner(sessionId) {
-    const live = this.dsh.session(sessionId)
-    const events = live && Array.isArray(live.eventsSnapshot) ? live.eventsSnapshot : null
-    if (!events || !events.length) return
-    const folder = this.#ensureFolder(sessionId)
-    // Fold the history first: the window then has the newest turn on its very
-    // first state push instead of waiting for the next event, and every older
-    // turn is already readable through /turn.
-    const folded = folder.adoptHistory(events)
-    const found = folder.seedFromHistory(events)
-    // Whatever the goal is called in this build, one of these finds it.
-    if (!folder.goal) folder.harvestGoal(events)
-    this.#inventory(events)
-    this.trace('seed history(' + sessionId + '): events=' + events.length
-      + ' folded=' + folded + ' rows=' + folder.rows().length + ' found=' + found)
-  }
-
+  /**
+   * Bind a session and tell the dock window to show it.
+   * @param {{sessionId?: string}} body request body.
+   * @returns {object} dock status for the Client to poll.
+   */
   postBind(body) {
     const sessionId = String(body?.sessionId ?? '')
     if (!sessionId) return { ok: false }
     this.state.sessionId = sessionId
-    this.state.newSession = false
-    this.state.workspaceId = this.dsh.workspaceIdOf(sessionId) ?? this.state.workspaceId
-    this.broker.reset()
-    this.stream.clear()
-    this.#ensureFolder(sessionId)
-    // A session attached mid-way already has a plan and maybe a goal: read them
-    // once instead of waiting for the next write.
-    this.#seedHistory(sessionId)
-    this.catalogService.syncSettingsFromSession(sessionId)
-    this.catalogService.refreshPermissions()
+    // Bump the target: the dock window is a separate app instance, and the shell
+    // forwards `seq` changes to it over postMessage.
+    this.dockTargetSeq += 1
     this.publish()
-    // On-demand mode: creating the dock here is the expected transition.
-    this.#summonDock()
-    this.dock?.notifyAttach(sessionId)
+    // On-demand mode: creating the dock here is the expected transition - but
+    // only when this composition actually mounted the window component.
+    if (this.state.components.dock) {
+      this.dock?.summon()
+      this.dock?.notifyAttach(sessionId)
+    }
     return {
       ok: true,
       dockRunning: Boolean(this.dock && this.dock.alive),
-      // A just-spawned dock is not ready yet; the Client keeps polling.
       starting: Boolean(this.dock && this.dock.starting),
       error: this.state.dock.error || undefined
     }
   }
 
-  /** Window-level settings from either page. */
-  postWindow(body) {
-    if (body?.alwaysOnTop !== undefined) this.state.dock.alwaysOnTop = Boolean(body.alwaysOnTop)
-    this.dock?.applyWindow({ alwaysOnTop: this.state.dock.alwaysOnTop })
-    // Both pin buttons read runtime.alwaysOnTop.
-    this.publish()
-    return { ok: true, ...this.state.dock }
-  }
-
-  /** Switch the dock binding without activity (legacy open path). */
-  postOpenSession(body) {
-    const sessionId = String(body?.sessionId ?? '')
-    if (!sessionId) return { ok: false }
-    this.state.sessionId = sessionId
-    this.publish()
-    return { ok: true }
+  /** Plugin metadata for the Client and for diagnostics. */
+  meta() {
+    return {
+      name: 'dsh-quickdock',
+      apiVersion: API_VERSION,
+      components: this.state.components,
+      capabilities: ['dock-target'],
+      version: this.state.version?.pkg || null
+    }
   }
 }

@@ -1,7 +1,7 @@
 /**
  * Adapter over the DSH host services.
  *
- * The plugin talks to a dozen optional services, and every call site used to
+ * The plugin talks to a handful of optional services, and every call site used to
  * repeat the same `try { ctx.get(...) }` guard. This facade keeps that knowledge
  * in one place: a missing service yields an empty result instead of throwing.
  */
@@ -18,13 +18,18 @@ export class DshFacade {
     return this.ctx.logger
   }
 
+  get connection() {
+    return this.ctx.connection
+  }
+
   /** Injected services (declared in the plugin's `inject` list). */
   get webServer() {
     return this.ctx.webServer
   }
 
-  get connection() {
-    return this.ctx.connection
+  /** The Web GUI this process serves (absent in a headless composition). */
+  get webApp() {
+    return this.#get('webApp')
   }
 
   get baseDir() {
@@ -39,65 +44,12 @@ export class DshFacade {
     }
   }
 
-  get sessions() {
-    return this.#get('sessions')
-  }
-
-  get sessionController() {
-    return this.#get('sessionController')
-  }
-
-  get agents() {
-    return this.#get('agents')
-  }
-
-  get projections() {
-    return this.#get('sessionProjections')
-  }
-
-  get permissionPresets() {
-    return this.#get('permissionPresets')
-  }
-
-  get agentPresets() {
-    return this.#get('agentPresets')
-  }
-
   get workspaceRegistry() {
     return this.#get('workspaceRegistry')
   }
 
   get theme() {
     return this.#get('theme')
-  }
-
-  /** One live session object, or undefined when it is not loaded. */
-  session(sessionId) {
-    if (!sessionId) return undefined
-    try {
-      return this.sessions?.get?.(sessionId)
-    } catch (_) {
-      return undefined
-    }
-  }
-
-  /** Agent status ('running', ...) or undefined. */
-  agentStatus(sessionId) {
-    if (!sessionId) return undefined
-    try {
-      return this.agents?.get?.(sessionId)?.status
-    } catch (_) {
-      return undefined
-    }
-  }
-
-  runningAgents() {
-    try {
-      const rows = this.agents?.list?.() ?? EMPTY
-      return Array.isArray(rows) ? rows : EMPTY
-    } catch (_) {
-      return EMPTY
-    }
   }
 
   /**
@@ -126,23 +78,5 @@ export class DshFacade {
       if (workspace.sessionIds.includes(sessionId)) return workspace.id
     }
     return null
-  }
-
-  /** Projection values for a session (empty object when unavailable). */
-  projectionValues(session, keys) {
-    try {
-      return this.projections?.snapshot?.(session, keys)?.values ?? {}
-    } catch (_) {
-      return {}
-    }
-  }
-
-  /** One projected state slice (undefined when unavailable). */
-  projectionState(session, key) {
-    try {
-      return this.projections?.stateOf?.(session, key)
-    } catch (_) {
-      return undefined
-    }
   }
 }

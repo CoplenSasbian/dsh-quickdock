@@ -3,11 +3,11 @@
 # The row named after the package is mandatory, not decoration. DSH builds the
 # Web page's client-module roster from the rows a bundle declares, and the client
 # bundle (the header Dock button) is resolved from the row whose name is the
-# package name. An empty patch mounts nothing: no Host API, no client module, no
+# package name. An empty patch mounts nothing: no Host, no client module, no
 # button. That is why this list is `[]` only when the plugin is meant to be off.
 #
-# One row mounts both components (Host API + Electron windows); set
-# `config.dock: false` to serve the API headlessly without windows.
+# One row mounts both components (the shell listener + the Electron window); set
+# `config.dock: false` to serve the shell page headlessly without a window.
 - insert:
     - id: dsh-quickdock
       name: dsh-quickdock
@@ -20,3 +20,10 @@
         # The header button this row's client bundle registers.
         headerButton: true
         headerButtonOrder: 1010
+        # Dock-shaped window, sized for the full Web UI.
+        width: 460
+        inputHeight: 820
+        # The embedded app posts no hit regions: keep the window clickable.
+        clickThrough: false
+        # The frame shell owns its title bar; the OS draws close/minimise over it.
+        windowControls: system

@@ -8,7 +8,6 @@
  *  3. the Client bundle's embedded catalog matches locale/*.json
  *  4. no CJK outside locale files, docs and the marked Client catalog
  *  5. UTF-8 + LF + final newline + no tabs/trailing spaces in source
- *  6. web/manifest.json lists existing assets in a valid order
  *
  * Deliberately dependency-free: `npm test` must work in a fresh checkout.
  */
@@ -23,10 +22,7 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'tmp', '.electron-test'])
 // The prototype and the packed default app are artifacts, kept as-is.
 const SKIP_FILES = new Set([
   'dock-prototype.html',
-  'default_app_test.asar',
-  // Build artifacts of web/render/src (minified; rebuilt by npm run build:render).
-  'web/render/bundle.js',
-  'web/render/bundle.css'
+  'default_app_test.asar'
 ])
 const DYNAMIC_PREFIXES = ['reasoning.']
 
@@ -115,23 +111,6 @@ for (const key of enKeys) {
   warn('locale/en.json', 'unused key "' + key + '"')
 }
 
-/* 2b. Page attributes that a user can read or hover must be localized. */
-for (const file of files.filter((entry) => /^web\/[^/]+\.html$/.test(entry.rel))) {
-  const html = readFileSync(file.full, 'utf8')
-  for (const match of html.matchAll(/<[^>]*>/g)) {
-    const tag = match[0]
-    for (const [attr, dataAttr] of [['title', 'data-i18n-title'], ['placeholder', 'data-i18n-placeholder'], ['aria-label', 'data-i18n-aria-label']]) {
-      const direct = new RegExp('\\s' + attr + '="([^"]+)"').exec(tag)
-      if (!direct) continue
-      if (tag.includes(dataAttr)) continue
-      // A brand name is the same in every locale.
-      if (direct[1] === 'QuickDock') continue
-      const line = html.slice(0, match.index).split('\n').length
-      fail(file.rel + ':' + line, 'hardcoded ' + attr + '="' + direct[1] + '" (use ' + dataAttr + ')')
-    }
-  }
-}
-
 /* 3. Client bundle catalog must mirror the JSON files. */
 const clientFile = files.find((entry) => entry.rel === 'client.js')
 if (!clientFile) {
@@ -199,29 +178,6 @@ for (const file of source) {
   const lines = text.split('\n')
   for (let index = 0; index < lines.length; index += 1) {
     if (/[ \t]+$/.test(lines[index])) fail(file.rel + ':' + (index + 1), 'trailing whitespace')
-  }
-}
-
-/* 6. Web asset manifest. */
-const manifestFile = files.find((entry) => entry.rel === 'web/manifest.json')
-if (!manifestFile) {
-  fail('web/manifest.json', 'missing')
-} else {
-  try {
-    const manifest = JSON.parse(readFileSync(manifestFile.full, 'utf8'))
-    const webDir = join(ROOT, 'web')
-    for (const asset of [...(manifest.styles || []), ...(manifest.scripts || [])]) {
-      try {
-        statSync(join(webDir, asset))
-      } catch (_) {
-        fail('web/manifest.json', 'asset not found: ' + asset)
-      }
-    }
-    const scripts = manifest.scripts || []
-    if (scripts[0] !== 'locale.js') fail('web/manifest.json', 'locale.js must load first')
-    if (scripts[scripts.length - 1] !== 'app.js') fail('web/manifest.json', 'app.js must load last')
-  } catch (error) {
-    fail('web/manifest.json', 'invalid JSON (' + error.message + ')')
   }
 }
 

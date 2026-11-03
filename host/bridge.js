@@ -20,24 +20,19 @@ export function createBridgeHandler(deps) {
       return { body: app.postBind({ sessionId }) }
     },
     summon() {
-      app.dock.summon()
+      app.dock?.summon()
       return { body: { ok: true, error: app.state.dock.error || undefined } }
     },
-    hide() {
-      app.dock.hide()
-      return { body: { ok: true } }
-    },
     reset() {
-      app.dock.resetWindows()
+      app.dock?.resetWindows()
       return { body: { ok: true } }
     },
-    'restart-service'() {
-      // Heavier than a window restart: cached page assets are dropped too.
-      app.restartService()
-      return { body: { ok: true } }
+    'reload-dock'() {
+      // Lighter than a restart: the window stays, the app inside is reloaded.
+      return { body: app.requestDockReload() }
     },
     restart() {
-      // A stuck window (stale page, wedged renderer) is best fixed by a fresh
+      // A stuck window (blank app, wedged renderer) is best fixed by a fresh
       // process: stop kills it and summon brings a new one up.
       app.restartDock()
       return { body: { ok: true } }
@@ -47,8 +42,8 @@ export function createBridgeHandler(deps) {
       return {
         body: {
           ok: true,
-          running: app.dock.alive,
-          starting: app.dock.starting,
+          running: Boolean(app.dock?.alive),
+          starting: Boolean(app.dock?.starting),
           error: app.state.dock.error || '',
           // Non-blocking: the footer badge polls this while Electron downloads.
           download: typeof app.downloadProgress === 'function' ? app.downloadProgress() : undefined

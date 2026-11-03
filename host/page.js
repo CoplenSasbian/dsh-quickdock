@@ -1,141 +1,191 @@
 /**
- * Dock page renderer.
+ * The frame shell page.
  *
- * Both windows are single documents served by the Host: CSS, theme variables,
- * locale messages and page scripts are inlined so the page makes no extra
- * requests and has its final colors and language on the first paint.
+ * The dock window loads this page, never the DSH Web UI directly: a foreign page
+ * cannot provide a draggable title bar, and it cannot be reloaded or driven from
+ * outside. The shell owns the chrome (drag, sidebar, pin, window controls) and
+ * puts the app in an iframe below it.
+ *
+ * Everything the shell needs from the app travels over `postMessage`; see the
+ * script at the end of the document for the message table.
  */
 
-import { readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
-
-import { VIEWS } from './constants.js'
 import { htmlLang } from './locale.js'
 import { themeCss } from './theme.js'
 
-/**
- * Serialize a value into an inline script without breaking out of <script>.
- * @param {unknown} value JSON value.
- * @returns {string} safe JSON literal.
- */
-function scriptJson(value) {
-  return JSON.stringify(value).replace(/</g, '\\u003c')
+/** Attribute-safe escaping for a URL that is written into the shell HTML. */
+function escapeAttribute(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 export class PageRenderer {
   /**
-   * @param {{rootDir: string, theme: object, locale: object,
-   *          trace?: (message: unknown) => void}} deps
+   * @param {{theme: object, locale: object, trace?: Function}} deps
    */
   constructor(deps) {
-    this.webDir = join(deps.rootDir, 'web')
     this.theme = deps.theme
     this.locale = deps.locale
     this.trace = deps.trace || (() => {})
-    this.assets = null
-    // Height of the docked pane when everything shares one window.
-    this.displayHeight = deps.displayHeight || 420
   }
 
   /**
-   * Drop the cached assets so the next page load reads web/ from disk again.
-   * A "restart the service" that did not do this would keep serving the old
-   * page to a brand new window.
-   * @returns {number} how many files were cached (0 when nothing was loaded).
-   */
-  invalidate() {
-    const cached = this.assets ? 1 + (this.assets.scripts ? 1 : 0) : 0
-    this.assets = null
-    this.trace('page assets invalidated')
-    return cached
-  }
-
-  /**
-   * Cache signature for the web directory: manifest plus every listed file.
-   * mtime + size is enough to notice an edit and cheap enough to check per render.
-   * @returns {string} signature, or '' when the directory cannot be read.
-   */
-  #signature() {
-    try {
-      const manifestPath = join(this.webDir, 'manifest.json')
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-      const names = [manifestPath]
-        .concat((manifest.styles || []).map((name) => join(this.webDir, name)))
-        .concat((manifest.scripts || []).map((name) => join(this.webDir, name)))
-        .concat(['index.html', 'display.html'].map((name) => join(this.webDir, name)))
-      const parts = []
-      for (const file of names) {
-        try {
-          const stat = statSync(file)
-          parts.push(file + ':' + stat.mtimeMs + ':' + stat.size)
-        } catch (_) {
-          parts.push(file + ':missing')
-        }
-      }
-      return parts.join('|')
-    } catch (_) {
-      return ''
-    }
-  }
-
-  /** Read the web asset manifest and every listed file once. */
-  #load() {
-    // Page edits are the most common change while working on the dock; noticing
-    // them here means they need no plugin reload, only a fresh window.
-    const signature = this.#signature()
-    if (this.assets && this.signature === signature) return this.assets
-    if (this.assets) this.trace('page assets changed on disk, reloading')
-    this.signature = signature
-    const manifest = JSON.parse(readFileSync(join(this.webDir, 'manifest.json'), 'utf8'))
-    const read = (name) => {
-      try {
-        return readFileSync(join(this.webDir, name), 'utf8')
-      } catch (error) {
-        this.trace('page asset missing: ' + name + ' (' + error + ')')
-        return ''
-      }
-    }
-    this.assets = {
-      styles: (manifest.styles || []).map(read).join('\n'),
-      scripts: (manifest.scripts || []).map(read).join('\n'),
-      html: {
-        [VIEWS.input]: read('index.html'),
-        [VIEWS.display]: read('display.html'),
-    // The task window reuses the input page: the view attribute hides the
-    // composer and leaves only the task card.
-    [VIEWS.todo]: read('index.html')
-      }
-    }
-    return this.assets
-  }
-
-  /**
-   * Render one view.
-   * @param {'input'|'display'} view which window to render.
+   * Render the frame shell.
+   * @param {string} src absolute, already-authenticated Web UI URL.
+   * @param {{systemControls?: boolean}} [options] the OS draws close/minimise.
    * @returns {string} complete HTML document.
    */
-  render(view) {
-    const assets = this.#load()
-    const html = assets.html[view] || assets.html[VIEWS.input]
-    const locale = this.locale.locale
-    const shell = {
-      lang: htmlLang(locale),
-      scheme: this.theme.colorScheme(),
-      theme: themeCss(this.theme.current()),
-      i18n: '<script>window.__QD_I18N__ = ' + scriptJson(this.locale.snapshot()) + ';</script>'
+  renderFrame(src, options) {
+    const scheme = this.theme.colorScheme()
+    const theme = themeCss(this.theme.current())
+    const href = escapeAttribute(src)
+    // With the OS controls the platform draws close/minimise inside the bar: drop
+    // our own close button and keep the right side clear for them.
+    const system = Boolean(options && options.systemControls)
+    const barClass = system ? ' qd-frame-bar--system' : ''
+    const closeButton = system ? '' : '\n    <button type="button" data-action="close" title="Close">✕</button>'
+    return `<!doctype html>
+<html lang="${htmlLang(this.locale.locale)}" data-theme="${scheme}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuickDock</title>
+${theme}
+<style>
+  :root { color-scheme: ${scheme}; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    display: flex; flex-direction: column;
+    background: var(--dsw-alias-bg-base, #1b1b1c); color: var(--dsw-alias-label-primary, #e9e9ec);
+    font: 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .qd-frame-bar {
+    flex: 0 0 34px; height: 34px; display: flex; align-items: center; gap: 8px;
+    padding: 0 8px 0 12px; background: #1b1b1c;
+    border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.08));
+    -webkit-app-region: drag; user-select: none;
+  }
+  .qd-frame-title {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap;
+    text-overflow: ellipsis; opacity: .72; letter-spacing: .02em; font-size: 11px;
+  }
+  .qd-frame-bar button {
+    -webkit-app-region: no-drag; width: 28px; height: 22px; display: flex;
+    align-items: center; justify-content: center; border: 0; border-radius: 7px;
+    background: transparent; color: inherit; opacity: .8; cursor: pointer; font-size: 13px;
+  }
+  .qd-frame-bar button:hover { background: rgba(255,255,255,.14); opacity: 1; }
+  .qd-frame-bar button[data-on="1"] { background: rgba(88,158,255,.42); color: #fff; opacity: 1; }
+  .qd-frame-bar button[data-action="close"]:hover { background: rgba(232,72,72,.8); color: #fff; }
+  .qd-frame-bar button[data-action="sidebar"] { width: 26px; }
+  .qd-frame-bar button[data-action="sidebar"][data-expanded="1"] { background: rgba(255,255,255,.14); opacity: 1; }
+  .qd-frame-bar button svg { width: 16px; height: 16px; display: block; }
+  /* Room for the OS close/minimise/maximise drawn over the bar's right edge. */
+  .qd-frame-bar--system { padding-right: 146px; }
+  iframe { flex: 1 1 auto; width: 100%; border: 0; display: block; background: #fff; }
+</style>
+</head>
+<body>
+  <div class="qd-frame-bar${barClass}">
+    <button type="button" data-action="sidebar" title="Toggle sidebar" data-expanded="0"><svg viewBox="0 0 16 16" fill="none" stroke-width="1" aria-hidden="true"><path d="M13.5 1.5H2.5C1.94772 1.5 1.5 1.94772 1.5 2.5V13.5C1.5 14.0523 1.94772 14.5 2.5 14.5H13.5C14.0523 14.5 14.5 14.0523 14.5 13.5V2.5C14.5 1.94772 14.0523 1.5 13.5 1.5Z" stroke="currentColor"></path><path d="M5.5 1.5V14.5" stroke="currentColor"></path></svg></button>
+    <span class="qd-frame-title">DeepSeek Harness</span>
+    <button type="button" data-action="pin" title="Pin on top" data-on="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"></path><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path></svg></button>${closeButton}
+  </div>
+  <iframe src="${href}" allow="clipboard-read; clipboard-write" referrerpolicy="no-referrer"></iframe>
+  <script>
+  (function () {
+    var api = window.quickDock;
+    var frame = document.querySelector('iframe');
+    var origin = null;
+    try { origin = frame ? new URL(frame.src).origin : null } catch (error) { origin = null }
+
+    /* ---- shell -> app ---- */
+    function tell(message) {
+      if (!frame || !origin) return;
+      try { frame.contentWindow.postMessage(message, origin) } catch (error) { /* frame gone */ }
     }
-    // Replacement functions keep '$&' / "$'" in the sources literal.
-    const put = (value) => () => value
-    return html
-      .replace('<!--QD_THEME-->', put(shell.theme))
-      .replace('<!--QD_I18N-->', put(shell.i18n))
-      .replace('<!--QD_STYLES-->', put('<style>' + assets.styles + '</style>'))
-      .replace('</head>', put('<style>:root{--qd-pane-height:' + Math.round(this.displayHeight || 420) + 'px}</style>'
-        + '<script>window.__QD_PANE_HEIGHT__ = ' + Math.round(this.displayHeight || 420) + ';</script></head>'))
-      .replace('<!--QD_SCRIPT-->', put('<script>' + assets.scripts + '</script>'))
-      .replace(/<html[^>]*>/, put('<html lang="' + shell.lang + '" data-theme="' + shell.scheme + '">'))
-      // One page serves three windows: tell it which one it is.
-      .replace("window.__QD_VIEW__ = 'input'", put("window.__QD_VIEW__ = '" + view + "'"))
-      .replace("window.__QD_VIEW__ = 'display'", put("window.__QD_VIEW__ = '" + view + "'"))
+
+    var sidebarButton = document.querySelector('[data-action="sidebar"]');
+    if (sidebarButton) {
+      sidebarButton.addEventListener('click', function () { tell({ type: 'quickdock:toggle-sidebar' }) });
+    }
+
+    var lastTargetSeq = -1;
+    var lastReloadSeq = -1;
+
+    function reloadApp() {
+      // A cross-origin frame cannot be asked to reload through its location, but
+      // assigning its own src is allowed and does exactly that.
+      if (!frame) return;
+      try { frame.src = frame.src } catch (error) { /* ignore */ }
+    }
+
+    function syncTarget() {
+      fetch('/quickdock/api/dock-target', { cache: 'no-store' })
+        .then(function (response) { return response.json() })
+        .then(function (info) {
+          if (!info) return;
+          if (typeof info.reloadSeq === 'number' && info.reloadSeq !== lastReloadSeq) {
+            var first = lastReloadSeq === -1;
+            lastReloadSeq = info.reloadSeq;
+            if (!first) reloadApp();
+          }
+          if (!info.sessionId || info.seq === lastTargetSeq) return;
+          lastTargetSeq = info.seq;
+          tell({ type: 'quickdock:open-session', sessionId: info.sessionId });
+        })
+        .catch(function () {});
+    }
+
+    /* ---- app -> shell ---- */
+    window.addEventListener('message', function (event) {
+      if (!frame || event.source !== frame.contentWindow) return;
+      var data = event.data;
+      if (!data) return;
+      if (data.type === 'quickdock:sidebar-state') {
+        if (sidebarButton) sidebarButton.setAttribute('data-expanded', data.expanded ? '1' : '0');
+        return;
+      }
+      if (data.type === 'quickdock:ready') {
+        // The dock window follows the session the Dock button bound.
+        lastTargetSeq = -1;
+        syncTarget();
+      }
+    });
+
+    // The app is cross-origin: postMessage is the whole channel, plus this poll
+    // for targets bound while the window is already open.
+    if (frame) {
+      frame.addEventListener('load', function () {
+        tell({ type: 'quickdock:context', dock: true, host: 'desktop' });
+        lastTargetSeq = -1;
+        syncTarget();
+      });
+    }
+    setInterval(syncTarget, 1200);
+    setTimeout(syncTarget, 800);
+
+    /* ---- window controls (only present in the Electron window) ---- */
+    if (!api) return;
+    var pin = document.querySelector('[data-action="pin"]');
+    var close = document.querySelector('[data-action="close"]');
+    if (pin) pin.addEventListener('click', function () {
+      var on = pin.getAttribute('data-on') !== '1';
+      pin.setAttribute('data-on', on ? '1' : '0');
+      Promise.resolve(api.setAlwaysOnTop(on)).catch(function () {
+        pin.setAttribute('data-on', on ? '0' : '1');
+      });
+    });
+    if (close) close.addEventListener('click', function () { api.hide(); });
+    Promise.resolve(api.getState()).then(function (state) {
+      if (state && state.alwaysOnTop && pin) pin.setAttribute('data-on', '1');
+    }).catch(function () {});
+  })();
+  </script>
+</body>
+</html>`
   }
 }
