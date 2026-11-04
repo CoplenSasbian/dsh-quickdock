@@ -72,7 +72,7 @@ test('client bundle: registers exactly one module, under the package id', () => 
   assert.strictEqual(plugin.inject.join(','), 'slots', 'reading ctx.slots requires the slots service')
 })
 
-test('client bundle: apply registers the header Dock button', async () => {
+test('client bundle: apply registers the header Dock button', () => {
   const { plugin } = materialise()
   const calls = []
   const ctx = {
@@ -87,8 +87,7 @@ test('client bundle: apply registers the header Dock button', async () => {
     logger: { warn() {}, info() {} },
     effect: () => {}
   }
-  // apply() reads the configuration first, so it settles asynchronously.
-  await plugin.apply(ctx)
+  plugin.apply(ctx)
   assert.deepStrictEqual(calls[0], ['inject', HEADER_SLOT], 'the button lives in the session header')
   const registered = calls.find((row) => row[0] === 'register' && row[1] === HEADER_SLOT)
   assert.ok(registered, 'a button was registered')

@@ -504,7 +504,6 @@ export class QuickDockHost {
     this.config.autoLaunch = config.autoLaunch
     this.config.prefetchElectron = config.prefetchElectron
     this.config.headerButton = config.headerButton
-    this.config.headerButtonOrder = config.headerButtonOrder
     this.config.ballIcon = config.ballIcon
     this.config.ballAlwaysVisible = config.ballAlwaysVisible
     this.config.snapToEdge = config.snapToEdge

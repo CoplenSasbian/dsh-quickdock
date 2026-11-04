@@ -200,7 +200,6 @@
   "cfg.autoLaunch": "随插件启动窗口",
   "cfg.prefetchElectron": "预取桌面运行时",
   "cfg.headerButton": "显示标题栏 Dock 按钮",
-  "cfg.headerButtonOrder": "标题栏按钮顺序",
   "cfg.ballIcon.whale": "鲸鱼",
   "cfg.ballIcon.dot": "纯色圆点",
   "cfg.group.window": "窗口",

@@ -200,7 +200,6 @@
   "cfg.autoLaunch": "Open the window with the plugin",
   "cfg.prefetchElectron": "Prefetch the desktop runtime",
   "cfg.headerButton": "Show the header Dock button",
-  "cfg.headerButtonOrder": "Header button order",
   "cfg.ballIcon.whale": "Whale",
   "cfg.ballIcon.dot": "Plain dot",
   "cfg.group.window": "Window",

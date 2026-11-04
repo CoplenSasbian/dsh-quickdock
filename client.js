@@ -228,7 +228,6 @@ var MESSAGES = {
     'cfg.autoLaunch': 'Open the window with the plugin',
     'cfg.prefetchElectron': 'Prefetch the desktop runtime',
     'cfg.headerButton': 'Show the header Dock button',
-    'cfg.headerButtonOrder': 'Header button order',
     'cfg.ballIcon.whale': 'Whale',
     'cfg.ballIcon.dot': 'Plain dot',
     'cfg.group.window': 'Window',
@@ -437,7 +436,6 @@ var MESSAGES = {
     'cfg.autoLaunch': '随插件启动窗口',
     'cfg.prefetchElectron': '预取桌面运行时',
     'cfg.headerButton': '显示标题栏 Dock 按钮',
-    'cfg.headerButtonOrder': '标题栏按钮顺序',
     'cfg.ballIcon.whale': '鲸鱼',
     'cfg.ballIcon.dot': '纯色圆点',
     'cfg.group.window': '窗口',
@@ -625,7 +623,11 @@ async function waitForDockResult(timeoutMs) {
 
 /* ---------------- header button ---------------- */
 
+/** Whether the header Dock button is shown (config: headerButton). */
+let HEADER_ENABLED = true
+
 function SendToDock(props) {
+  if (!HEADER_ENABLED) return null
   const sessionId = props && props.sessionId
   if (!sessionId) return null
   const suffix = React.useRef(null)
@@ -1635,7 +1637,7 @@ function QuickDockSettings() {
   return el('div', { style: { display: 'flex', flexDirection: 'column', padding: '4px 0 24px' } }, rows)
 }
 
-async function apply(ctx) {
+function apply(ctx) {
   if (insideDockWindow()) {
     // This page is the dock, not the window that opens it: no header button, no
     // download badge - only the layout fixes below.
@@ -1664,23 +1666,20 @@ async function apply(ctx) {
     }
     return
   }
-  // The header button is switchable: read the configuration first, but never
-  // hang the plugin on a slow host.
-  const settings = await Promise.race([
-    bridge('config-get').catch(function () { return null }),
-    new Promise(function (resolve) { setTimeout(function () { resolve(null) }, 1500) })
-  ])
-  const config = settings && settings.config ? settings.config : {}
-  const headerEnabled = config.headerButton !== false
-  const headerOrder = Number.isFinite(config.headerButtonOrder) ? config.headerButtonOrder : 1010
+  // The header button is switchable; the answer arrives after registration, so the
+  // component hides itself instead of the slot being filled late (which DSH drops).
+  bridge('config-get').then(function (settings) {
+    const config = settings && settings.config
+    if (config && config.headerButton === false) HEADER_ENABLED = false
+  }).catch(function () { /* keep the default */ })
 
-  if (headerEnabled) try {
+  try {
     ctx.slots.inject(HEADER_SLOT, () => ctx.slots.register({
       name: HEADER_SLOT,
       id: PLUGIN_ID + '-send-to-dock',
       registrant: PLUGIN_ID,
       // order is the display order (priority is the slot's own overlap rule).
-      order: headerOrder
+      order: 1010
     }, SendToDock))
   } catch (error) {
     console.error('[dsh-quickdock] client apply failed (plugin disabled, web boot continues):', error)

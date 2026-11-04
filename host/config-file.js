@@ -33,8 +33,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   autoLaunch: false,
   prefetchElectron: true,
   // DSH integration
-  headerButton: true,
-  headerButtonOrder: 1010
+  headerButton: true
 })
 
 /** Numeric bounds applied to every stored value. */
