@@ -245,7 +245,9 @@ var MESSAGES = {
     'cfg.runtimeRedownload': 'Download again',
     'cfg.runtimeOpenFolder': 'Open runtime folder',
     'cfg.runtimeDownloading': 'Downloading',
-    'cfg.runtimeNetwork': 'Download failed: no network (check the proxy and try again)'
+    'cfg.runtimeNetwork': 'Download failed: no network (check the proxy and try again)',
+    'cfg.runtimeDefaultOption': 'Default',
+    'cfg.runtimeInstalled': 'downloaded'
   },
   zh: {
     'app.displayTitle': 'QuickDock 执行过程',
@@ -464,7 +466,9 @@ var MESSAGES = {
     'cfg.runtimeRedownload': '重新下载',
     'cfg.runtimeOpenFolder': '打开运行时目录',
     'cfg.runtimeDownloading': '下载中',
-    'cfg.runtimeNetwork': '下载失败：网络不可用（检查网络或代理后重试）'
+    'cfg.runtimeNetwork': '下载失败：网络不可用（检查网络或代理后重试）',
+    'cfg.runtimeDefaultOption': '默认',
+    'cfg.runtimeInstalled': '已下载'
   }
 }
 
@@ -1598,7 +1602,7 @@ const CONFIG_FIELDS = [
   { group: 'ball', key: 'snapToEdge', kind: 'bool' },
   { group: 'ball', key: 'closeAction', kind: 'enum', options: ['quit', 'ball'] },
   { group: 'dock', key: 'headerButton', kind: 'bool' },
-  { group: 'runtime', key: 'electronVersion', kind: 'text' },
+  { group: 'runtime', key: 'electronVersion', kind: 'version' },
   { group: 'runtime', key: 'runtimeStatus', kind: 'status' },
   { group: 'runtime', key: 'runtimeRedownload', kind: 'action', action: 'runtime-redownload' },
   { group: 'runtime', key: 'runtimeOpenFolder', kind: 'action', action: 'runtime-open-folder' }
@@ -1631,6 +1635,7 @@ function QuickDockSettings() {
   const [config, setConfig] = React.useState(null)
   const [busy, setBusy] = React.useState(false)
   const [runtime, setRuntime] = React.useState(null)
+  const [versions, setVersions] = React.useState(null)
   const [note, setNote] = React.useState('')
 
   React.useEffect(function () {
@@ -1641,6 +1646,9 @@ function QuickDockSettings() {
     bridge('runtime-status').then(function (result) {
       if (alive && result && result.ok) setRuntime(result)
     }).catch(function () { /* host not up yet */ })
+    bridge('runtime-versions').then(function (result) {
+      if (alive && result && result.ok) setVersions(result)
+    }).catch(function () { /* offline: the field keeps the current value */ })
     return function () { alive = false }
   }, [])
 
@@ -1732,6 +1740,38 @@ function QuickDockSettings() {
           setTimeout(refreshRuntime, 400)
         }
       })
+    }
+    if (field.kind === 'version') {
+      const list = versions && Array.isArray(versions.versions) ? versions.versions : []
+      const installed = versions && Array.isArray(versions.installed) ? versions.installed : []
+      const fallback = String(value || '')
+      const options = list.slice()
+      if (fallback && !options.includes(fallback)) options.unshift(fallback)
+      return el('select', {
+        value: fallback,
+        disabled: busy,
+        'aria-label': t(CFG_PREFIX + field.key),
+        style: {
+          fontSize: '12px',
+          padding: '4px 6px',
+          borderRadius: '6px',
+          background: 'var(--dsw-alias-bg-layer-2, #232326)',
+          color: 'inherit',
+          border: '1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.12))'
+        },
+        onChange: function (event) {
+          const patch = {}
+          patch[field.key] = event.target.value
+          write(patch)
+          setTimeout(refreshRuntime, 400)
+        }
+      },
+      el('option', { value: '' }, t(CFG_PREFIX + 'runtimeDefaultOption') + (versions && versions.defaultVersion ? ' (' + versions.defaultVersion + ')' : '')),
+      options.map(function (entry) {
+        const isInstalled = installed.includes(entry)
+        return el('option', { key: entry, value: entry },
+          entry + (isInstalled ? ' · ' + t(CFG_PREFIX + 'runtimeInstalled') : ''))
+      }))
     }
     if (field.kind === 'status') {
       if (!runtime) return el('span', { style: VALUE_STYLE }, '…')

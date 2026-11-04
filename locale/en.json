@@ -215,5 +215,7 @@
   "cfg.runtimeRedownload": "Download again",
   "cfg.runtimeOpenFolder": "Open runtime folder",
   "cfg.runtimeDownloading": "Downloading",
-  "cfg.runtimeNetwork": "Download failed: no network (check the proxy and try again)"
+  "cfg.runtimeNetwork": "Download failed: no network (check the proxy and try again)",
+  "cfg.runtimeDefaultOption": "Default",
+  "cfg.runtimeInstalled": "downloaded"
 }

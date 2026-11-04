@@ -31,6 +31,13 @@ export function createBridgeHandler(deps) {
       app.dock?.resetWindows()
       return { body: { ok: true } }
     },
+    async 'runtime-versions'() {
+      try {
+        return { body: Object.assign({ ok: true }, await app.electronVersions()) }
+      } catch (error) {
+        return { status: 500, body: { ok: false, error: String(error?.message || error) } }
+      }
+    },
     'runtime-status'() {
       return { body: Object.assign({ ok: true }, app.runtimeInfo()) }
     },

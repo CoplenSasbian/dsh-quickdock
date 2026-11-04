@@ -10,7 +10,8 @@
 import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
-import { mkdirSync } from 'node:fs'
+import { get } from 'node:https'
+import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -27,6 +28,42 @@ import { createDockComponent } from './dock-component.js'
 import { readVersion } from './version.js'
 import { ThemeStore } from './theme.js'
 import { createTrace, traceLogPath } from './trace.js'
+
+/** Compare two dotted versions (a > b => positive). */
+function compareVersions(a, b) {
+  const left = String(a).split('.').map(Number)
+  const right = String(b).split('.').map(Number)
+  for (let index = 0; index < 3; index += 1) {
+    const diff = (left[index] || 0) - (right[index] || 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
+
+/** Minimal HTTPS JSON GET with a timeout (no global fetch assumptions). */
+function httpsJson(url, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const request = get(url, { headers: { accept: 'application/json' }, timeout: timeoutMs }, (response) => {
+      if (response.statusCode !== 200) {
+        response.resume()
+        reject(new Error('HTTP ' + response.statusCode))
+        return
+      }
+      let raw = ''
+      response.setEncoding('utf8')
+      response.on('data', (chunk) => { raw += chunk })
+      response.on('end', () => {
+        try {
+          resolve(JSON.parse(raw))
+        } catch (error) {
+          reject(error)
+        }
+      })
+    })
+    request.on('timeout', () => request.destroy(new Error('timeout')))
+    request.on('error', reject)
+  })
+}
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
@@ -298,6 +335,49 @@ export class QuickDockHost {
       this.trace('redownload failed: ' + String(error?.message || error))
     })
     return this.runtimeInfo()
+  }
+
+  /**
+   * Stable Electron versions the registry publishes, newest first.
+   * @returns {Promise<{versions: string[], installed: string[], defaultVersion: string, error: string}>} list.
+   */
+  async electronVersions() {
+    const now = Date.now()
+    if (this.versionCache && now - this.versionCache.at < 3600000) return this.versionCache.data
+    const root = this.resolver?.downloadRoot?.() || ''
+    const installed = []
+    try {
+      for (const name of readdirSync(root)) {
+        if (existsSync(join(root, name, 'electron.exe')) || existsSync(join(root, name, 'electron'))) installed.push(name)
+      }
+    } catch (_) {
+      /* no runtime folder yet */
+    }
+    const data = {
+      versions: [],
+      installed,
+      defaultVersion: DEFAULT_ELECTRON_VERSION,
+      current: this.resolver?.version || DEFAULT_ELECTRON_VERSION,
+      error: ''
+    }
+    const registries = ['https://registry.npmmirror.com/electron', 'https://registry.npmjs.org/electron']
+    for (const url of registries) {
+      try {
+        const body = await httpsJson(url, 5000)
+        const all = body && body.versions ? Object.keys(body.versions) : []
+        const stable = all.filter((version) => /^\d+\.\d+\.\d+$/.test(version))
+        stable.sort(compareVersions)
+        stable.reverse()
+        data.versions = stable.slice(0, 40)
+        break
+      } catch (error) {
+        data.error = String(error?.message || error)
+      }
+    }
+    if (!data.versions.includes(DEFAULT_ELECTRON_VERSION)) data.versions.unshift(DEFAULT_ELECTRON_VERSION)
+    if (!data.versions.includes(data.current)) data.versions.unshift(data.current)
+    this.versionCache = { at: now, data }
+    return data
   }
 
   /**

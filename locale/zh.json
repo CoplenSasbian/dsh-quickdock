@@ -215,5 +215,7 @@
   "cfg.runtimeRedownload": "重新下载",
   "cfg.runtimeOpenFolder": "打开运行时目录",
   "cfg.runtimeDownloading": "下载中",
-  "cfg.runtimeNetwork": "下载失败：网络不可用（检查网络或代理后重试）"
+  "cfg.runtimeNetwork": "下载失败：网络不可用（检查网络或代理后重试）",
+  "cfg.runtimeDefaultOption": "默认",
+  "cfg.runtimeInstalled": "已下载"
 }
