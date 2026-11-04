@@ -1,6 +1,6 @@
 {
   "name": "dsh-quickdock",
-  "version": "0.6.0-beta.4",
+  "version": "0.6.0-dev",
   "description": "QuickDock: a small always-on-top window around DSH's own Web UI, opened from a session header and pinned over other apps.",
   "type": "module",
   "main": "./index.js",

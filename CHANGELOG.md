@@ -3,43 +3,27 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
-## [0.6.0-beta.4] - 2026-11-04
+## [Unreleased]
 
-A resident disc () fought with the window: the disc stayed on
-the collapse button and the window opened around it, so every click toggled
-between the two and a collapse could not happen at all.
+Work after the published beta: the dock trims are fixed, settings reach the open
+window, and a resident disc no longer fights the window.
 
-### Fixed
+### Changed
 
-- A resident disc parks on the configured corner while the window is open, so it
-  never covers the collapse button.
-- Collapsing works even though a disc is already visible.
-- Clicking a resident disc no longer re-places a window that is already open (it
-  only focuses it); a hidden window still opens at the disc.
-
-## [0.6.0-beta.3] - 2026-11-04
-
-Settings now reach the running window: before, only the ball size was applied
-live, so toggling the disc options in Settings looked like it did nothing.
+- The dock always trims the shipped chrome: header action buttons, the
+  plugins/automations/more rows, the account menu and the conversation tab strip.
+  Restoring any of them is broken at dock size, so `trimHeaderActions`,
+  `trimSidebarPanels`, `trimAccountMenu` and `trimTabs` are gone from
+  `config.json` and from the settings page.
 
 ### Fixed
 
 - `config-set` pushes ball icon, always-visible disc, edge snapping,
-  collapse-on-close, first corner and always-on-top to the open window; the ball
-  is rebuilt in place when its icon changes and a resident disc appears or
-  disappears immediately.
-
-## [0.6.0-beta.2] - 2026-11-04
-
-Showing the shipped chrome inside the dock turned out to be broken at dock size,
-so the trims are no longer switchable.
-
-### Removed
-
-- `trimHeaderActions`, `trimSidebarPanels`, `trimAccountMenu` and `trimTabs`: the
-  dock always hides the header action buttons, the plugins/automations/more rows,
-  the account menu and the conversation tab strip. Switching them back on is gone
-  from the settings page and from `config.json`.
+  collapse-on-close, first corner and always-on-top to the window that is already
+  open; before, only `ballSize` was applied live.
+- A resident disc parks on the configured corner while the window is open instead
+  of covering the collapse button, collapsing works while a disc is visible, and
+  clicking a resident disc no longer re-places an open window.
 
 ## [0.6.0-beta.1] - 2026-11-04
 
