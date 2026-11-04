@@ -204,5 +204,7 @@
   "cfg.ballIcon.dot": "纯色圆点",
   "cfg.group.window": "窗口",
   "cfg.group.ball": "悬浮球",
-  "cfg.group.dock": "dock 窗口"
+  "cfg.group.dock": "dock 窗口",
+  "client.matchSidebarOpen": "打开侧边栏",
+  "client.matchSidebarExpand": "展开侧边栏"
 }

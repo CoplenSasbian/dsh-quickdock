@@ -204,5 +204,7 @@
   "cfg.ballIcon.dot": "Plain dot",
   "cfg.group.window": "Window",
   "cfg.group.ball": "Floating ball",
-  "cfg.group.dock": "Dock window"
+  "cfg.group.dock": "Dock window",
+  "client.matchSidebarOpen": "Open sidebar",
+  "client.matchSidebarExpand": "Expand sidebar"
 }

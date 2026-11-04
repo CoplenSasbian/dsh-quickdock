@@ -234,7 +234,9 @@ var MESSAGES = {
     'cfg.ballIcon.dot': 'Plain dot',
     'cfg.group.window': 'Window',
     'cfg.group.ball': 'Floating ball',
-    'cfg.group.dock': 'Dock window'
+    'cfg.group.dock': 'Dock window',
+    'client.matchSidebarOpen': 'Open sidebar',
+    'client.matchSidebarExpand': 'Expand sidebar'
   },
   zh: {
     'app.displayTitle': 'QuickDock 执行过程',
@@ -442,7 +444,9 @@ var MESSAGES = {
     'cfg.ballIcon.dot': '纯色圆点',
     'cfg.group.window': '窗口',
     'cfg.group.ball': '悬浮球',
-    'cfg.group.dock': 'dock 窗口'
+    'cfg.group.dock': 'dock 窗口',
+    'client.matchSidebarOpen': '打开侧边栏',
+    'client.matchSidebarExpand': '展开侧边栏'
   }
 }
 
@@ -1130,6 +1134,33 @@ const DOCK_STYLE_ID = PLUGIN_ID + '-dock-layout'
  * The frame carries `data-sidebar-collapsed="true"` exactly while the sidebar is
  * a rail, so the rule can key off the app's own state instead of measuring.
  */
+/**
+ * Tag the app's floating sidebar toggle so the dock can hide it.
+ *
+ * Matched by aria-label because the class name is a per-build hash and the label
+ * is the only stable handle across builds and locales.
+ */
+function hideSidebarToggle() {
+  const LABELS = [t('client.matchSidebarOpen'), t('client.matchSidebarExpand')]
+    .map((label) => String(label || '').trim().toLowerCase())
+  const tag = () => {
+    for (const node of document.querySelectorAll('button[aria-label]')) {
+      const label = String(node.getAttribute('aria-label') || '').trim().toLowerCase()
+      if (!LABELS.includes(label)) continue
+      node.setAttribute('data-qd-dock-hide', '1')
+    }
+  }
+  tag()
+  if (typeof MutationObserver !== 'function') return
+  let queued = false
+  const observer = new MutationObserver(() => {
+    if (queued) return
+    queued = true
+    setTimeout(() => { queued = false; tag() }, 120)
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+}
+
 function applyDockMode() {
   if (document.getElementById(DOCK_STYLE_ID)) return
   const style = document.createElement('style')
@@ -1163,6 +1194,10 @@ html[data-qd-dock][data-qd-trim-tabs] [class*="tabs"] {
   display: none !important;
 }
 /* The app's panel list (plugins/automations/more) is not part of the dock. */
+/* The shell title bar owns the sidebar toggle; the app's floating one is noise. */
+html[data-qd-dock] [data-qd-dock-hide="1"] {
+  display: none !important;
+}
 html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
   display: none !important;
 }
@@ -1177,6 +1212,7 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
   // actions and the tab strip do not fit), so the trims are unconditional.
   document.documentElement.setAttribute('data-qd-trim-sidebar', '1')
   document.documentElement.setAttribute('data-qd-trim-tabs', '1')
+  hideSidebarToggle()
 
   // A session picked from the full-window sidebar should leave the conversation
   // visible again: collapse on the next tick, after the app handled the click.
