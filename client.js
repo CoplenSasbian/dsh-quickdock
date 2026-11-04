@@ -4,6 +4,8 @@ window.__ModuleLoader__.load({ id: "dsh-quickdock", factory: (require) => { var 
 var exports = module.exports;
 try {
 var React = require('react');
+var ReactDOM = null;
+try { ReactDOM = require('react-dom'); } catch (error) { ReactDOM = null; }
 /**
  * dsh-quickdock — Client half (static plugin).
  *
@@ -623,6 +625,21 @@ async function waitForDockResult(timeoutMs) {
 
 /* ---------------- header button ---------------- */
 
+/**
+ * Render a node into document.body so no ancestor can clip it.
+ * @param {object} node React element.
+ * @returns {object} the same element, portalled when react-dom is available.
+ */
+function renderPortal(node) {
+  if (!node) return node
+  if (!ReactDOM || typeof ReactDOM.createPortal !== 'function') return node
+  try {
+    return ReactDOM.createPortal(node, document.body)
+  } catch (error) {
+    return node
+  }
+}
+
 /** Whether the header Dock button is shown (config: headerButton). */
 let HEADER_ENABLED = true
 
@@ -777,7 +794,7 @@ function SendToDock(props) {
       })
     }, '\u25be'),
 
-    menu ? el('div', {
+    menu ? renderPortal(el('div', {
       className: PLUGIN_ID + '-menu',
       role: 'menu',
       style: {
@@ -814,7 +831,7 @@ function SendToDock(props) {
       },
       onMouseEnter: (event) => { event.currentTarget.style.background = 'var(--dsw-alias-interactive-bg-hover, rgba(255,255,255,.07))' },
       onMouseLeave: (event) => { event.currentTarget.style.background = 'transparent' }
-    }, item.label))) : null
+    }, item.label)))) : null
   )
 }
 
