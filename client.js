@@ -226,8 +226,7 @@ var MESSAGES = {
     'cfg.ballIcon': 'Floating ball icon',
     'cfg.ballAlwaysVisible': 'Keep the ball on screen',
     'cfg.snapToEdge': 'Snap the ball to the screen edge',
-    'cfg.collapseOnClose': 'Closing collapses into the ball',
-    'cfg.autoLaunch': 'Open the window with the plugin',
+    'cfg.autoLaunch': 'Open the window when DSH starts',
     'cfg.prefetchElectron': 'Prefetch the desktop runtime',
     'cfg.headerButton': 'Show the header Dock button',
     'cfg.ballIcon.whale': 'Whale',
@@ -236,7 +235,10 @@ var MESSAGES = {
     'cfg.group.ball': 'Floating ball',
     'cfg.group.dock': 'Dock window',
     'client.matchSidebarOpen': 'Open sidebar',
-    'client.matchSidebarExpand': 'Expand sidebar'
+    'client.matchSidebarExpand': 'Expand sidebar',
+    'cfg.closeAction': 'What the close button does',
+    'cfg.closeAction.quit': 'Quit QuickDock',
+    'cfg.closeAction.ball': 'Keep the floating ball (click it to come back)'
   },
   zh: {
     'app.displayTitle': 'QuickDock 执行过程',
@@ -436,8 +438,7 @@ var MESSAGES = {
     'cfg.ballIcon': '悬浮球图标',
     'cfg.ballAlwaysVisible': '始终显示悬浮球',
     'cfg.snapToEdge': '悬浮球吸附屏幕边缘',
-    'cfg.collapseOnClose': '关闭时收起到悬浮球',
-    'cfg.autoLaunch': '随插件启动窗口',
+    'cfg.autoLaunch': '随 DSH 启动窗口',
     'cfg.prefetchElectron': '预取桌面运行时',
     'cfg.headerButton': '显示标题栏 Dock 按钮',
     'cfg.ballIcon.whale': '鲸鱼',
@@ -446,7 +447,10 @@ var MESSAGES = {
     'cfg.group.ball': '悬浮球',
     'cfg.group.dock': 'dock 窗口',
     'client.matchSidebarOpen': '打开侧边栏',
-    'client.matchSidebarExpand': '展开侧边栏'
+    'client.matchSidebarExpand': '展开侧边栏',
+    'cfg.closeAction': '点关闭按钮时',
+    'cfg.closeAction.quit': '退出 QuickDock',
+    'cfg.closeAction.ball': '保留悬浮球（点它可回来）'
   }
 }
 
@@ -1579,7 +1583,7 @@ const CONFIG_FIELDS = [
   { group: 'ball', key: 'ballIcon', kind: 'enum', options: ['whale', 'dot'] },
   { group: 'ball', key: 'ballAlwaysVisible', kind: 'bool' },
   { group: 'ball', key: 'snapToEdge', kind: 'bool' },
-  { group: 'ball', key: 'collapseOnClose', kind: 'bool' },
+  { group: 'ball', key: 'closeAction', kind: 'enum', options: ['quit', 'ball'] },
   { group: 'dock', key: 'headerButton', kind: 'bool' }
 ]
 

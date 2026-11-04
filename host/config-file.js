@@ -27,8 +27,8 @@ export const DEFAULT_CONFIG = Object.freeze({
   ballIcon: 'whale',
   ballAlwaysVisible: false,
   snapToEdge: true,
-  // Window behaviour
-  collapseOnClose: false,
+  // What the close button does: 'quit' ends the window, 'ball' parks it on the disc
+  closeAction: 'quit',
   // Start-up
   autoLaunch: false,
   prefetchElectron: true,

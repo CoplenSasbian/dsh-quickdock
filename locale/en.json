@@ -196,8 +196,7 @@
   "cfg.ballIcon": "Floating ball icon",
   "cfg.ballAlwaysVisible": "Keep the ball on screen",
   "cfg.snapToEdge": "Snap the ball to the screen edge",
-  "cfg.collapseOnClose": "Closing collapses into the ball",
-  "cfg.autoLaunch": "Open the window with the plugin",
+  "cfg.autoLaunch": "Open the window when DSH starts",
   "cfg.prefetchElectron": "Prefetch the desktop runtime",
   "cfg.headerButton": "Show the header Dock button",
   "cfg.ballIcon.whale": "Whale",
@@ -206,5 +205,8 @@
   "cfg.group.ball": "Floating ball",
   "cfg.group.dock": "Dock window",
   "client.matchSidebarOpen": "Open sidebar",
-  "client.matchSidebarExpand": "Expand sidebar"
+  "client.matchSidebarExpand": "Expand sidebar",
+  "cfg.closeAction": "What the close button does",
+  "cfg.closeAction.quit": "Quit QuickDock",
+  "cfg.closeAction.ball": "Keep the floating ball (click it to come back)"
 }
