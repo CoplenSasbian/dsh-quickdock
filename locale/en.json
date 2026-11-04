@@ -185,8 +185,6 @@
   "todo.status.pending": "Pending",
   "todo.title": "Tasks",
   "settings.quickdock": "QuickDock",
-  "cfg.width": "Window width",
-  "cfg.height": "Window height",
   "cfg.minWidth": "Minimum width",
   "cfg.minHeight": "Minimum height",
   "cfg.maxWidth": "Maximum width",

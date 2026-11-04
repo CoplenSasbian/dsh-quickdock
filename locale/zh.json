@@ -185,8 +185,6 @@
   "todo.status.pending": "待处理",
   "todo.title": "任务",
   "settings.quickdock": "QuickDock 设置",
-  "cfg.width": "窗口宽度",
-  "cfg.height": "窗口高度",
   "cfg.minWidth": "最小宽度",
   "cfg.minHeight": "最小高度",
   "cfg.maxWidth": "最大宽度",

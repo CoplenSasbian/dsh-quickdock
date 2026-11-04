@@ -14,9 +14,7 @@ import { dirname, join } from 'node:path'
 
 /** Documented defaults; also the template written on first run. */
 export const DEFAULT_CONFIG = Object.freeze({
-  // Window
-  width: 460,
-  height: 820,
+  // Window bounds (the size itself is remembered by the window)
   minWidth: 360,
   minHeight: 420,
   maxWidth: 900,
@@ -41,8 +39,6 @@ export const DEFAULT_CONFIG = Object.freeze({
 
 /** Numeric bounds applied to every stored value. */
 const RANGES = {
-  width: [320, 1200],
-  height: [320, 1600],
   minWidth: [280, 1200],
   minHeight: [280, 1600],
   maxWidth: [320, 2000],

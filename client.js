@@ -213,8 +213,6 @@ var MESSAGES = {
     'todo.status.pending': 'Pending',
     'todo.title': 'Tasks',
     'settings.quickdock': 'QuickDock',
-    'cfg.width': 'Window width',
-    'cfg.height': 'Window height',
     'cfg.minWidth': 'Minimum width',
     'cfg.minHeight': 'Minimum height',
     'cfg.maxWidth': 'Maximum width',
@@ -424,8 +422,6 @@ var MESSAGES = {
     'todo.status.pending': '待处理',
     'todo.title': '任务',
     'settings.quickdock': 'QuickDock 设置',
-    'cfg.width': '窗口宽度',
-    'cfg.height': '窗口高度',
     'cfg.minWidth': '最小宽度',
     'cfg.minHeight': '最小高度',
     'cfg.maxWidth': '最大宽度',
@@ -1510,8 +1506,6 @@ const SETTINGS_SECTION = 'settings.section'
 
 /** Rows of the settings page: key, control kind and bounds. */
 const CONFIG_FIELDS = [
-  { group: 'window', key: 'width', kind: 'number', min: 320, max: 1200, step: 10 },
-  { group: 'window', key: 'height', kind: 'number', min: 320, max: 1600, step: 10 },
   { group: 'window', key: 'minWidth', kind: 'number', min: 280, max: 1200, step: 10 },
   { group: 'window', key: 'minHeight', kind: 'number', min: 280, max: 1600, step: 10 },
   { group: 'window', key: 'alwaysOnTop', kind: 'bool' },

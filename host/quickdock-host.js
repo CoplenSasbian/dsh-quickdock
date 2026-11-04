@@ -489,9 +489,6 @@ export class QuickDockHost {
    */
   #applyFileConfig() {
     const config = this.effectiveConfig()
-    // Row-only names for the window size.
-    this.config.width = config.width
-    this.config.inputHeight = config.height
     this.config.minWidth = config.minWidth
     this.config.minHeight = config.minHeight
     this.config.maxWidth = config.maxWidth
