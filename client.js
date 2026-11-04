@@ -1141,8 +1141,15 @@ const DOCK_STYLE_ID = PLUGIN_ID + '-dock-layout'
  * is the only stable handle across builds and locales.
  */
 function hideSidebarToggle() {
-  const LABELS = [t('client.matchSidebarOpen'), t('client.matchSidebarExpand')]
-    .map((label) => String(label || '').trim().toLowerCase())
+  // Match every locale's wording: the app may render a label before our locale
+  // sync runs, so t() alone would miss it.
+  const LABELS = []
+  for (const table of Object.values(MESSAGES)) {
+    for (const key of ['client.matchSidebarOpen', 'client.matchSidebarExpand']) {
+      const label = String((table && table[key]) || '').trim().toLowerCase()
+      if (label && !LABELS.includes(label)) LABELS.push(label)
+    }
+  }
   const tag = () => {
     for (const node of document.querySelectorAll('button[aria-label]')) {
       const label = String(node.getAttribute('aria-label') || '').trim().toLowerCase()
