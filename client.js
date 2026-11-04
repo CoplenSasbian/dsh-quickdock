@@ -1231,20 +1231,8 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
   document.documentElement.setAttribute('data-qd-trim-tabs', '1')
   hideSidebarToggle()
 
-  // A session picked from the full-window sidebar should leave the conversation
-  // visible again: collapse on the next tick, after the app handled the click.
-  // The toggle is addressed by its class (inside the sidebar column), not by its
-  // aria-label, which is localized.
-  document.addEventListener('click', function (event) {
-    const target = event.target
-    if (!target || typeof target.closest !== 'function') return
-    if (!target.closest('[class*="sessionRow"]')) return
-    const frame = document.querySelector('[class*="_frame"][data-rightbar-collapsed]')
-    if (!frame || frame.hasAttribute('data-sidebar-collapsed')) return
-    const toggle = findToggle()
-    if (!toggle) return
-    setTimeout(function () { try { toggle.click() } catch (error) { /* ignore */ } }, 0)
-  }, true)
+  // Picking a session already closes the drawer in DSH's narrow layout; an extra
+  // click on the toggle here reopened it, which looked like a close/reopen loop.
 
   // The dock window opens on the conversation: the sidebar state is shared with
   // the main window through localStorage, so an expanded sidebar there would
