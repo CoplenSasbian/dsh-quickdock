@@ -123,7 +123,13 @@ export class DockProcess {
         maxWidth: this.config.maxWidth,
         maxHeight: this.config.maxHeight,
         // Diameter of the floating whale ball.
-        ballSize: this.config.ballSize,        // On-demand mode: closing the window ends the process.
+        ballSize: this.config.ballSize,
+        // Disc behaviour and appearance (also pushed live via a config patch).
+        ballIcon: this.config.ballIcon,
+        ballAlwaysVisible: this.config.ballAlwaysVisible,
+        snapToEdge: this.config.snapToEdge,
+        collapseOnClose: this.config.collapseOnClose,
+        startCorner: this.config.startCorner,        // On-demand mode: closing the window ends the process.
         exitOnClose: !this.config.autoLaunch
       })
     })

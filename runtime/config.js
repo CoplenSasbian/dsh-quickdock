@@ -102,6 +102,14 @@ function parseConfig(argv, env) {
     maxHeight: positiveInteger(inline.maxHeight, 1400),
     // Diameter of the floating ball the window collapses into.
     ballSize: Math.min(160, Math.max(24, positiveInteger(inline.ballSize, 64))),
+    // Disc appearance and behaviour.
+    ballIcon: inline.ballIcon === 'dot' ? 'dot' : 'whale',
+    ballAlwaysVisible: inline.ballAlwaysVisible === true,
+    snapToEdge: inline.snapToEdge !== false,
+    collapseOnClose: inline.collapseOnClose === true,
+    startCorner: inline.startCorner === 'top-right' || inline.startCorner === 'cursor'
+      ? inline.startCorner
+      : 'bottom-right',
     // An opaque window: the frame shell paints its own background and hosts an iframe.
     opaque: inline.opaque === true,
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,

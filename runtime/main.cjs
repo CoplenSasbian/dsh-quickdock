@@ -278,6 +278,11 @@ class DockRuntime {
       chromeOptions.maximizable = false;
     }
     this.win = new BrowserWindow(sharedWindowOptions(Object.assign({ title: 'QuickDock' }, restored.bounds, chromeOptions)));
+    trace('disc config: icon=' + this.config.ballIcon
+      + ' always=' + (this.config.ballAlwaysVisible === true)
+      + ' snap=' + (this.config.snapToEdge !== false)
+      + ' collapseOnClose=' + (this.config.collapseOnClose === true)
+      + ' corner=' + this.config.startCorner);
     trace('window: resizable=' + (this.config.resizable !== false)
       + ' bounds=' + this.config.minWidth + 'x' + this.config.minHeight
       + '..' + this.config.maxWidth + 'x' + this.config.maxHeight);
