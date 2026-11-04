@@ -128,7 +128,9 @@ export function sanitizeValue(key, value) {
   if (typeof fallback === 'boolean') return value === true || value === false ? value : undefined
   if (ENUMS[key]) return ENUMS[key].includes(value) ? value : undefined
   if (typeof fallback === 'string') {
-    const text = String(value ?? '').trim()
+    // An absent value must fall through to the default, not become ''.
+    if (value === undefined || value === null) return undefined
+    const text = String(value).trim()
     if (PATTERNS[key] && !PATTERNS[key].test(text)) return undefined
     return text
   }
