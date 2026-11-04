@@ -244,7 +244,8 @@ var MESSAGES = {
     'cfg.runtimeMissing': 'not downloaded',
     'cfg.runtimeRedownload': 'Download again',
     'cfg.runtimeOpenFolder': 'Open runtime folder',
-    'cfg.runtimeDownloading': 'Downloading'
+    'cfg.runtimeDownloading': 'Downloading',
+    'cfg.runtimeNetwork': 'Download failed: no network (check the proxy and try again)'
   },
   zh: {
     'app.displayTitle': 'QuickDock 执行过程',
@@ -462,7 +463,8 @@ var MESSAGES = {
     'cfg.runtimeMissing': '未下载',
     'cfg.runtimeRedownload': '重新下载',
     'cfg.runtimeOpenFolder': '打开运行时目录',
-    'cfg.runtimeDownloading': '下载中'
+    'cfg.runtimeDownloading': '下载中',
+    'cfg.runtimeNetwork': '下载失败：网络不可用（检查网络或代理后重试）'
   }
 }
 
@@ -1662,6 +1664,15 @@ function QuickDockSettings() {
   }
   React.useEffect(function () { return stopPolling }, [])
 
+  /** Turn transport errors into something a person can act on. */
+  function friendly(message) {
+    const text = String(message || '')
+    if (/fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|network|proxy/i.test(text)) {
+      return t(CFG_PREFIX + 'runtimeNetwork')
+    }
+    return text
+  }
+
   /** Re-read the runtime after an action so the status line is never stale. */
   function refreshRuntime() {
     bridge('runtime-status').then(function (result) {
@@ -1766,7 +1777,7 @@ function QuickDockSettings() {
             else refreshRuntime()
           }).catch(function (error) {
             setBusy(false)
-            setNote(String(error && error.message || error))
+            setNote(friendly(error && error.message || error))
           })
         }
       }, t(CFG_PREFIX + field.key))
@@ -1818,8 +1829,9 @@ function QuickDockSettings() {
     }
   }
 
-  if (note) {
-    rows.push(el('div', { key: 'note', style: { padding: '6px 12px', fontSize: '12px', color: 'var(--dsw-alias-state-error-primary, #ff6b6b)' } }, note))
+  const friendlyRuntimeError = runtime && runtime.error ? friendly(runtime.error) : ''
+  if (note || friendlyRuntimeError) {
+    rows.push(el('div', { key: 'note', style: { padding: '6px 12px', fontSize: '12px', color: 'var(--dsw-alias-state-error-primary, #ff6b6b)' } }, note || friendlyRuntimeError))
   }
 
   return el('div', { style: { display: 'flex', flexDirection: 'column', padding: '4px 0 24px' } }, rows)

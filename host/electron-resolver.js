@@ -9,8 +9,9 @@
  * candidate is probed and the successful launch arguments are remembered.
  */
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 export const DEFAULT_ELECTRON_VERSION = '44.7.0'
@@ -186,110 +187,85 @@ export class ElectronResolver {
    *
    * @returns {Promise<{download: Function, extract: Function}>}
    */
-  async #loadDownloaders() {
-    const pick = (mod, name) => {
-      if (!mod) return null
-      const candidates = [mod[name], mod.default?.[name], mod.default]
-      for (const value of candidates) {
-        if (typeof value === 'function') return value
-      }
-      return null
-    }
-    let get = null
-    let zip = null
-    let importError = null
-    try {
-      get = await import('@electron/get')
-      zip = await import('@electron-internal/extract-zip')
-    } catch (error) {
-      importError = error
-      this.trace('download deps: import failed: ' + String(error?.message || error))
-    }
-    let download = pick(get, 'download')
-    let extract = pick(zip, 'extract')
-    if (!download || !extract) {
-      // Fallback: a real require(), independent of the ESM loader in use.
-      const { createRequire } = await import('node:module')
-      const loader = createRequire(import.meta.url)
-      get = get ?? loader('@electron/get')
-      zip = zip ?? loader('@electron-internal/extract-zip')
-      download = download ?? pick(get, 'download')
-      extract = extract ?? pick(zip, 'extract')
-    }
-    if (typeof download !== 'function') {
-      throw new Error('@electron/get: download() is not callable' + (importError ? ' (' + importError.message + ')' : ''))
-    }
-    if (typeof extract !== 'function') {
-      throw new Error('extract-zip: extract() is not callable')
-    }
-    return { download, extract }
-  }
-
-  /**
-   * Download Electron once (in-process: a spawned helper would inherit the host exe).
-   *
-   * `onProgress` receives `{received, total}` while bytes arrive and a final
-   * `{done: true, ok, error}`, so the Host can show a real progress bar instead
-   * of a spinner that says nothing.
-   */
   async download() {
     if (this.downloading) return this.downloading
     this.downloading = (async () => {
-      const { download, extract } = await this.#loadDownloaders()
       const target = join(this.downloadRoot(), this.version)
-      // @electron/get reads ELECTRON_MIRROR (and npm_config_electron_mirror)
-      // before mirrorOptions, so the per-attempt choice has to be written into
-      // the environment, then restored.
-      const saved = {
-        mirror: process.env.ELECTRON_MIRROR,
-        npm: process.env.npm_config_electron_mirror,
-        npmUpper: process.env.NPM_CONFIG_ELECTRON_MIRROR
-      }
-      let lastError = null
-      try {
-        for (const mirror of this.mirrors()) {
-          delete process.env.npm_config_electron_mirror
-          delete process.env.NPM_CONFIG_ELECTRON_MIRROR
-          if (mirror) process.env.ELECTRON_MIRROR = mirror
-          else delete process.env.ELECTRON_MIRROR
-          try {
-            const zip = await download(this.version, {
-              ...(mirror ? { mirrorOptions: { mirror } } : {}),
-              progressCallback: (progress) => this.onProgress?.({
-                received: Number(progress?.received) || 0,
-                total: Number(progress?.total) || 0
-              })
-            })
-            // An earlier attempt may have left a half-extracted tree behind.
-            rmSync(target, { recursive: true, force: true })
-            await extract(zip, { dir: target })
-            this.logger?.info?.('quickdock: Electron %s downloaded from %s to %s', this.version, mirror ?? 'default', target)
-            this.onProgress?.({ received: 0, total: 0, done: true, ok: true })
-            return join(target, exeNameFor(this.platform))
-          } catch (error) {
-            lastError = error
-            this.trace('electron mirror failed (' + (mirror ?? 'default') + '): ' + String(error?.message || error))
+      const helper = join(dirname(fileURLToPath(import.meta.url)), 'download-electron.cjs')
+      const args = [helper, this.version, target, JSON.stringify(this.mirrors())]
+      const exe = await new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, args, {
+          env: Object.assign({}, process.env, { ELECTRON_RUN_AS_NODE: '1' }),
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true
+        })
+        let buffered = ''
+        let stderr = ''
+        let settled = false
+        const finish = (error) => {
+          if (settled) return
+          settled = true
+          if (error) reject(error)
+          else resolve(join(target, exeNameFor(this.platform)))
+        }
+        child.stdout.setEncoding('utf8')
+        child.stdout.on('data', (chunk) => {
+          buffered += chunk
+          let index = buffered.indexOf('\n')
+          while (index >= 0) {
+            const line = buffered.slice(0, index).trim()
+            buffered = buffered.slice(index + 1)
+            if (line) this.#handleHelperLine(line, finish)
+            index = buffered.indexOf('\n')
           }
-        }
-      } finally {
-        for (const [key, value] of [['ELECTRON_MIRROR', saved.mirror], ['npm_config_electron_mirror', saved.npm], ['NPM_CONFIG_ELECTRON_MIRROR', saved.npmUpper]]) {
-          if (value === undefined) delete process.env[key]
-          else process.env[key] = value
-        }
-      }
-      this.onProgress?.({ done: true, ok: false, error: String(lastError?.message || lastError) })
-      throw lastError
-    })().finally(() => {
+        })
+        child.stderr.setEncoding('utf8')
+        child.stderr.on('data', (chunk) => { stderr = (stderr + chunk).slice(-2000) })
+        child.on('error', (error) => finish(error))
+        child.on('exit', (code) => {
+          if (settled) return
+          finish(new Error('download helper exited ' + code + (stderr ? ': ' + stderr.trim() : '')))
+        })
+      })
+      this.logger?.info?.('quickdock: Electron %s downloaded to %s', this.version, target)
+      this.onProgress?.({ received: 0, total: 0, done: true, ok: true })
+      return exe
+    })().catch((error) => {
+      this.onProgress?.({ done: true, ok: false, error: String(error?.message || error) })
+      throw error
+    }).finally(() => {
       this.downloading = null
     })
     return this.downloading
   }
 
   /**
-   * Resolve runnable Electron candidates, downloading one when none exists.
-   * @returns {Promise<{exe: string, args: string[]}[]>} candidates in priority order.
-   * @throws {Error} localized error with `electronUnavailable` set.
+   * Read one JSON line from the download helper.
+   * @param {string} line helper output.
+   * @param {(error?: Error) => void} finish settles the download promise.
    */
+  #handleHelperLine(line, finish) {
+    let event = null
+    try {
+      event = JSON.parse(line)
+    } catch (_) {
+      return
+    }
+    if (!event) return
+    if (event.done) {
+      if (event.ok) finish()
+      else finish(new Error(String(event.error || 'download failed')))
+      return
+    }
+    if (event.failed) {
+      this.trace('electron mirror failed (' + event.mirror + '): ' + event.failed)
+      return
+    }
+    if (typeof event.received === 'number') {
+      this.onProgress?.({ received: event.received, total: Number(event.total) || 0 })
+    }
+  }
+
   async resolve() {
     const found = this.usable()
     if (found.length) return found
