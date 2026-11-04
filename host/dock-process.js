@@ -385,6 +385,14 @@ export class DockProcess {
     })
   }
 
+  /** Reload the shell page (its mark or chrome changed). */
+  reloadShell() {
+    if (!this.alive) return
+    void this.control({ type: 'reload-shell' }).then((ok) => {
+      if (!ok) this.trace('reload-shell: control failed')
+    })
+  }
+
   /** Collapse the window into the floating ball. */
   collapse() {
     if (!this.alive) return

@@ -53,8 +53,13 @@ export class PageRenderer {
     const barClass = system ? ' qd-frame-bar--system' : ''
     const closeButton = system ? '' : '\n    <button type="button" data-action="close" title="Close">✕</button>'
     // Not a minimise: the icon is the whale the window collapses into.
-    const collapseButton = '\n    <button type="button" data-action="collapse" title="Collapse to the floating whale">'
-      + '<svg viewBox="' + WHALE_VIEWBOX + '" fill="none" aria-hidden="true"><path d="' + WHALE_PATH + '" fill="currentColor"></path></svg></button>'
+    // The button shows the same mark as the disc it produces.
+    const dot = Boolean(options && options.ballIcon === 'dot')
+    const mark = dot
+      ? '<span class="qd-dot"></span>'
+      : '<svg viewBox="' + WHALE_VIEWBOX + '" fill="none" aria-hidden="true"><path d="' + WHALE_PATH + '" fill="currentColor"></path></svg>'
+    const collapseButton = '\n    <button type="button" data-action="collapse" title="Collapse to the floating ball">'
+      + mark + '</button>'
     return `<!doctype html>
 <html lang="${htmlLang(this.locale.locale)}" data-theme="${scheme}">
 <head>
@@ -95,6 +100,7 @@ ${theme}
      real button) is out of the way. */
   .qd-frame-bar button[data-action="sidebar"][data-expanded="1"] ~ button[data-action="new-session"] { display: none; }
   .qd-frame-bar button svg { width: 16px; height: 16px; display: block; }
+  .qd-frame-bar .qd-dot { width: 12px; height: 12px; border-radius: 50%; background: currentColor; display: block; }
   /* Room for the OS close button drawn over the bar's right edge. */
   .qd-frame-bar--system { padding-right: 56px; }
   iframe { flex: 1 1 auto; width: 100%; border: 0; display: block; background: #fff; }

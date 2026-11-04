@@ -1439,9 +1439,10 @@ class DockRuntime {
     if (patch.startCorner) this.config.startCorner = patch.startCorner;
     if (typeof patch.alwaysOnTop === 'boolean') this.applyAlwaysOnTop(patch.alwaysOnTop);
     if (typeof patch.ballSize === 'number' && patch.ballSize > 0) this.applyBallSize(patch.ballSize);
-    if (patch.ballIcon && patch.ballIcon !== this.config.ballIcon) {
+    if (patch.ballIcon) {
+      const changed = patch.ballIcon !== this.config.ballIcon;
       this.config.ballIcon = patch.ballIcon;
-      this.rebuildBall();
+      if (changed || (this.ball && !this.ball.isDestroyed())) this.rebuildBall();
     }
     if (typeof patch.ballAlwaysVisible === 'boolean') {
       this.config.ballAlwaysVisible = patch.ballAlwaysVisible;
@@ -1459,6 +1460,15 @@ class DockRuntime {
       }
     }
     trace('config applied: ' + JSON.stringify(patch));
+  }
+
+  /** Reload the shell page without touching its state on disk. */
+  reloadShell() {
+    if (!this.win || this.win.isDestroyed()) return;
+    const url = this.config.url;
+    if (!url) return;
+    trace('reloading shell: ' + url);
+    try { this.win.loadURL(url); } catch (_) {}
   }
 
   /** Rebuild the disc in place (size or icon changed). */
@@ -1660,6 +1670,7 @@ class DockRuntime {
     else if (message.type === 'hide') this.hide();
     else if (message.type === 'collapse') this.minimizeToBall();
     else if (message.type === 'config') this.applyConfig(message.config);
+    else if (message.type === 'reload-shell') this.reloadShell();
     else if (message.type === 'reset-windows') { this.resetWindows(); this.show(); }
     else if (message.type === 'ping') this.status('pong');
     else if (message.type === 'attach') this.show();

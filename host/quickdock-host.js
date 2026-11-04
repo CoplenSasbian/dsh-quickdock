@@ -307,6 +307,11 @@ export class QuickDockHost {
     this.config.alwaysOnTop = config.alwaysOnTop
     this.config.rememberGeometry = config.rememberGeometry
     this.config.focusOnSummon = config.focusOnSummon
+    // The shell draws the collapse button: reload it when its mark changes.
+    if (config.ballIcon !== this.lastBallIcon) {
+      this.lastBallIcon = config.ballIcon
+      this.dock?.reloadShell?.()
+    }
     // ...and push the runtime-safe ones to a window that is already open.
     this.dock?.applyRuntimeConfig?.({
       ballSize: config.ballSize,
@@ -458,7 +463,8 @@ export class QuickDockHost {
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
       res.end(this.page.renderFrame(source, {
-        systemControls: this.config?.windowControls === 'system'
+        systemControls: this.config?.windowControls === 'system',
+        ballIcon: this.config?.ballIcon
       }))
       return
     }
@@ -500,6 +506,8 @@ export class QuickDockHost {
     this.config.prefetchElectron = config.prefetchElectron
     this.config.headerButton = config.headerButton
     this.config.headerButtonOrder = config.headerButtonOrder
+    /** Mark currently drawn by the shell, to avoid a needless shell reload. */
+    this.lastBallIcon = config.ballIcon
   }
 
   #registerBridge() {
