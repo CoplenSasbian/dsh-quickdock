@@ -1201,6 +1201,16 @@ html[data-qd-dock][data-qd-trim-tabs] [class*="tabs"] {
   display: none !important;
 }
 /* The app's panel list (plugins/automations/more) is not part of the dock. */
+/* In a narrow window DSH opens the sidebar as a drawer with a scrim on top of it:
+   the scrim swallows every click and closes the drawer on click. The dock toggles
+   the sidebar from its own title bar, so the scrim is dropped and the drawer is
+   allowed to use the full width. */
+html[data-qd-dock] [class*="drawerMask"] {
+  display: none !important;
+}
+html[data-qd-dock] [class*="sidebarCol"] {
+  width: 100% !important;
+}
 /* The shell title bar owns the sidebar toggle; the app's floating one is noise. */
 html[data-qd-dock] [data-qd-dock-hide="1"] {
   display: none !important;
