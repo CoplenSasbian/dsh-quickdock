@@ -10,7 +10,7 @@
 import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -278,8 +278,8 @@ export class QuickDockHost {
    */
   redownloadRuntime() {
     if (!this.resolver) throw new Error('runtime resolver unavailable')
-    const target = join(this.resolver.downloadRoot(), this.resolver.version)
-    try { rmSync(target, { recursive: true, force: true }) } catch (_) { /* absent is fine */ }
+    // Never delete the working copy first: a failed download would leave the user
+    // without a runtime at all. download() swaps the folder after the archive lands.
     // ~100 MB: kick it off and let the status line follow the progress.
     this.state.download.active = true
     this.state.download.received = 0
