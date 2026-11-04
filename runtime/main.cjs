@@ -442,9 +442,13 @@ class DockRuntime {
       // A resident disc (config: ballAlwaysVisible) stays on screen beside the window.
       if (this.config.ballAlwaysVisible === true) {
         this.ensureBall();
-        if (this.ball && !this.ball.isDestroyed() && !this.ball.isVisible()) {
+        if (this.ball && !this.ball.isDestroyed()) {
+          // Keep the resident disc away from the window: parked on its corner so
+          // it never sits on the collapse button it came from.
           this.positionBall();
-          try { this.ball.showInactive(); } catch (_) {}
+          if (!this.ball.isVisible()) {
+            try { this.ball.showInactive(); } catch (_) {}
+          }
         }
       } else if (this.ball && !this.ball.isDestroyed() && this.ball.isVisible()) {
         this.ball.hide();
@@ -1268,7 +1272,6 @@ class DockRuntime {
    */
   minimizeToBall(point) {
     if (this.quitting || !this.win || this.win.isDestroyed()) return;
-    if (this.ball && !this.ball.isDestroyed() && this.ball.isVisible()) return;
     // Remember where the collapse button sat inside the window: the window is
     // reopened around the disc with that same point, so the disc really takes the
     // button's place instead of landing in some corner.
@@ -1412,11 +1415,14 @@ class DockRuntime {
   /** The ball was clicked: bring the dock back. */
   restoreFromBall() {
     const disc = this.ball && !this.ball.isDestroyed() ? this.ball.getBounds() : null;
-    if (this.ball && !this.ball.isDestroyed()) this.ball.hide();
+    const wasHidden = Boolean(this.win && !this.win.isDestroyed() && !this.win.isVisible());
+    // A resident disc stays on screen; a transient one is what the click consumed.
+    if (this.ball && !this.ball.isDestroyed() && this.config.ballAlwaysVisible !== true) this.ball.hide();
     if (!this.win || this.win.isDestroyed()) return;
-    // The user may have dragged the disc across the screen: the window opens at
-    // the disc rather than at wherever it happened to sit before.
-    if (disc) this.openWindowAtDisc(disc);
+    // The user may have dragged the disc across the screen: a hidden window opens
+    // at the disc rather than at wherever it happened to sit before. A window that
+    // is already visible must not jump when its resident disc is clicked.
+    if (wasHidden && disc) this.openWindowAtDisc(disc);
     this.focus();
     this.status('shown');
     trace('restored from ball at ' + (disc ? disc.x + ',' + disc.y : '?'));

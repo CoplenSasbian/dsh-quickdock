@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [0.6.0-beta.4] - 2026-11-04
+
+A resident disc () fought with the window: the disc stayed on
+the collapse button and the window opened around it, so every click toggled
+between the two and a collapse could not happen at all.
+
+### Fixed
+
+- A resident disc parks on the configured corner while the window is open, so it
+  never covers the collapse button.
+- Collapsing works even though a disc is already visible.
+- Clicking a resident disc no longer re-places a window that is already open (it
+  only focuses it); a hidden window still opens at the disc.
+
 ## [0.6.0-beta.3] - 2026-11-04
 
 Settings now reach the running window: before, only the ball size was applied
