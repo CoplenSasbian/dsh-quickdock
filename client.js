@@ -1635,7 +1635,7 @@ function QuickDockSettings() {
   return el('div', { style: { display: 'flex', flexDirection: 'column', padding: '4px 0 24px' } }, rows)
 }
 
-function apply(ctx) {
+async function apply(ctx) {
   if (insideDockWindow()) {
     // This page is the dock, not the window that opens it: no header button, no
     // download badge - only the layout fixes below.
@@ -1664,13 +1664,23 @@ function apply(ctx) {
     }
     return
   }
-  try {
+  // The header button is switchable: read the configuration first, but never
+  // hang the plugin on a slow host.
+  const settings = await Promise.race([
+    bridge('config-get').catch(function () { return null }),
+    new Promise(function (resolve) { setTimeout(function () { resolve(null) }, 1500) })
+  ])
+  const config = settings && settings.config ? settings.config : {}
+  const headerEnabled = config.headerButton !== false
+  const headerOrder = Number.isFinite(config.headerButtonOrder) ? config.headerButtonOrder : 1010
+
+  if (headerEnabled) try {
     ctx.slots.inject(HEADER_SLOT, () => ctx.slots.register({
       name: HEADER_SLOT,
       id: PLUGIN_ID + '-send-to-dock',
       registrant: PLUGIN_ID,
       // order is the display order (priority is the slot's own overlap rule).
-      order: 1010
+      order: headerOrder
     }, SendToDock))
   } catch (error) {
     console.error('[dsh-quickdock] client apply failed (plugin disabled, web boot continues):', error)
