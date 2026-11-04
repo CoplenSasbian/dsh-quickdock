@@ -278,13 +278,23 @@ export class QuickDockHost {
    */
   redownloadRuntime() {
     if (!this.resolver) throw new Error('runtime resolver unavailable')
-    // Never delete the working copy first: a failed download would leave the user
-    // without a runtime at all. download() swaps the folder after the archive lands.
-    // ~100 MB: kick it off and let the status line follow the progress.
+    // The running window holds electron.exe: it has to go before the folder is
+    // replaced. It is summoned again once the new copy is in place.
+    const wasRunning = Boolean(this.dock?.alive)
+    if (wasRunning) this.dock.stop()
     this.state.download.active = true
     this.state.download.received = 0
     this.state.download.total = 0
-    this.resolver.download().catch((error) => {
+    this.state.download.error = ''
+    void (async () => {
+      // Give Windows a moment to release the executable handles.
+      if (wasRunning) await new Promise((resolve) => setTimeout(resolve, 1200))
+      await this.resolver.download()
+      this.trace('runtime downloaded again: ' + this.resolver.version)
+      if (wasRunning) this.dock?.summon()
+    })().catch((error) => {
+      this.state.download.active = false
+      this.state.download.error = String(error?.message || error)
       this.trace('redownload failed: ' + String(error?.message || error))
     })
     return this.runtimeInfo()
