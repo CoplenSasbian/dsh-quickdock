@@ -275,6 +275,12 @@ export class QuickDockHost {
       + ' commit=' + (version.hash || 'unknown') + ' startedAt=' + version.startedAt
       + ' components=' + (service ? 'service' : '-') + (dock ? '+dock' : ''))
     this.dsh.logger?.info?.('quickdock: host half loaded ' + (version.hash || ''))
+    // The runtime download is ~100 MB: start it in the background so the first
+    // Dock click does not wait for it (config: prefetchElectron).
+    if (dock) {
+      const prefetchTimer = setTimeout(() => this.prefetchElectron(), 1500)
+      this.#disposeOn(() => clearTimeout(prefetchTimer), 'quickdock: prefetch timer')
+    }
     // Resident mode: the window is up before the first Dock click.
     if (service && dock && this.config.autoLaunch) {
       const launchTimer = setTimeout(() => this.dock?.summon(), 600)
@@ -459,8 +465,14 @@ export class QuickDockHost {
     this.config.snapToEdge = config.snapToEdge
     this.config.closeAction = config.closeAction
     this.config.collapseOnClose = config.closeAction === 'ball'
-    this.config.electronVersion = config.electronVersion
-    if (this.resolver) this.resolver.version = config.electronVersion || DEFAULT_ELECTRON_VERSION
+    if (this.config.electronVersion !== config.electronVersion) {
+      this.config.electronVersion = config.electronVersion
+      if (this.resolver) this.resolver.version = config.electronVersion || DEFAULT_ELECTRON_VERSION
+      // A different build has to be fetched: the old attempt is stale.
+      this.prefetchStarted = false
+      const versionTimer = setTimeout(() => this.prefetchElectron(), 800)
+      if (typeof versionTimer?.unref === 'function') versionTimer.unref()
+    }
     this.config.alwaysOnTop = config.alwaysOnTop
     this.config.rememberGeometry = config.rememberGeometry
     this.config.focusOnSummon = config.focusOnSummon
