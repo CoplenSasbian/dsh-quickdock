@@ -213,5 +213,6 @@
   "cfg.runtimeStatus": "Runtime status",
   "cfg.runtimeMissing": "not downloaded",
   "cfg.runtimeRedownload": "Download again",
-  "cfg.runtimeOpenFolder": "Open runtime folder"
+  "cfg.runtimeOpenFolder": "Open runtime folder",
+  "cfg.runtimeDownloading": "Downloading"
 }

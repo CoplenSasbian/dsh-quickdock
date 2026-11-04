@@ -34,10 +34,9 @@ export function createBridgeHandler(deps) {
     'runtime-status'() {
       return { body: Object.assign({ ok: true }, app.runtimeInfo()) }
     },
-    async 'runtime-redownload'() {
+    'runtime-redownload'() {
       try {
-        const info = await app.redownloadRuntime()
-        return { body: Object.assign({ ok: true }, info) }
+        return { body: Object.assign({ ok: true }, app.redownloadRuntime()) }
       } catch (error) {
         return { status: 500, body: { ok: false, error: String(error?.message || error) } }
       }
@@ -110,7 +109,8 @@ export function createBridgeHandler(deps) {
     const action = String(body?.action ?? '')
     const entry = actions[action]
     if (!entry) return Response.json({ ok: false, error: 'unknown action' }, { status: 400 })
-    const result = entry(body)
-    return Response.json(result.body, result.status ? { status: result.status } : undefined)
+    const result = await entry(body)
+    const payload = result && result.body ? result.body : { ok: false, error: 'empty response' }
+    return Response.json(payload, result && result.status ? { status: result.status } : undefined)
   }
 }

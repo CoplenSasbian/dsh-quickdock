@@ -243,7 +243,8 @@ var MESSAGES = {
     'cfg.runtimeStatus': 'Runtime status',
     'cfg.runtimeMissing': 'not downloaded',
     'cfg.runtimeRedownload': 'Download again',
-    'cfg.runtimeOpenFolder': 'Open runtime folder'
+    'cfg.runtimeOpenFolder': 'Open runtime folder',
+    'cfg.runtimeDownloading': 'Downloading'
   },
   zh: {
     'app.displayTitle': 'QuickDock 执行过程',
@@ -460,7 +461,8 @@ var MESSAGES = {
     'cfg.runtimeStatus': '运行时状态',
     'cfg.runtimeMissing': '未下载',
     'cfg.runtimeRedownload': '重新下载',
-    'cfg.runtimeOpenFolder': '打开运行时目录'
+    'cfg.runtimeOpenFolder': '打开运行时目录',
+    'cfg.runtimeDownloading': '下载中'
   }
 }
 
@@ -1640,6 +1642,26 @@ function QuickDockSettings() {
     return function () { alive = false }
   }, [])
 
+  /** Poll while a download runs, so the status line follows it. */
+  const pollTimer = React.useRef(null)
+  function stopPolling() {
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current)
+      pollTimer.current = null
+    }
+  }
+  function startPolling() {
+    stopPolling()
+    pollTimer.current = setInterval(function () {
+      bridge('runtime-status').then(function (result) {
+        if (!result || !result.ok) return
+        setRuntime(result)
+        if (!result.downloading) stopPolling()
+      }).catch(function () { /* ignore */ })
+    }, 1500)
+  }
+  React.useEffect(function () { return stopPolling }, [])
+
   /** Re-read the runtime after an action so the status line is never stale. */
   function refreshRuntime() {
     bridge('runtime-status').then(function (result) {
@@ -1702,6 +1724,13 @@ function QuickDockSettings() {
     }
     if (field.kind === 'status') {
       if (!runtime) return el('span', { style: VALUE_STYLE }, '…')
+      if (runtime.downloading) {
+        const total = Number(runtime.total) || 0
+        const received = Number(runtime.received) || 0
+        const percent = total > 0 ? Math.round((received / total) * 100) + '%' : ''
+        const mb = (n) => (n / 1048576).toFixed(1) + ' MB'
+        return el('span', { style: VALUE_STYLE }, t(CFG_PREFIX + 'runtimeDownloading') + ' ' + percent + ' ' + (total > 0 ? mb(received) + ' / ' + mb(total) : ''))
+      }
       const text = runtime.ready
         ? runtime.version + ' · ' + (runtime.exe || '')
         : runtime.version + ' · ' + t(CFG_PREFIX + 'runtimeMissing')
@@ -1732,7 +1761,9 @@ function QuickDockSettings() {
               return
             }
             setNote('')
-            refreshRuntime()
+            if (result && result.ok) setRuntime(result)
+            if (field.action === 'runtime-redownload') startPolling()
+            else refreshRuntime()
           }).catch(function (error) {
             setBusy(false)
             setNote(String(error && error.message || error))

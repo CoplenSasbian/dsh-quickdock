@@ -213,5 +213,6 @@
   "cfg.runtimeStatus": "运行时状态",
   "cfg.runtimeMissing": "未下载",
   "cfg.runtimeRedownload": "重新下载",
-  "cfg.runtimeOpenFolder": "打开运行时目录"
+  "cfg.runtimeOpenFolder": "打开运行时目录",
+  "cfg.runtimeDownloading": "下载中"
 }

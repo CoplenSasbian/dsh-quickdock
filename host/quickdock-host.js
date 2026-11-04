@@ -258,18 +258,35 @@ export class QuickDockHost {
     } catch (_) {
       exe = ''
     }
-    return { version, defaultVersion: DEFAULT_ELECTRON_VERSION, dir, exe, ready: Boolean(exe) }
+    const download = this.state.download || {}
+    return {
+      version,
+      defaultVersion: DEFAULT_ELECTRON_VERSION,
+      dir,
+      exe,
+      ready: Boolean(exe),
+      downloading: download.active === true,
+      received: Number(download.received) || 0,
+      total: Number(download.total) || 0,
+      error: download.error || ''
+    }
   }
 
   /**
    * Delete the downloaded copy and fetch it again (the fix for a broken tree).
    * @returns {Promise<object>} the status after the download.
    */
-  async redownloadRuntime() {
+  redownloadRuntime() {
     if (!this.resolver) throw new Error('runtime resolver unavailable')
     const target = join(this.resolver.downloadRoot(), this.resolver.version)
     try { rmSync(target, { recursive: true, force: true }) } catch (_) { /* absent is fine */ }
-    await this.resolver.download()
+    // ~100 MB: kick it off and let the status line follow the progress.
+    this.state.download.active = true
+    this.state.download.received = 0
+    this.state.download.total = 0
+    this.resolver.download().catch((error) => {
+      this.trace('redownload failed: ' + String(error?.message || error))
+    })
     return this.runtimeInfo()
   }
 
