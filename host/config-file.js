@@ -31,6 +31,8 @@ export const DEFAULT_CONFIG = Object.freeze({
   // Start-up
   autoLaunch: false,
   prefetchElectron: true,
+  // Empty = the version this release ships with (see electron-resolver).
+  electronVersion: '',
   // DSH integration
   headerButton: true
 })
@@ -43,6 +45,12 @@ const RANGES = {
   maxHeight: [320, 2000],
   ballSize: [24, 160],
   headerButtonOrder: [0, 10000]
+}
+
+/** Keys that must match a shape instead of a number range. */
+const PATTERNS = {
+  // Empty (use the shipped default) or a dotted Electron version.
+  electronVersion: /^(|\d+(\.\d+){0,2})$/
 }
 
 /** Keys with a fixed value set instead of a number range. */
@@ -119,6 +127,11 @@ export function sanitizeValue(key, value) {
   const fallback = DEFAULT_CONFIG[key]
   if (typeof fallback === 'boolean') return value === true || value === false ? value : undefined
   if (ENUMS[key]) return ENUMS[key].includes(value) ? value : undefined
+  if (typeof fallback === 'string') {
+    const text = String(value ?? '').trim()
+    if (PATTERNS[key] && !PATTERNS[key].test(text)) return undefined
+    return text
+  }
   if (typeof fallback === 'number') {
     const number = Number(value)
     if (!Number.isFinite(number)) return undefined

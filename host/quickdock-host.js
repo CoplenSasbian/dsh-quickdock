@@ -9,6 +9,8 @@
 
 import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
+import { spawn } from 'node:child_process'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -16,7 +18,7 @@ import { createApiRouter } from './api.js'
 import { createBridgeHandler } from './bridge.js'
 import { API_PREFIX, API_VERSION, BIND_HOST, BRIDGE_PATH, DEFAULT_PORT, PAGE_PATH } from './constants.js'
 import { DshFacade } from './dsh.js'
-import { ElectronResolver } from './electron-resolver.js'
+import { DEFAULT_ELECTRON_VERSION, ElectronResolver } from './electron-resolver.js'
 import { sendJson } from './http.js'
 import { LocaleController } from './locale.js'
 import { PageRenderer } from './page.js'
@@ -243,6 +245,53 @@ export class QuickDockHost {
     }
   }
 
+  /**
+   * What the runtime looks like right now.
+   * @returns {{version: string, defaultVersion: string, dir: string, exe: string, ready: boolean}} status.
+   */
+  runtimeInfo() {
+    const version = this.resolver?.version || DEFAULT_ELECTRON_VERSION
+    const dir = this.resolver ? join(this.resolver.downloadRoot(), version) : ''
+    let exe = ''
+    try {
+      exe = this.resolver?.usable?.()[0]?.exe || ''
+    } catch (_) {
+      exe = ''
+    }
+    return { version, defaultVersion: DEFAULT_ELECTRON_VERSION, dir, exe, ready: Boolean(exe) }
+  }
+
+  /**
+   * Delete the downloaded copy and fetch it again (the fix for a broken tree).
+   * @returns {Promise<object>} the status after the download.
+   */
+  async redownloadRuntime() {
+    if (!this.resolver) throw new Error('runtime resolver unavailable')
+    const target = join(this.resolver.downloadRoot(), this.resolver.version)
+    try { rmSync(target, { recursive: true, force: true }) } catch (_) { /* absent is fine */ }
+    await this.resolver.download()
+    return this.runtimeInfo()
+  }
+
+  /**
+   * Reveal the runtime folder in the file manager.
+   * @returns {{dir: string}} the folder that was opened.
+   */
+  openRuntimeFolder() {
+    const version = this.resolver?.version || DEFAULT_ELECTRON_VERSION
+    const dir = join(this.resolver?.downloadRoot?.() || '', version)
+    try { mkdirSync(dir, { recursive: true }) } catch (_) { /* ignore */ }
+    const [command, args] = process.platform === 'win32'
+      ? ['explorer.exe', [dir]]
+      : process.platform === 'darwin' ? ['open', [dir]] : ['xdg-open', [dir]]
+    try {
+      spawn(command, args, { detached: true, stdio: 'ignore' }).unref()
+    } catch (error) {
+      return { dir, error: String(error?.message || error) }
+    }
+    return { dir }
+  }
+
   /** The Electron supervisor (null when the dock component is not mounted). */
   get dock() {
     return this.dockComponent ? this.dockComponent.dock : null
@@ -303,6 +352,8 @@ export class QuickDockHost {
     this.config.snapToEdge = config.snapToEdge
     this.config.closeAction = config.closeAction
     this.config.collapseOnClose = config.closeAction === 'ball'
+    this.config.electronVersion = config.electronVersion
+    if (this.resolver) this.resolver.version = config.electronVersion || DEFAULT_ELECTRON_VERSION
     this.config.alwaysOnTop = config.alwaysOnTop
     this.config.rememberGeometry = config.rememberGeometry
     this.config.focusOnSummon = config.focusOnSummon
@@ -502,6 +553,8 @@ export class QuickDockHost {
     this.config.ballSize = config.ballSize
     this.config.autoLaunch = config.autoLaunch
     this.config.prefetchElectron = config.prefetchElectron
+    this.config.electronVersion = config.electronVersion
+    if (this.resolver) this.resolver.version = config.electronVersion || DEFAULT_ELECTRON_VERSION
     this.config.headerButton = config.headerButton
     this.config.ballIcon = config.ballIcon
     this.config.snapToEdge = config.snapToEdge

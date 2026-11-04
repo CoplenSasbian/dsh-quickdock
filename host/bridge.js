@@ -31,6 +31,20 @@ export function createBridgeHandler(deps) {
       app.dock?.resetWindows()
       return { body: { ok: true } }
     },
+    'runtime-status'() {
+      return { body: Object.assign({ ok: true }, app.runtimeInfo()) }
+    },
+    async 'runtime-redownload'() {
+      try {
+        const info = await app.redownloadRuntime()
+        return { body: Object.assign({ ok: true }, info) }
+      } catch (error) {
+        return { status: 500, body: { ok: false, error: String(error?.message || error) } }
+      }
+    },
+    'runtime-open-folder'() {
+      return { body: Object.assign({ ok: true }, app.openRuntimeFolder()) }
+    },
     'reload-dock'() {
       // Lighter than a restart: the window stays, the app inside is reloaded.
       return { body: app.requestDockReload() }

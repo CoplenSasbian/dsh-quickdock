@@ -237,7 +237,13 @@ var MESSAGES = {
     'client.matchSidebarExpand': 'Expand sidebar',
     'cfg.closeAction': 'What the close button does',
     'cfg.closeAction.quit': 'Quit QuickDock',
-    'cfg.closeAction.ball': 'Keep the floating ball (click it to come back)'
+    'cfg.closeAction.ball': 'Keep the floating ball (click it to come back)',
+    'cfg.group.runtime': 'Electron runtime',
+    'cfg.electronVersion': 'Electron version (blank = shipped default)',
+    'cfg.runtimeStatus': 'Runtime status',
+    'cfg.runtimeMissing': 'not downloaded',
+    'cfg.runtimeRedownload': 'Download again',
+    'cfg.runtimeOpenFolder': 'Open runtime folder'
   },
   zh: {
     'app.displayTitle': 'QuickDock 执行过程',
@@ -448,7 +454,13 @@ var MESSAGES = {
     'client.matchSidebarExpand': '展开侧边栏',
     'cfg.closeAction': '点关闭按钮时',
     'cfg.closeAction.quit': '退出 QuickDock',
-    'cfg.closeAction.ball': '保留悬浮球（点它可回来）'
+    'cfg.closeAction.ball': '保留悬浮球（点它可回来）',
+    'cfg.group.runtime': 'Electron 运行时',
+    'cfg.electronVersion': 'Electron 版本（留空用默认）',
+    'cfg.runtimeStatus': '运行时状态',
+    'cfg.runtimeMissing': '未下载',
+    'cfg.runtimeRedownload': '重新下载',
+    'cfg.runtimeOpenFolder': '打开运行时目录'
   }
 }
 
@@ -1581,13 +1593,18 @@ const CONFIG_FIELDS = [
   { group: 'ball', key: 'ballIcon', kind: 'enum', options: ['whale', 'dot'] },
   { group: 'ball', key: 'snapToEdge', kind: 'bool' },
   { group: 'ball', key: 'closeAction', kind: 'enum', options: ['quit', 'ball'] },
-  { group: 'dock', key: 'headerButton', kind: 'bool' }
+  { group: 'dock', key: 'headerButton', kind: 'bool' },
+  { group: 'runtime', key: 'electronVersion', kind: 'text' },
+  { group: 'runtime', key: 'runtimeStatus', kind: 'status' },
+  { group: 'runtime', key: 'runtimeRedownload', kind: 'action', action: 'runtime-redownload' },
+  { group: 'runtime', key: 'runtimeOpenFolder', kind: 'action', action: 'runtime-open-folder' }
 ]
 
 const CONFIG_GROUPS = [
   { id: 'window', label: 'cfg.group.window' },
   { id: 'ball', label: 'cfg.group.ball' },
-  { id: 'dock', label: 'cfg.group.dock' }
+  { id: 'dock', label: 'cfg.group.dock' },
+  { id: 'runtime', label: 'cfg.group.runtime' }
 ]
 
 /** Prefix for every settings label, so the checker does not read it as one key. */
@@ -1609,14 +1626,26 @@ const GROUP_STYLE = { fontSize: '12px', opacity: .55, margin: '18px 2px 4px' }
 function QuickDockSettings() {
   const [config, setConfig] = React.useState(null)
   const [busy, setBusy] = React.useState(false)
+  const [runtime, setRuntime] = React.useState(null)
+  const [note, setNote] = React.useState('')
 
   React.useEffect(function () {
     let alive = true
     bridge('config-get').then(function (result) {
       if (alive && result && result.config) setConfig(result.config)
     }).catch(function () { /* host not up yet */ })
+    bridge('runtime-status').then(function (result) {
+      if (alive && result && result.ok) setRuntime(result)
+    }).catch(function () { /* host not up yet */ })
     return function () { alive = false }
   }, [])
+
+  /** Re-read the runtime after an action so the status line is never stale. */
+  function refreshRuntime() {
+    bridge('runtime-status').then(function (result) {
+      if (result && result.ok) setRuntime(result)
+    }).catch(function () { /* ignore */ })
+  }
 
   function write(patch) {
     setBusy(true)
@@ -1645,6 +1674,71 @@ function QuickDockSettings() {
           write(patch)
         }
       })
+    }
+    if (field.kind === 'text') {
+      return el('input', {
+        type: 'text',
+        defaultValue: String(value || ''),
+        placeholder: runtime ? runtime.defaultVersion : '',
+        disabled: busy,
+        'aria-label': t(CFG_PREFIX + field.key),
+        style: {
+          width: '110px',
+          fontSize: '12px',
+          padding: '4px 6px',
+          borderRadius: '6px',
+          background: 'var(--dsw-alias-bg-layer-2, #232326)',
+          color: 'inherit',
+          border: '1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.12))'
+        },
+        onKeyDown: function (event) { if (event.key === 'Enter') event.currentTarget.blur() },
+        onBlur: function (event) {
+          const patch = {}
+          patch[field.key] = String(event.target.value || '').trim()
+          write(patch)
+          setTimeout(refreshRuntime, 400)
+        }
+      })
+    }
+    if (field.kind === 'status') {
+      if (!runtime) return el('span', { style: VALUE_STYLE }, '…')
+      const text = runtime.ready
+        ? runtime.version + ' · ' + (runtime.exe || '')
+        : runtime.version + ' · ' + t(CFG_PREFIX + 'runtimeMissing')
+      return el('span', { style: Object.assign({}, VALUE_STYLE, { maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }), title: runtime.dir }, text)
+    }
+    if (field.kind === 'action') {
+      return el('button', {
+        type: 'button',
+        disabled: busy,
+        'aria-label': t(CFG_PREFIX + field.key),
+        style: {
+          height: '26px',
+          padding: '0 10px',
+          fontSize: '12px',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          color: 'inherit',
+          background: 'var(--dsw-alias-bg-layer-2, #232326)',
+          border: '1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.12))'
+        },
+        onClick: function () {
+          setBusy(true)
+          setNote('')
+          bridge(field.action).then(function (result) {
+            setBusy(false)
+            if (result && result.error) {
+              setNote(String(result.error))
+              return
+            }
+            setNote('')
+            refreshRuntime()
+          }).catch(function (error) {
+            setBusy(false)
+            setNote(String(error && error.message || error))
+          })
+        }
+      }, t(CFG_PREFIX + field.key))
     }
     if (field.kind === 'enum') {
       return el('select', {
@@ -1691,6 +1785,10 @@ function QuickDockSettings() {
         control(field)
       ))
     }
+  }
+
+  if (note) {
+    rows.push(el('div', { key: 'note', style: { padding: '6px 12px', fontSize: '12px', color: 'var(--dsw-alias-state-error-primary, #ff6b6b)' } }, note))
   }
 
   return el('div', { style: { display: 'flex', flexDirection: 'column', padding: '4px 0 24px' } }, rows)

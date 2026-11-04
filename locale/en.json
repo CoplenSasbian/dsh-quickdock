@@ -207,5 +207,11 @@
   "client.matchSidebarExpand": "Expand sidebar",
   "cfg.closeAction": "What the close button does",
   "cfg.closeAction.quit": "Quit QuickDock",
-  "cfg.closeAction.ball": "Keep the floating ball (click it to come back)"
+  "cfg.closeAction.ball": "Keep the floating ball (click it to come back)",
+  "cfg.group.runtime": "Electron runtime",
+  "cfg.electronVersion": "Electron version (blank = shipped default)",
+  "cfg.runtimeStatus": "Runtime status",
+  "cfg.runtimeMissing": "not downloaded",
+  "cfg.runtimeRedownload": "Download again",
+  "cfg.runtimeOpenFolder": "Open runtime folder"
 }
