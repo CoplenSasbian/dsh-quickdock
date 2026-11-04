@@ -129,7 +129,7 @@ export class DockProcess {
         ballAlwaysVisible: this.config.ballAlwaysVisible,
         snapToEdge: this.config.snapToEdge,
         collapseOnClose: this.config.collapseOnClose,
-        startCorner: this.config.startCorner,        // On-demand mode: closing the window ends the process.
+        // On-demand mode: closing the window ends the process.
         exitOnClose: !this.config.autoLaunch
       })
     })

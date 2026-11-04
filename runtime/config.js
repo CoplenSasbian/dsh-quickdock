@@ -107,9 +107,7 @@ function parseConfig(argv, env) {
     ballAlwaysVisible: inline.ballAlwaysVisible === true,
     snapToEdge: inline.snapToEdge !== false,
     collapseOnClose: inline.collapseOnClose === true,
-    startCorner: inline.startCorner === 'cursor' || inline.startCorner === 'bottom-right'
-      ? inline.startCorner
-      : 'top-right',
+
     // An opaque window: the frame shell paints its own background and hosts an iframe.
     opaque: inline.opaque === true,
     margin: Number.isFinite(inline.margin) ? inline.margin : 16,

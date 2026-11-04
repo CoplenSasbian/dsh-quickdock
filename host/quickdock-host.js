@@ -303,7 +303,6 @@ export class QuickDockHost {
     this.config.ballAlwaysVisible = config.ballAlwaysVisible
     this.config.snapToEdge = config.snapToEdge
     this.config.collapseOnClose = config.collapseOnClose
-    this.config.startCorner = config.startCorner
     this.config.alwaysOnTop = config.alwaysOnTop
     this.config.rememberGeometry = config.rememberGeometry
     this.config.focusOnSummon = config.focusOnSummon
@@ -319,7 +318,6 @@ export class QuickDockHost {
       ballAlwaysVisible: config.ballAlwaysVisible,
       snapToEdge: config.snapToEdge,
       collapseOnClose: config.collapseOnClose,
-      startCorner: config.startCorner,
       alwaysOnTop: config.alwaysOnTop
     })
     return config
@@ -510,7 +508,6 @@ export class QuickDockHost {
     this.config.ballAlwaysVisible = config.ballAlwaysVisible
     this.config.snapToEdge = config.snapToEdge
     this.config.collapseOnClose = config.collapseOnClose
-    this.config.startCorner = config.startCorner
     /** Mark currently drawn by the shell, to avoid a needless shell reload. */
     this.lastBallIcon = config.ballIcon
   }

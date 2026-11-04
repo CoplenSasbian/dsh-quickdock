@@ -281,8 +281,7 @@ class DockRuntime {
     trace('disc config: icon=' + this.config.ballIcon
       + ' always=' + (this.config.ballAlwaysVisible === true)
       + ' snap=' + (this.config.snapToEdge !== false)
-      + ' collapseOnClose=' + (this.config.collapseOnClose === true)
-      + ' corner=' + this.config.startCorner);
+      + ' collapseOnClose=' + (this.config.collapseOnClose === true));
     trace('window: resizable=' + (this.config.resizable !== false)
       + ' bounds=' + this.config.minWidth + 'x' + this.config.minHeight
       + '..' + this.config.maxWidth + 'x' + this.config.maxHeight);
@@ -1275,8 +1274,11 @@ class DockRuntime {
    * Minimised windows have no taskbar entry (skipTaskbar): the dock collapses to
    * a floating whale disc instead, and the disc brings it back.
    */
-  minimizeToBall(point) {
+  minimizeToBall() {
     if (this.quitting || !this.win || this.win.isDestroyed()) return;
+    // One rule: the disc appears under the pointer, whatever triggered the collapse.
+    const cursor = this.electron.screen.getCursorScreenPoint();
+    const point = { x: cursor.x, y: cursor.y };
     // Remember where the collapse button sat inside the window: the window is
     // reopened around the disc with that same point, so the disc really takes the
     // button's place instead of landing in some corner.
@@ -1358,48 +1360,25 @@ class DockRuntime {
     } catch (_) {}
   }
 
-  /** Put the ball under the click, or beside the dock window's corner. */
+  /**
+   * Put the disc under the given point (the pointer at collapse time).
+   * @param {{x: number, y: number}} [point] pointer position; the live cursor when omitted.
+   */
   positionBall(point) {
     if (!this.ball || this.ball.isDestroyed()) return;
     const size = this.ballSize();
+    const cursor = this.electron.screen.getCursorScreenPoint();
     const anchor = point && Number.isFinite(point.x) && Number.isFinite(point.y)
       ? point
-      : null;
-    if (anchor) {
-      const area = currentDisplay(this.electron.screen, {
-        x: anchor.x, y: anchor.y, width: size, height: size,
-      }).workArea;
-      const x = Math.round(anchor.x - size / 2);
-      const y = Math.round(anchor.y - size / 2);
-      this.placeBall(
-        Math.max(area.x + 4, Math.min(x, area.x + area.width - size - 4)),
-        Math.max(area.y + 4, Math.min(y, area.y + area.height - size - 4))
-      );
-      return;
-    }
-    // No click point (a summon from the bridge, or an automatic collapse): the
-    // configured corner decides where the disc shows up.
-    const corner = this.config.startCorner === 'cursor' ? 'cursor'
-      : this.config.startCorner === 'bottom-right' ? 'bottom-right'
-        : 'top-right';
-    if (corner === 'cursor') {
-      const cursor = this.electron.screen.getCursorScreenPoint();
-      const area = currentDisplay(this.electron.screen, {
-        x: cursor.x, y: cursor.y, width: size, height: size,
-      }).workArea;
-      this.placeBall(
-        Math.max(area.x + 4, Math.min(cursor.x - size / 2, area.x + area.width - size - 4)),
-        Math.max(area.y + 4, Math.min(cursor.y - size / 2, area.y + area.height - size - 4))
-      );
-      return;
-    }
-    const bounds = this.win ? this.win.getBounds() : { x: 200, y: 200, width: 460, height: 800 };
-    const area = currentDisplay(this.electron.screen, bounds).workArea;
-    const x = bounds.x + bounds.width - size - 10;
-    const y = corner === 'top-right' ? bounds.y + 10 : bounds.y + bounds.height - size - 10;
+      : { x: cursor.x, y: cursor.y };
+    const area = currentDisplay(this.electron.screen, {
+      x: anchor.x, y: anchor.y, width: size, height: size,
+    }).workArea;
+    const x = Math.round(anchor.x - size / 2);
+    const y = Math.round(anchor.y - size / 2);
     this.placeBall(
-      Math.max(area.x + 8, Math.min(x, area.x + area.width - size - 8)),
-      Math.max(area.y + 8, Math.min(y, area.y + area.height - size - 8))
+      Math.max(area.x + 4, Math.min(x, area.x + area.width - size - 4)),
+      Math.max(area.y + 4, Math.min(y, area.y + area.height - size - 4))
     );
   }
 
@@ -1441,7 +1420,6 @@ class DockRuntime {
     if (!patch || typeof patch !== 'object') return;
     if (typeof patch.collapseOnClose === 'boolean') this.config.collapseOnClose = patch.collapseOnClose;
     if (typeof patch.snapToEdge === 'boolean') this.config.snapToEdge = patch.snapToEdge;
-    if (patch.startCorner) this.config.startCorner = patch.startCorner;
     if (typeof patch.alwaysOnTop === 'boolean') this.applyAlwaysOnTop(patch.alwaysOnTop);
     if (typeof patch.ballSize === 'number' && patch.ballSize > 0) this.applyBallSize(patch.ballSize);
     if (patch.ballIcon) {

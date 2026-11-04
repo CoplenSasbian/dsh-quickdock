@@ -31,7 +31,6 @@ export const DEFAULT_CONFIG = Object.freeze({
   snapToEdge: true,
   // Window behaviour
   collapseOnClose: false,
-  startCorner: 'top-right',
   // Start-up
   autoLaunch: false,
   prefetchElectron: true,
@@ -54,8 +53,7 @@ const RANGES = {
 
 /** Keys with a fixed value set instead of a number range. */
 const ENUMS = {
-  ballIcon: ['whale', 'dot'],
-  startCorner: ['bottom-right', 'top-right', 'cursor']
+  ballIcon: ['whale', 'dot']
 }
 
 /**

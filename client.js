@@ -227,16 +227,12 @@ var MESSAGES = {
     'cfg.ballAlwaysVisible': 'Keep the ball on screen',
     'cfg.snapToEdge': 'Snap the ball to the screen edge',
     'cfg.collapseOnClose': 'Closing collapses into the ball',
-    'cfg.startCorner': 'First appearance position',
     'cfg.autoLaunch': 'Open the window with the plugin',
     'cfg.prefetchElectron': 'Prefetch the desktop runtime',
     'cfg.headerButton': 'Show the header Dock button',
     'cfg.headerButtonOrder': 'Header button order',
     'cfg.ballIcon.whale': 'Whale',
     'cfg.ballIcon.dot': 'Plain dot',
-    'cfg.startCorner.bottom-right': 'Bottom right',
-    'cfg.startCorner.top-right': 'Top right',
-    'cfg.startCorner.cursor': 'At the cursor',
     'cfg.group.window': 'Window',
     'cfg.group.ball': 'Floating ball',
     'cfg.group.dock': 'Dock window'
@@ -442,16 +438,12 @@ var MESSAGES = {
     'cfg.ballAlwaysVisible': '始终显示悬浮球',
     'cfg.snapToEdge': '悬浮球吸附屏幕边缘',
     'cfg.collapseOnClose': '关闭时收起到悬浮球',
-    'cfg.startCorner': '首次出现的位置',
     'cfg.autoLaunch': '随插件启动窗口',
     'cfg.prefetchElectron': '预取桌面运行时',
     'cfg.headerButton': '显示标题栏 Dock 按钮',
     'cfg.headerButtonOrder': '标题栏按钮顺序',
     'cfg.ballIcon.whale': '鲸鱼',
     'cfg.ballIcon.dot': '纯色圆点',
-    'cfg.startCorner.bottom-right': '右下角',
-    'cfg.startCorner.top-right': '右上角',
-    'cfg.startCorner.cursor': '跟随光标',
     'cfg.group.window': '窗口',
     'cfg.group.ball': '悬浮球',
     'cfg.group.dock': 'dock 窗口'
@@ -1532,7 +1524,6 @@ const CONFIG_FIELDS = [
   { group: 'ball', key: 'ballAlwaysVisible', kind: 'bool' },
   { group: 'ball', key: 'snapToEdge', kind: 'bool' },
   { group: 'ball', key: 'collapseOnClose', kind: 'bool' },
-  { group: 'ball', key: 'startCorner', kind: 'enum', options: ['bottom-right', 'top-right', 'cursor'] },
   { group: 'dock', key: 'headerButton', kind: 'bool' }
 ]
 
