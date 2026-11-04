@@ -232,10 +232,6 @@ var MESSAGES = {
     'cfg.prefetchElectron': 'Prefetch the desktop runtime',
     'cfg.headerButton': 'Show the header Dock button',
     'cfg.headerButtonOrder': 'Header button order',
-    'cfg.trimHeaderActions': 'Hide header action buttons in the dock',
-    'cfg.trimSidebarPanels': 'Hide plugins / automations / more in the dock',
-    'cfg.trimAccountMenu': 'Hide the account menu in the dock',
-    'cfg.trimTabs': 'Hide the conversation tabs in the dock',
     'cfg.ballIcon.whale': 'Whale',
     'cfg.ballIcon.dot': 'Plain dot',
     'cfg.startCorner.bottom-right': 'Bottom right',
@@ -451,10 +447,6 @@ var MESSAGES = {
     'cfg.prefetchElectron': '预取桌面运行时',
     'cfg.headerButton': '显示标题栏 Dock 按钮',
     'cfg.headerButtonOrder': '标题栏按钮顺序',
-    'cfg.trimHeaderActions': 'dock 中隐藏标题栏操作按钮',
-    'cfg.trimSidebarPanels': 'dock 中隐藏插件/自动化/更多',
-    'cfg.trimAccountMenu': 'dock 中隐藏账号菜单',
-    'cfg.trimTabs': 'dock 中隐藏对话/轨迹标签',
     'cfg.ballIcon.whale': '鲸鱼',
     'cfg.ballIcon.dot': '纯色圆点',
     'cfg.startCorner.bottom-right': '右下角',
@@ -1174,18 +1166,10 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     return
   }
   document.documentElement.setAttribute('data-qd-dock', '1')
-  // Every trim defaults to on; the config can switch any group off for a dock
-  // window that should look exactly like the main one.
+  // Showing the shipped chrome in the dock turned out to be broken (the header
+  // actions and the tab strip do not fit), so the trims are unconditional.
   document.documentElement.setAttribute('data-qd-trim-sidebar', '1')
-  bridge('config-get').then(function (result) {
-    const config = result && result.config
-    if (!config) return
-    DOCK_TRIMS.account = config.trimAccountMenu !== false
-    DOCK_TRIMS.header = config.trimHeaderActions !== false
-    DOCK_TRIMS.sidebar = config.trimSidebarPanels !== false
-    if (!DOCK_TRIMS.sidebar) document.documentElement.removeAttribute('data-qd-trim-sidebar')
-    if (config.trimTabs === true) document.documentElement.setAttribute('data-qd-trim-tabs', '1')
-  }).catch(function () { /* keep the defaults */ })
+  document.documentElement.setAttribute('data-qd-trim-tabs', '1')
 
   // A session picked from the full-window sidebar should leave the conversation
   // visible again: collapse on the next tick, after the app handled the click.
@@ -1291,9 +1275,6 @@ const HIDDEN_MENU_ITEMS = [
   /sign\s*out/i
 ]
 
-/** Which dock-only UI trims are active (config: trimAccountMenu / trimHeaderActions / trimSidebarPanels). */
-const DOCK_TRIMS = { account: true, header: true, sidebar: true }
-
 /** The avatar that opens the account menu (localised label, hence the pattern). */
 const ACCOUNT_TRIGGER = /(\u8d26\u53f7\u83dc\u5355)|account\s*menu|account/i
 
@@ -1389,15 +1370,15 @@ function hideDocklessMenuItems() {
     for (const item of document.querySelectorAll('[role="menuitem"]')) {
       const label = String(item.textContent || '').trim()
       if (!label) continue
-      if (DOCK_TRIMS.account && HIDDEN_MENU_ITEMS.some(function (pattern) { return pattern.test(label) })) {
+      if (HIDDEN_MENU_ITEMS.some(function (pattern) { return pattern.test(label) })) {
         item.style.display = 'none'
       }
     }
     // The trigger is useless once every entry is gone.
     for (const trigger of document.querySelectorAll('button[aria-label]')) {
       const label = String(trigger.getAttribute('aria-label') || '')
-      if (DOCK_TRIMS.account && ACCOUNT_TRIGGER.test(label)) trigger.style.display = 'none'
-      if (DOCK_TRIMS.header && HIDDEN_HEADER_BUTTONS.some(function (pattern) { return pattern.test(label) })) {
+      if (ACCOUNT_TRIGGER.test(label)) trigger.style.display = 'none'
+      if (HIDDEN_HEADER_BUTTONS.some(function (pattern) { return pattern.test(label) })) {
         trigger.style.display = 'none'
       }
     }
@@ -1552,11 +1533,7 @@ const CONFIG_FIELDS = [
   { group: 'ball', key: 'snapToEdge', kind: 'bool' },
   { group: 'ball', key: 'collapseOnClose', kind: 'bool' },
   { group: 'ball', key: 'startCorner', kind: 'enum', options: ['bottom-right', 'top-right', 'cursor'] },
-  { group: 'dock', key: 'headerButton', kind: 'bool' },
-  { group: 'dock', key: 'trimHeaderActions', kind: 'bool' },
-  { group: 'dock', key: 'trimSidebarPanels', kind: 'bool' },
-  { group: 'dock', key: 'trimAccountMenu', kind: 'bool' },
-  { group: 'dock', key: 'trimTabs', kind: 'bool' }
+  { group: 'dock', key: 'headerButton', kind: 'bool' }
 ]
 
 const CONFIG_GROUPS = [

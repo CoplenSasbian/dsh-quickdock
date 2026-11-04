@@ -37,12 +37,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   prefetchElectron: true,
   // DSH integration
   headerButton: true,
-  headerButtonOrder: 1010,
-  // Dock-only trimming (hide UI that needs the full window)
-  trimHeaderActions: true,
-  trimSidebarPanels: true,
-  trimAccountMenu: true,
-  trimTabs: false
+  headerButtonOrder: 1010
 })
 
 /** Numeric bounds applied to every stored value. */

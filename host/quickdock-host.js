@@ -481,9 +481,6 @@ export class QuickDockHost {
     this.config.prefetchElectron = config.prefetchElectron
     this.config.headerButton = config.headerButton
     this.config.headerButtonOrder = config.headerButtonOrder
-    this.config.trimHeaderActions = config.trimHeaderActions
-    this.config.trimSidebarPanels = config.trimSidebarPanels
-    this.config.trimAccountMenu = config.trimAccountMenu
   }
 
   #registerBridge() {

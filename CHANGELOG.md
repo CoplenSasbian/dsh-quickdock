@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [0.6.0-beta.2] - 2026-11-04
+
+Showing the shipped chrome inside the dock turned out to be broken at dock size,
+so the trims are no longer switchable.
+
+### Removed
+
+- `trimHeaderActions`, `trimSidebarPanels`, `trimAccountMenu` and `trimTabs`: the
+  dock always hides the header action buttons, the plugins/automations/more rows,
+  the account menu and the conversation tab strip. Switching them back on is gone
+  from the settings page and from `config.json`.
+
 ## [0.6.0-beta.1] - 2026-11-04
 
 Configuration moves out of the Loader row into its own file and its own settings
