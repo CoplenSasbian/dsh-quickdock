@@ -31,7 +31,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   snapToEdge: true,
   // Window behaviour
   collapseOnClose: false,
-  startCorner: 'bottom-right',
+  startCorner: 'top-right',
   // Start-up
   autoLaunch: false,
   prefetchElectron: true,

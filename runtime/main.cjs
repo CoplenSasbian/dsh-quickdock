@@ -1379,9 +1379,9 @@ class DockRuntime {
     }
     // No click point (a summon from the bridge, or an automatic collapse): the
     // configured corner decides where the disc shows up.
-    const corner = this.config.startCorner === 'top-right' ? 'top-right'
-      : this.config.startCorner === 'cursor' ? 'cursor'
-        : 'bottom-right';
+    const corner = this.config.startCorner === 'cursor' ? 'cursor'
+      : this.config.startCorner === 'bottom-right' ? 'bottom-right'
+        : 'top-right';
     if (corner === 'cursor') {
       const cursor = this.electron.screen.getCursorScreenPoint();
       const area = currentDisplay(this.electron.screen, {
