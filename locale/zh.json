@@ -196,7 +196,7 @@
   "cfg.ballIcon": "悬浮球图标",
   "cfg.snapToEdge": "悬浮球吸附屏幕边缘",
   "cfg.autoLaunch": "随 DSH 启动窗口",
-  "cfg.prefetchElectron": "预取桌面运行时",
+  "cfg.prefetchElectron": "提前下载 dock 组件（首次打开更快）",
   "cfg.headerButton": "显示标题栏 Dock 按钮",
   "cfg.ballIcon.whale": "鲸鱼",
   "cfg.ballIcon.dot": "纯色圆点",

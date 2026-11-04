@@ -196,7 +196,7 @@
   "cfg.ballIcon": "Floating ball icon",
   "cfg.snapToEdge": "Snap the ball to the screen edge",
   "cfg.autoLaunch": "Open the window when DSH starts",
-  "cfg.prefetchElectron": "Prefetch the desktop runtime",
+  "cfg.prefetchElectron": "Pre-download the dock component (first open is faster)",
   "cfg.headerButton": "Show the header Dock button",
   "cfg.ballIcon.whale": "Whale",
   "cfg.ballIcon.dot": "Plain dot",
