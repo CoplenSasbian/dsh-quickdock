@@ -1508,6 +1508,8 @@ const SETTINGS_SECTION = 'settings.section'
 const CONFIG_FIELDS = [
   { group: 'window', key: 'minWidth', kind: 'number', min: 280, max: 1200, step: 10 },
   { group: 'window', key: 'minHeight', kind: 'number', min: 280, max: 1600, step: 10 },
+  { group: 'window', key: 'maxWidth', kind: 'number', min: 320, max: 2000, step: 10 },
+  { group: 'window', key: 'maxHeight', kind: 'number', min: 320, max: 2000, step: 10 },
   { group: 'window', key: 'alwaysOnTop', kind: 'bool' },
   { group: 'window', key: 'rememberGeometry', kind: 'bool' },
   { group: 'window', key: 'focusOnSummon', kind: 'bool' },

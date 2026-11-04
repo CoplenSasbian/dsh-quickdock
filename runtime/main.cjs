@@ -1418,6 +1418,16 @@ class DockRuntime {
    */
   applyConfig(patch) {
     if (!patch || typeof patch !== 'object') return;
+    if ([patch.minWidth, patch.minHeight, patch.maxWidth, patch.maxHeight].every((v) => Number.isFinite(v))) {
+      this.config.minWidth = patch.minWidth;
+      this.config.minHeight = patch.minHeight;
+      this.config.maxWidth = patch.maxWidth;
+      this.config.maxHeight = patch.maxHeight;
+      try {
+        this.win.setMinimumSize(patch.minWidth, patch.minHeight);
+        this.win.setMaximumSize(patch.maxWidth, patch.maxHeight);
+      } catch (_) {}
+    }
     if (typeof patch.collapseOnClose === 'boolean') this.config.collapseOnClose = patch.collapseOnClose;
     if (typeof patch.snapToEdge === 'boolean') this.config.snapToEdge = patch.snapToEdge;
     if (typeof patch.alwaysOnTop === 'boolean') this.applyAlwaysOnTop(patch.alwaysOnTop);

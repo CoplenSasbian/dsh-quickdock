@@ -313,6 +313,10 @@ export class QuickDockHost {
     }
     // ...and push the runtime-safe ones to a window that is already open.
     this.dock?.applyRuntimeConfig?.({
+      minWidth: config.minWidth,
+      minHeight: config.minHeight,
+      maxWidth: config.maxWidth,
+      maxHeight: config.maxHeight,
       ballSize: config.ballSize,
       ballIcon: config.ballIcon,
       ballAlwaysVisible: config.ballAlwaysVisible,
