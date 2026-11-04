@@ -3,27 +3,51 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
-## [Unreleased]
+## [0.6.0-beta.2] - 2026-11-05
 
-Work after the published beta: the dock trims are fixed, settings reach the open
-window, and a resident disc no longer fights the window.
+The settings page is rebuilt around what people actually need: the dock chrome is
+trimmed without options, the Electron runtime gets its own section, and the
+floating disc stops fighting the window.
+
+### Added
+
+- **Electron runtime section**: current version and path, a picker fed by the
+  registry (stable versions, the ones already downloaded marked), "download again"
+  and "open runtime folder". Downloading runs in a child process, keeps the working
+  copy until the new one is unpacked, closes the window first and reopens it after.
+- The runtime is prefetched in the background when the switch is on, and again when
+  the selected version changes to one that is not on disk.
+- Progress for a running download (percent and MB) on the settings page.
 
 ### Changed
 
-- The dock always trims the shipped chrome: header action buttons, the
-  plugins/automations/more rows, the account menu and the conversation tab strip.
-  Restoring any of them is broken at dock size, so `trimHeaderActions`,
-  `trimSidebarPanels`, `trimAccountMenu` and `trimTabs` are gone from
-  `config.json` and from the settings page.
+- The close button is a choice, not a switch: *quit QuickDock* or *keep the
+  floating ball*; `collapseOnClose` became `closeAction`.
+- Labels say what the setting buys: "open the window when DSH starts",
+  "pre-download the dock component (first open is faster)".
+- The window size is no longer configurable (it is remembered and bounded by
+  min/max); the maximum bounds are rows now instead of only the minimum.
+- The floating ball always lands on the pointer at the moment of the collapse; the
+  corner preference is gone.
+- The dock always trims the shipped chrome - header action buttons, the
+  plugins/automations/more rows, the account menu and the conversation tab strip -
+  because restoring any of them is broken at dock size.
+- The always-visible disc is retired: the disc exists while the window is parked.
+- The dock hides the drawer scrim, so the sidebar is clickable, and DSH's floating
+  "open sidebar" button no longer duplicates the title-bar toggle.
 
 ### Fixed
 
-- `config-set` pushes ball icon, always-visible disc, edge snapping,
-  collapse-on-close, first corner and always-on-top to the window that is already
-  open; before, only `ballSize` was applied live.
-- A resident disc parks on the configured corner while the window is open instead
-  of covering the collapse button, collapsing works while a disc is visible, and
-  clicking a resident disc no longer re-places an open window.
+- `config-set` reaches the open window: ball icon, disc snapping, close action,
+  bounds and always-on-top used to wait for the next spawn.
+- The focus fallback no longer collapses the window it is trying to focus (the
+  summon/pick loop that closed and reopened the dock).
+- Picking a session leaves the drawer closed instead of reopening it.
+- The header Dock dropdown is portalled into `body`, so the header's transform can
+  no longer clip it to a strip.
+- The header Dock button is registered synchronously again (an async apply dropped
+  the slot), and its switch is honoured.
+- `ballIcon` also drives the title-bar collapse button, not just the disc.
 
 ## [0.6.0-beta.1] - 2026-11-04
 
