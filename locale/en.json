@@ -209,7 +209,7 @@
   "cfg.closeAction.quit": "Quit QuickDock",
   "cfg.closeAction.ball": "Keep the floating ball (click it to come back)",
   "cfg.group.runtime": "Electron runtime",
-  "cfg.electronVersion": "Electron version (blank = shipped default)",
+  "cfg.electronVersion": "Electron version",
   "cfg.runtimeStatus": "Runtime status",
   "cfg.runtimeMissing": "not downloaded",
   "cfg.runtimeRedownload": "Download again",
