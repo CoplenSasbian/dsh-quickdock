@@ -126,7 +126,6 @@ export class DockProcess {
         ballSize: this.config.ballSize,
         // Disc behaviour and appearance (also pushed live via a config patch).
         ballIcon: this.config.ballIcon,
-        ballAlwaysVisible: this.config.ballAlwaysVisible,
         snapToEdge: this.config.snapToEdge,
         collapseOnClose: this.config.collapseOnClose,
         // On-demand mode: closing the window ends the process.

@@ -224,7 +224,6 @@ var MESSAGES = {
     'cfg.focusOnSummon': 'Focus when opened',
     'cfg.ballSize': 'Floating ball size',
     'cfg.ballIcon': 'Floating ball icon',
-    'cfg.ballAlwaysVisible': 'Keep the ball on screen',
     'cfg.snapToEdge': 'Snap the ball to the screen edge',
     'cfg.autoLaunch': 'Open the window when DSH starts',
     'cfg.prefetchElectron': 'Prefetch the desktop runtime',
@@ -436,7 +435,6 @@ var MESSAGES = {
     'cfg.focusOnSummon': '打开时聚焦',
     'cfg.ballSize': '悬浮球大小',
     'cfg.ballIcon': '悬浮球图标',
-    'cfg.ballAlwaysVisible': '始终显示悬浮球',
     'cfg.snapToEdge': '悬浮球吸附屏幕边缘',
     'cfg.autoLaunch': '随 DSH 启动窗口',
     'cfg.prefetchElectron': '预取桌面运行时',
@@ -1581,7 +1579,6 @@ const CONFIG_FIELDS = [
   { group: 'window', key: 'prefetchElectron', kind: 'bool' },
   { group: 'ball', key: 'ballSize', kind: 'number', min: 24, max: 160, step: 4 },
   { group: 'ball', key: 'ballIcon', kind: 'enum', options: ['whale', 'dot'] },
-  { group: 'ball', key: 'ballAlwaysVisible', kind: 'bool' },
   { group: 'ball', key: 'snapToEdge', kind: 'bool' },
   { group: 'ball', key: 'closeAction', kind: 'enum', options: ['quit', 'ball'] },
   { group: 'dock', key: 'headerButton', kind: 'bool' }

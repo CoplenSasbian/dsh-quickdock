@@ -279,7 +279,6 @@ class DockRuntime {
     }
     this.win = new BrowserWindow(sharedWindowOptions(Object.assign({ title: 'QuickDock' }, restored.bounds, chromeOptions)));
     trace('disc config: icon=' + this.config.ballIcon
-      + ' always=' + (this.config.ballAlwaysVisible === true)
       + ' snap=' + (this.config.snapToEdge !== false)
       + ' collapseOnClose=' + (this.config.collapseOnClose === true));
     trace('window: resizable=' + (this.config.resizable !== false)
@@ -447,18 +446,8 @@ class DockRuntime {
       this.minimizeToBall();
     });
     this.win.on('show', () => {
-      // A resident disc (config: ballAlwaysVisible) stays on screen beside the window.
-      if (this.config.ballAlwaysVisible === true) {
-        this.ensureBall();
-        if (this.ball && !this.ball.isDestroyed()) {
-          // Keep the resident disc away from the window: parked on its corner so
-          // it never sits on the collapse button it came from.
-          this.positionBall();
-          if (!this.ball.isVisible()) {
-            try { this.ball.showInactive(); } catch (_) {}
-          }
-        }
-      } else if (this.ball && !this.ball.isDestroyed() && this.ball.isVisible()) {
+      // The disc only lives while the window is parked: showing the window takes it away.
+      if (this.ball && !this.ball.isDestroyed() && this.ball.isVisible()) {
         this.ball.hide();
       }
       this.reinforceSkipTaskbar();
@@ -1405,7 +1394,7 @@ class DockRuntime {
     const disc = this.ball && !this.ball.isDestroyed() ? this.ball.getBounds() : null;
     const wasHidden = Boolean(this.win && !this.win.isDestroyed() && !this.win.isVisible());
     // A resident disc stays on screen; a transient one is what the click consumed.
-    if (this.ball && !this.ball.isDestroyed() && this.config.ballAlwaysVisible !== true) this.ball.hide();
+    if (this.ball && !this.ball.isDestroyed()) this.ball.hide();
     if (!this.win || this.win.isDestroyed()) return;
     // The user may have dragged the disc across the screen: a hidden window opens
     // at the disc rather than at wherever it happened to sit before. A window that
@@ -1440,21 +1429,6 @@ class DockRuntime {
       const changed = patch.ballIcon !== this.config.ballIcon;
       this.config.ballIcon = patch.ballIcon;
       if (changed || (this.ball && !this.ball.isDestroyed())) this.rebuildBall();
-    }
-    if (typeof patch.ballAlwaysVisible === 'boolean') {
-      this.config.ballAlwaysVisible = patch.ballAlwaysVisible;
-      // Show or hide a resident disc right away.
-      if (this.win && this.win.isVisible()) {
-        if (patch.ballAlwaysVisible) {
-          this.ensureBall();
-          if (this.ball && !this.ball.isDestroyed() && !this.ball.isVisible()) {
-            this.positionBall();
-            try { this.ball.showInactive(); } catch (_) {}
-          }
-        } else if (this.ball && !this.ball.isDestroyed() && this.ball.isVisible()) {
-          this.ball.hide();
-        }
-      }
     }
     trace('config applied: ' + JSON.stringify(patch));
   }

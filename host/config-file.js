@@ -25,7 +25,6 @@ export const DEFAULT_CONFIG = Object.freeze({
   // Floating ball
   ballSize: 64,
   ballIcon: 'whale',
-  ballAlwaysVisible: false,
   snapToEdge: true,
   // What the close button does: 'quit' ends the window, 'ball' parks it on the disc
   closeAction: 'quit',

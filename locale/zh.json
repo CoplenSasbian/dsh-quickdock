@@ -194,7 +194,6 @@
   "cfg.focusOnSummon": "打开时聚焦",
   "cfg.ballSize": "悬浮球大小",
   "cfg.ballIcon": "悬浮球图标",
-  "cfg.ballAlwaysVisible": "始终显示悬浮球",
   "cfg.snapToEdge": "悬浮球吸附屏幕边缘",
   "cfg.autoLaunch": "随 DSH 启动窗口",
   "cfg.prefetchElectron": "预取桌面运行时",

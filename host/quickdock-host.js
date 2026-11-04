@@ -300,7 +300,6 @@ export class QuickDockHost {
     // Keep the row-config copy in step so the next spawn inherits the values...
     this.config.ballSize = config.ballSize
     this.config.ballIcon = config.ballIcon
-    this.config.ballAlwaysVisible = config.ballAlwaysVisible
     this.config.snapToEdge = config.snapToEdge
     this.config.closeAction = config.closeAction
     this.config.collapseOnClose = config.closeAction === 'ball'
@@ -320,7 +319,6 @@ export class QuickDockHost {
       maxHeight: config.maxHeight,
       ballSize: config.ballSize,
       ballIcon: config.ballIcon,
-      ballAlwaysVisible: config.ballAlwaysVisible,
       snapToEdge: config.snapToEdge,
       collapseOnClose: config.closeAction === 'ball',
       alwaysOnTop: config.alwaysOnTop
@@ -506,7 +504,6 @@ export class QuickDockHost {
     this.config.prefetchElectron = config.prefetchElectron
     this.config.headerButton = config.headerButton
     this.config.ballIcon = config.ballIcon
-    this.config.ballAlwaysVisible = config.ballAlwaysVisible
     this.config.snapToEdge = config.snapToEdge
     this.config.closeAction = config.closeAction
     this.config.collapseOnClose = config.closeAction === 'ball'

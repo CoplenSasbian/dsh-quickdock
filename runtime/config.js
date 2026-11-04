@@ -104,7 +104,6 @@ function parseConfig(argv, env) {
     ballSize: Math.min(160, Math.max(24, positiveInteger(inline.ballSize, 64))),
     // Disc appearance and behaviour.
     ballIcon: inline.ballIcon === 'dot' ? 'dot' : 'whale',
-    ballAlwaysVisible: inline.ballAlwaysVisible === true,
     snapToEdge: inline.snapToEdge !== false,
     collapseOnClose: inline.collapseOnClose === true,
 

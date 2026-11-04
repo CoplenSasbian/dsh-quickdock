@@ -194,7 +194,6 @@
   "cfg.focusOnSummon": "Focus when opened",
   "cfg.ballSize": "Floating ball size",
   "cfg.ballIcon": "Floating ball icon",
-  "cfg.ballAlwaysVisible": "Keep the ball on screen",
   "cfg.snapToEdge": "Snap the ball to the screen edge",
   "cfg.autoLaunch": "Open the window when DSH starts",
   "cfg.prefetchElectron": "Prefetch the desktop runtime",
