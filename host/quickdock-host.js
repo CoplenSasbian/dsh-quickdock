@@ -506,6 +506,11 @@ export class QuickDockHost {
     this.config.prefetchElectron = config.prefetchElectron
     this.config.headerButton = config.headerButton
     this.config.headerButtonOrder = config.headerButtonOrder
+    this.config.ballIcon = config.ballIcon
+    this.config.ballAlwaysVisible = config.ballAlwaysVisible
+    this.config.snapToEdge = config.snapToEdge
+    this.config.collapseOnClose = config.collapseOnClose
+    this.config.startCorner = config.startCorner
     /** Mark currently drawn by the shell, to avoid a needless shell reload. */
     this.lastBallIcon = config.ballIcon
   }
