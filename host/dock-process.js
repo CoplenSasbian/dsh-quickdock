@@ -374,6 +374,17 @@ export class DockProcess {
     })
   }
 
+  /**
+   * Apply settings that the running window can honour without a restart.
+   * @param {object} patch runtime-safe configuration.
+   */
+  applyRuntimeConfig(patch) {
+    if (!this.alive) return
+    void this.control({ type: 'config', config: patch }).then((ok) => {
+      if (!ok) this.trace('config: control failed')
+    })
+  }
+
   /** Collapse the window into the floating ball. */
   collapse() {
     if (!this.alive) return

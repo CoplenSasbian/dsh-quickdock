@@ -296,9 +296,28 @@ export class QuickDockHost {
     const clean = sanitize(Object.assign({}, this.fileConfig, patch))
     this.fileConfig = clean
     writeConfig(this.configFile, clean)
-    this.config.ballSize = this.ballSize()
-    this.dock?.setBallSize?.(this.config.ballSize)
-    return this.effectiveConfig()
+    const config = this.effectiveConfig()
+    // Keep the row-config copy in step so the next spawn inherits the values...
+    this.config.ballSize = config.ballSize
+    this.config.ballIcon = config.ballIcon
+    this.config.ballAlwaysVisible = config.ballAlwaysVisible
+    this.config.snapToEdge = config.snapToEdge
+    this.config.collapseOnClose = config.collapseOnClose
+    this.config.startCorner = config.startCorner
+    this.config.alwaysOnTop = config.alwaysOnTop
+    this.config.rememberGeometry = config.rememberGeometry
+    this.config.focusOnSummon = config.focusOnSummon
+    // ...and push the runtime-safe ones to a window that is already open.
+    this.dock?.applyRuntimeConfig?.({
+      ballSize: config.ballSize,
+      ballIcon: config.ballIcon,
+      ballAlwaysVisible: config.ballAlwaysVisible,
+      snapToEdge: config.snapToEdge,
+      collapseOnClose: config.collapseOnClose,
+      startCorner: config.startCorner,
+      alwaysOnTop: config.alwaysOnTop
+    })
+    return config
   }
 
   mountDock() {

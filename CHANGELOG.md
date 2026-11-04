@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [0.6.0-beta.3] - 2026-11-04
+
+Settings now reach the running window: before, only the ball size was applied
+live, so toggling the disc options in Settings looked like it did nothing.
+
+### Fixed
+
+- `config-set` pushes ball icon, always-visible disc, edge snapping,
+  collapse-on-close, first corner and always-on-top to the open window; the ball
+  is rebuilt in place when its icon changes and a resident disc appears or
+  disappears immediately.
+
 ## [0.6.0-beta.2] - 2026-11-04
 
 Showing the shipped chrome inside the dock turned out to be broken at dock size,

@@ -1422,6 +1422,60 @@ class DockRuntime {
     trace('restored from ball at ' + (disc ? disc.x + ',' + disc.y : '?'));
   }
 
+  /**
+   * Apply a configuration patch without restarting the window.
+   * @param {object} patch runtime-safe configuration.
+   */
+  applyConfig(patch) {
+    if (!patch || typeof patch !== 'object') return;
+    if (typeof patch.collapseOnClose === 'boolean') this.config.collapseOnClose = patch.collapseOnClose;
+    if (typeof patch.snapToEdge === 'boolean') this.config.snapToEdge = patch.snapToEdge;
+    if (patch.startCorner) this.config.startCorner = patch.startCorner;
+    if (typeof patch.alwaysOnTop === 'boolean') this.applyAlwaysOnTop(patch.alwaysOnTop);
+    if (typeof patch.ballSize === 'number' && patch.ballSize > 0) this.applyBallSize(patch.ballSize);
+    if (patch.ballIcon && patch.ballIcon !== this.config.ballIcon) {
+      this.config.ballIcon = patch.ballIcon;
+      this.rebuildBall();
+    }
+    if (typeof patch.ballAlwaysVisible === 'boolean') {
+      this.config.ballAlwaysVisible = patch.ballAlwaysVisible;
+      // Show or hide a resident disc right away.
+      if (this.win && this.win.isVisible()) {
+        if (patch.ballAlwaysVisible) {
+          this.ensureBall();
+          if (this.ball && !this.ball.isDestroyed() && !this.ball.isVisible()) {
+            this.positionBall();
+            try { this.ball.showInactive(); } catch (_) {}
+          }
+        } else if (this.ball && !this.ball.isDestroyed() && this.ball.isVisible()) {
+          this.ball.hide();
+        }
+      }
+    }
+    trace('config applied: ' + JSON.stringify(patch));
+  }
+
+  /** Rebuild the disc in place (size or icon changed). */
+  rebuildBall() {
+    if (!this.ball || this.ball.isDestroyed()) return;
+    let centre = null;
+    try {
+      const point = this.ball.getPosition();
+      const size = this.ball.getSize();
+      centre = { x: point[0] + size[0] / 2, y: point[1] + size[1] / 2 };
+    } catch (_) {
+      centre = null;
+    }
+    const wasVisible = this.ball.isVisible();
+    try { this.ball.destroy(); } catch (_) {}
+    this.ball = null;
+    if (!wasVisible) return;
+    this.ensureBall();
+    if (!this.ball) return;
+    this.positionBall(centre || undefined);
+    try { this.ball.showInactive(); } catch (_) {}
+  }
+
   /** Start a disc drag: anchor the disc to the cursor and follow it. */
   startBallDrag() {
     if (!this.ball || this.ball.isDestroyed()) return;
@@ -1599,6 +1653,7 @@ class DockRuntime {
     else if (message.type === 'focus') this.focus();
     else if (message.type === 'hide') this.hide();
     else if (message.type === 'collapse') this.minimizeToBall();
+    else if (message.type === 'config') this.applyConfig(message.config);
     else if (message.type === 'reset-windows') { this.resetWindows(); this.show(); }
     else if (message.type === 'ping') this.status('pong');
     else if (message.type === 'attach') this.show();
