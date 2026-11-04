@@ -441,7 +441,11 @@ class DockRuntime {
     });
     // Minimising would hide the window with no taskbar entry to bring it back:
     // collapse to the floating disc instead.
-    this.win.on('minimize', () => this.minimizeToBall());
+    this.win.on('minimize', () => {
+      // focus() nudges the window with minimize()+restore(): never collapse on that.
+      if (this.selfMinimized) return;
+      this.minimizeToBall();
+    });
     this.win.on('show', () => {
       // A resident disc (config: ballAlwaysVisible) stays on screen beside the window.
       if (this.config.ballAlwaysVisible === true) {
@@ -1608,11 +1612,14 @@ class DockRuntime {
     // foreground where a plain focus() was refused.
     this.later(() => {
       if (!this.win || this.win.isDestroyed() || this.win.isFocused()) return;
+      this.selfMinimized = true;
       try {
         this.win.minimize();
         this.win.restore();
         this.win.focus();
       } catch (_) {}
+      // The event may land a tick later than restore().
+      this.later(() => { this.selfMinimized = false; }, 500);
     }, 120);
     this.status('focused');
   }
