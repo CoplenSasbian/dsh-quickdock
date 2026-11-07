@@ -55,6 +55,14 @@ export function createBridgeHandler(deps) {
       // Lighter than a restart: the window stays, the app inside is reloaded.
       return { body: app.requestDockReload() }
     },
+    /**
+     * Change the listener port and let the Host restart what depends on it.
+     * The settings page presses this instead of writing the value on blur: a
+     * port is a rebind, so it needs one deliberate action and a result.
+     */
+    async 'apply-port'(body) {
+      return { body: await app.applyPort(body?.port) }
+    },
     restart() {
       // A stuck window (blank app, wedged renderer) is best fixed by a fresh
       // process: stop kills it and summon brings a new one up.
@@ -69,6 +77,8 @@ export function createBridgeHandler(deps) {
           running: Boolean(app.dock?.alive),
           starting: Boolean(app.dock?.starting),
           error: app.state.dock.error || '',
+          // The listener, for the settings page and the Dock-button warning.
+          server: app.serverStatus(),
           // Non-blocking: the footer badge polls this while Electron downloads.
           download: typeof app.downloadProgress === 'function' ? app.downloadProgress() : undefined
         }

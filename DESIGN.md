@@ -58,7 +58,8 @@ and are scoped to `html[data-qd-dock]`, so the normal window is untouched.
 
 ## Window
 
-- fixed loopback port (default 47910), **no token**: the address is the handshake;
+- loopback port (default 47910, changeable in Settings → QuickDock), **no token**:
+  the address is the handshake;
 - `windowControls: 'system'` draws the OS close/minimise over the title bar
   (`titleBarStyle: hidden` + `titleBarOverlay`, `thickFrame` for the native border);
 - `clickThrough: false` because the embedded app posts no hit regions;

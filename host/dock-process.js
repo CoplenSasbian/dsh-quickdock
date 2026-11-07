@@ -390,10 +390,12 @@ export class DockProcess {
     })
   }
 
-  /** Reload the shell page (its mark or chrome changed). */
+  /** Reload the shell page (a port move, a new mark, or clicked by the user). */
   reloadShell() {
     if (!this.alive) return
-    void this.control({ type: 'reload-shell' }).then((ok) => {
+    // Carry the address of the moment: after a rebind the old port would load a
+    // dead page, and `config.url` inside Electron was fixed at spawn.
+    void this.control({ type: 'reload-shell', url: this.pageUrl() }).then((ok) => {
       if (!ok) this.trace('reload-shell: control failed')
     })
   }

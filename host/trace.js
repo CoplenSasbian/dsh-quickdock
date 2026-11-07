@@ -11,10 +11,14 @@ import { dirname, join } from 'node:path'
 
 /**
  * Resolve the trace file path.
+ *
+ * `DSH_QUICKDOCK_STATE_DIR` moves the whole profile (config.json lives next to
+ * this log) and is what the tests use to stay off the real installation.
  * @param {NodeJS.ProcessEnv} env process environment.
  * @returns {string} absolute log path.
  */
 export function traceLogPath(env = process.env) {
+  if (env.DSH_QUICKDOCK_STATE_DIR) return join(env.DSH_QUICKDOCK_STATE_DIR, 'host.log')
   const base = env.LOCALAPPDATA || env.TEMP || '.'
   return join(base, 'dsh-quickdock', 'host.log')
 }

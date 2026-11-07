@@ -1434,12 +1434,15 @@ class DockRuntime {
   }
 
   /** Reload the shell page without touching its state on disk. */
-  reloadShell() {
+  reloadShell(url) {
     if (!this.win || this.win.isDestroyed()) return;
-    const url = this.config.url;
-    if (!url) return;
-    trace('reloading shell: ' + url);
-    try { this.win.loadURL(url); } catch (_) {}
+    // The Host owns the address: honouring it is what makes a rebound port
+    // reload the new page instead of the one this process was spawned with.
+    const next = typeof url === 'string' && url ? url : this.config.url;
+    if (!next) return;
+    this.config.url = next;
+    trace('reloading shell: ' + next);
+    try { this.win.loadURL(next); } catch (_) {}
   }
 
   /** Rebuild the disc in place (size or icon changed). */
@@ -1644,7 +1647,7 @@ class DockRuntime {
     else if (message.type === 'hide') this.hide();
     else if (message.type === 'collapse') this.minimizeToBall();
     else if (message.type === 'config') this.applyConfig(message.config);
-    else if (message.type === 'reload-shell') this.reloadShell();
+    else if (message.type === 'reload-shell') this.reloadShell(message.url);
     else if (message.type === 'reset-windows') { this.resetWindows(); this.show(); }
     else if (message.type === 'ping') this.status('pong');
     else if (message.type === 'attach') this.show();

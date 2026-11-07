@@ -7,7 +7,21 @@
  */
 
 const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
 const { pathToFileURL } = require('node:url');
+
+// The Host keeps config.json and host.log in its state directory. Point it at a
+// scratch copy seeded with `port: 0`: a real config.json would win over the row
+// value and make the suite open a listener.
+const stateRoot = path.join(os.tmpdir(), 'dsh-quickdock-test-state');
+process.env.DSH_QUICKDOCK_STATE_DIR = stateRoot;
+try {
+  fs.mkdirSync(stateRoot, { recursive: true });
+  fs.writeFileSync(path.join(stateRoot, 'config.json'), JSON.stringify({ port: 0 }));
+} catch (_) {
+  /* the row config still keeps the listener off */
+}
 
 // A unit test must never launch (or download) a real Electron: a missing explicit
 // path makes an accidental dock spawn fail fast instead of starting the machine's

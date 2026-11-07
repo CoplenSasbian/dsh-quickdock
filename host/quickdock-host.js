@@ -90,7 +90,7 @@ export class QuickDockHost {
     this.state = {
       sessionId: null,
       // The loopback listener: one address, no token (see config.port).
-      server: { port: Number(config.port) || DEFAULT_PORT, ok: false, error: '' },
+      server: { port: Number(config.port) || DEFAULT_PORT, ok: false, error: '', attempt: 0 },
       // running: process alive; visible: a window is actually on screen.
       dock: { running: false, visible: false, alwaysOnTop: config.alwaysOnTop, error: '' },
       // Desktop runtime download, surfaced in the DSH sidebar footer while active.
@@ -459,6 +459,14 @@ export class QuickDockHost {
     this.fileConfig = clean
     writeConfig(this.configFile, clean)
     const config = this.effectiveConfig()
+    // A different port is a listener move, not a value: rebind first, then let
+    // the window come back on the new address (Electron gets the URL at spawn).
+    const portChanged = Number(config.port) !== Number(this.config.port)
+    if (portChanged || this.state.server.error) {
+      this.restartServer(config.port, () => {
+        if (portChanged && (this.dock?.alive || this.dock?.starting)) this.restartDock()
+      })
+    }
     // Keep the row-config copy in step so the next spawn inherits the values...
     this.config.ballSize = config.ballSize
     this.config.ballIcon = config.ballIcon
@@ -569,11 +577,12 @@ export class QuickDockHost {
   /* ------------------------------ transport ------------------------------ */
 
   /**
-   * Serve the shell page and the API on a fixed loopback port.
+   * Serve the shell page and the API on the configured loopback port.
    *
-   * One address, no token: the port in the config is the whole handshake. The
-   * cost is that anything on this machine can call the API; that is the trade the
-   * fixed port buys, and `port` is the one setting to change when it is taken.
+   * One address, no token: the port is the whole handshake. The cost is that
+   * anything on this machine can call the API; that is the trade the fixed port
+   * buys, and `port` (Settings → QuickDock, or config.json) is the one setting to
+   * change when that address is taken.
    */
   #startServer() {
     const port = this.serverPort()
@@ -581,29 +590,142 @@ export class QuickDockHost {
       this.trace('server disabled: port=' + port)
       return
     }
-    this.server = createServer((req, res) => { void this.handleHttp(req, res) })
-    this.server.on('error', (error) => {
-      const code = String(error?.code || 'error')
-      this.state.server.ok = false
-      this.state.server.error = code
-      this.trace('server error on ' + BIND_HOST + ':' + port + ': ' + code
-        + (code === 'EADDRINUSE' ? ' (port busy: set config.port to a free port)' : ''))
-      this.dsh.logger?.warn?.('quickdock: cannot listen on %s:%s (%s); set config.port', BIND_HOST, port, code)
-    })
-    this.server.listen(port, BIND_HOST, () => {
-      const address = this.server?.address()
-      const bound = address && typeof address === 'object' ? address.port : port
-      this.state.server.port = bound
-      this.state.server.ok = true
-      this.state.server.error = ''
-      this.trace('server listening on http://' + BIND_HOST + ':' + bound)
-    })
+    this.#listen(port)
     this.#disposeOn(() => {
       const server = this.server
       this.server = null
       if (!server) return
       try { server.close() } catch (_) { /* already closed */ }
     }, 'quickdock: http server')
+  }
+
+  /**
+   * Bind a listener, keeping the previous one alive until the new address
+   * answers: rebinding onto a busy port must not take the working page down.
+   * @param {number} port loopback port.
+   * @param {(port: number) => void} [onListening] called once the port answers.
+   */
+  #listen(port, onListening) {
+    const previous = this.server
+    let previousPort = 0
+    try {
+      previousPort = previous && previous.listening ? (previous.address()?.port || 0) : 0
+    } catch (_) {
+      previousPort = 0
+    }
+    const server = createServer((req, res) => { void this.handleHttp(req, res) })
+    this.state.server.attempt = port
+    this.state.server.port = previousPort || port
+    this.state.server.ok = false
+    this.state.server.error = ''
+    server.on('error', (error) => {
+      const code = String(error?.code || 'error')
+      this.state.server.ok = false
+      this.state.server.error = code
+      // The old address is still serving: report that one, not the failed port.
+      if (previousPort) this.state.server.port = previousPort
+      this.trace('server error on ' + BIND_HOST + ':' + port + ': ' + code
+        + (code === 'EADDRINUSE' ? ' (port busy: set config.port or the Settings row to a free port)' : ''))
+      this.dsh.logger?.warn?.('quickdock: cannot listen on %s:%s (%s); set config.port', BIND_HOST, port, code)
+      // A listener that never opened holds nothing, but releasing it is explicit.
+      try { server.close() } catch (_) { /* never listening */ }
+    })
+    server.listen(port, BIND_HOST, () => {
+      const address = server.address()
+      const bound = address && typeof address === 'object' ? address.port : port
+      this.server = server
+      this.state.server.attempt = bound
+      this.state.server.port = bound
+      this.state.server.ok = true
+      this.state.server.error = ''
+      this.trace('server listening on http://' + BIND_HOST + ':' + bound)
+      if (previous && previous !== server) {
+        try { previous.close() } catch (_) { /* already closed */ }
+      }
+      if (typeof onListening === 'function') onListening(bound)
+    })
+  }
+
+  /**
+   * Move the listener to another port (a settings change, not a restart).
+   * `0` closes it. On EADDRINUSE the previous address keeps serving.
+   * @param {number} [port] new port, defaults to the configured one.
+   * @param {(port: number) => void} [onListening] fired when the new port answers.
+   * @returns {{ok: boolean, port: number, error: string}} what is recorded now.
+   */
+  restartServer(port = this.serverPort(), onListening) {
+    const next = Math.trunc(Number(port) || 0)
+    this.config.port = next
+    this.state.server.error = ''
+    if (!(next > 0)) {
+      const server = this.server
+      this.server = null
+      if (server) {
+        try { server.close() } catch (_) { /* already closed */ }
+      }
+      this.state.server.ok = false
+      this.state.server.port = 0
+      this.trace('server disabled: port=' + next)
+      return this.serverStatus()
+    }
+    this.#listen(next, onListening)
+    return this.serverStatus()
+  }
+
+  /**
+   * Apply a port from the settings page, then bring the window back on it.
+   *
+   * The order matters: persist, rebind, wait for the bind attempt to settle, and
+   * only then reopen the window - a window opened earlier would carry the old
+   * address (`DSH_QUICKDOCK_URL` is fixed at spawn).
+   * @param {number} port new loopback port (1024-65535).
+   * @returns {Promise<{ok: boolean, port?: number, error?: string, server: object}>} outcome.
+   */
+  async applyPort(port) {
+    const next = Math.trunc(Number(port))
+    if (!Number.isInteger(next) || next < 1024 || next > 65535) {
+      return { ok: false, error: 'invalid port', server: this.serverStatus() }
+    }
+    // Re-applying the serving port would collide with the listener it replaces.
+    if (next === Number(this.config.port) && this.state.server.ok) {
+      return { ok: true, port: this.state.server.port, server: this.serverStatus() }
+    }
+    const clean = sanitize(Object.assign({}, this.fileConfig, { port: next }))
+    this.fileConfig = clean
+    writeConfig(this.configFile, clean)
+    this.trace('apply port: ' + next)
+    const bound = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(0), 3000)
+      if (typeof timer?.unref === 'function') timer.unref()
+      this.restartServer(next, (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      })
+    })
+    const server = this.serverStatus()
+    if (!bound) {
+      // The old address is still serving; the window stays where it works.
+      return { ok: false, port: this.state.server.attempt || next, error: server.error || 'ETIMEDOUT', server }
+    }
+    const dock = this.dock
+    if (dock && (dock.alive || dock.starting)) this.restartDock()
+    return { ok: true, port: bound, server: this.serverStatus() }
+  }
+
+  /** The listener state the bridge, the settings page and the Dock button show. */
+  serverStatus() {    let serving = false
+    try {
+      serving = Boolean(this.server && this.server.listening)
+    } catch (_) {
+      serving = false
+    }
+    return {
+      ok: Boolean(this.state.server.ok),
+      serving,
+      port: Number(this.state.server.port) || 0,
+      attempt: Number(this.state.server.attempt) || Number(this.state.server.port) || 0,
+      error: this.state.server.error || ''
+    }
   }
 
   /**
@@ -662,6 +784,8 @@ export class QuickDockHost {
    */
   #applyFileConfig() {
     const config = this.effectiveConfig()
+    // The listener address: every out-of-process client depends on this value.
+    this.config.port = config.port
     this.config.minWidth = config.minWidth
     this.config.minHeight = config.minHeight
     this.config.maxWidth = config.maxWidth
@@ -741,7 +865,10 @@ export class QuickDockHost {
       ok: true,
       dockRunning: Boolean(this.dock && this.dock.alive),
       starting: Boolean(this.dock && this.dock.starting),
-      error: this.state.dock.error || undefined
+      error: this.state.dock.error || undefined,
+      // The window is only as good as its shell address: the Client warns when
+      // the listener is down instead of opening a page that cannot answer.
+      server: this.serverStatus()
     }
   }
 

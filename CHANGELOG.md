@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer.
 
+## [Unreleased]
+
+### Added
+
+- **The loopback port is a setting**: `port` now lives in the plugin's
+  `config.json` (and has a row under Settings → QuickDock → Connection). Editing it
+  is a deliberate action: type the port, press **Apply and restart**, and the Host
+  persists it, rebinds the listener, waits for the new address to answer and only
+  then reopens the window. The old address keeps serving when the new one is taken,
+  and the test profile is isolated so a real `config.json` cannot make the suite
+  bind a port.
+- **Nothing fails silently any more**: Settings → QuickDock → Connection shows the
+  listener state ("listening on …", "port taken (EADDRINUSE), pick another", "off")
+  and the bind result of the last apply; clicking Dock while the listener is down
+  explains the port instead of opening a blank window.
+- **A moved port cannot be reloaded into the old address**: `reload-shell` now
+  carries the current page URL (Electron's `config.url` was fixed at spawn), and the
+  main window's handoff poll re-resolves the dock origin instead of caching it.
+
 ## [0.6.0-beta.2] - 2026-11-05
 
 The settings page is rebuilt around what people actually need: the dock chrome is

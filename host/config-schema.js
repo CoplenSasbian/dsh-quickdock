@@ -53,12 +53,14 @@ export const configSchema = {
   headerButton: Schema.boolean().default(true),
   headerButtonOrder: Schema.number().default(1010),
   /**
-   * Fixed loopback port for the shell page and its API.
+   * Loopback port for the shell page and its API.
    *
    * The address is the whole handshake: there is no token, so any local client -
    * the dock window, an IDE extension - only needs `http://127.0.0.1:<port>`.
-   * When something else already listens there the Host logs EADDRINUSE and this
-   * is the one setting to change. 0 disables the listener (used by tests).
+   * This is the deploy-time default; the value a user changes (Settings →
+   * QuickDock, or config.json) wins over it. When the port is taken the Host logs
+   * EADDRINUSE and keeps serving nothing new until it is moved. 0 disables the
+   * listener (used by tests).
    */
   port: Schema.number().default(47910),
   /**

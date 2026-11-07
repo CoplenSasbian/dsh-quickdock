@@ -9,11 +9,12 @@ What remains is the little the shell page has to ask the Host about.
 ## Address
 
 ```
-http://127.0.0.1:<port>        port = plugin config, default 47910
+http://127.0.0.1:<port>        port = user setting, default 47910
 ```
 
-No token: the fixed loopback address is the whole handshake. Change `port` when
-something else already listens there (the Host logs `EADDRINUSE`).
+No token: the loopback address is the whole handshake. `port` is a user setting
+(Settings → QuickDock, or `config.json`); the Host rebinds when it changes and the
+old address keeps serving until the new one answers. `0` disables the listener.
 
 ## Endpoints
 
@@ -82,6 +83,7 @@ Both frames are on different origins, so `postMessage` is the whole channel.
 | `reset` | – | Restores the configured window size/position |
 | `reload-dock` | – | Reloads the app inside the iframe |
 | `restart` | – | Kills and respawns the window process |
-| `status` | – | `{ running, starting, error, download }` |
+| `status` | – | `{ running, starting, error, download, server }` |
+| `apply-port` | `{ port }` | Persists, rebinds, reopens the window: `{ ok, port?, error?, server }` |
 | `theme` / `locale` | `{ theme }` / `{ locale }` | Adopt what the browser reports |
 | `web-url` | – | The shell page URL |

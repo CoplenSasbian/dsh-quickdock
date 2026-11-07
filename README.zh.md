@@ -19,7 +19,8 @@ DeepSeek Harness（DSH）插件：把 **DSH 自己的 Web UI** 装进一个常�
 - **跟着对话走**：点 Dock 时绑定的是你正在看的会话，dock 窗口会切过去；
 - **标题栏**：拖拽移动、侧栏开关（展开时铺满整窗，选会话后自动收起）、置顶、
   系统关闭/最小化按钮；
-- **无鉴权固定端口**：`http://127.0.0.1:47910`，其他本地客户端（IDE 的 webview）也能直接加载；
+- **无鉴权、端口可改**：默认 `http://127.0.0.1:47910`（设置 → QuickDock 里可改），
+  其他本地客户端（IDE 的 webview）也能直接加载；
 - 双语界面跟随 DSH 语言。
 
 ## 环境要求
@@ -55,7 +56,7 @@ dsh plugin install C:\path\to\dsh-quickdock
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `port` | `47910` | 外壳页与 API 的固定回环端口；被占用时改成别的 |
+| `port` | `47910` | 壳页与 API 的回环端口。在 设置 → QuickDock → 连接 里改，点 **应用并重启**：监听重新绑定、窗口在新地址重开；`0` 关闭监听 |
 | `windowControls` | `custom` | `system` = 用系统关闭/最小化按钮（推荐） |
 | `clickThrough` | `true` | 嵌入外部页面时应设 `false` |
 | `width` / `inputHeight` | `480` / `820` | dock 窗口尺寸 |

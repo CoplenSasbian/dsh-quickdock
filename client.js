@@ -60,6 +60,7 @@ var MESSAGES = {
     'client.dockFailed': 'QuickDock request failed: {reason}',
     'client.downloading': 'QuickDock is downloading its desktop runtime {percent}% ({mb}/{total} MB)',
     'client.label': 'Dock',
+    'client.portBusy': 'Cannot open the window: 127.0.0.1:{port} is not listening ({code}). Change the port in Settings → QuickDock → Connection.',
     'client.more': 'More dock actions',
     'client.preparing': 'QuickDock is preparing its desktop window (the first run downloads Electron, ~1–2 minutes, once)…',
     'client.reloadApp': 'Reload the app',
@@ -233,6 +234,16 @@ var MESSAGES = {
     'cfg.group.window': 'Window',
     'cfg.group.ball': 'Floating ball',
     'cfg.group.dock': 'Dock window',
+    'cfg.group.network': 'Connection',
+    'cfg.port': 'Loopback port',
+    'cfg.portHint': 'Where the shell page and the API listen. Apply rebinds the listener and reopens the window on the new address (1024-65535).',
+    'cfg.portApply': 'Apply and restart',
+    'cfg.portInvalid': 'Port must be 1024-65535',
+    'cfg.portFailed': 'Could not bind: {code}. The window still uses the old address.',
+    'cfg.serverStatus': 'Listener',
+    'cfg.serverListening': 'Listening on 127.0.0.1:{port}',
+    'cfg.serverBusy': 'Port {port} is taken ({code}). Pick another port.',
+    'cfg.serverOff': 'Listener off (port 0)',
     'client.matchSidebarOpen': 'Open sidebar',
     'client.matchSidebarExpand': 'Expand sidebar',
     'cfg.closeAction': 'What the close button does',
@@ -281,6 +292,7 @@ var MESSAGES = {
     'client.dockFailed': 'QuickDock 请求失败：{reason}',
     'client.downloading': 'QuickDock 正在下载桌面运行时 {percent}%（{mb}/{total} MB）',
     'client.label': 'Dock',
+    'client.portBusy': '无法打开窗口：127.0.0.1:{port} 没有在监听（{code}）。请到 设置 → QuickDock → 连接 改端口。',
     'client.more': '更多 Dock 操作',
     'client.preparing': 'QuickDock 正在准备桌面窗口（首次需要下载 Electron，约 1–2 分钟，只需一次）…',
     'client.reloadApp': '重新加载应用',
@@ -454,6 +466,16 @@ var MESSAGES = {
     'cfg.group.window': '窗口',
     'cfg.group.ball': '悬浮球',
     'cfg.group.dock': 'dock 窗口',
+    'cfg.group.network': '连接',
+    'cfg.port': '回环端口',
+    'cfg.portHint': '壳页和 API 监听的端口；点“应用并重启”会在新端口重建监听并让窗口重连（1024-65535）。',
+    'cfg.portApply': '应用并重启',
+    'cfg.portInvalid': '端口必须是 1024-65535',
+    'cfg.portFailed': '绑定失败：{code}，窗口仍在旧地址上。',
+    'cfg.serverStatus': '监听状态',
+    'cfg.serverListening': '正在监听 127.0.0.1:{port}',
+    'cfg.serverBusy': '端口 {port} 被占用（{code}），请换一个',
+    'cfg.serverOff': '监听已关闭（端口 0）',
     'client.matchSidebarOpen': '打开侧边栏',
     'client.matchSidebarExpand': '展开侧边栏',
     'cfg.closeAction': '点关闭按钮时',
@@ -699,6 +721,14 @@ function SendToDock(props) {
   const onClick = async (event) => {
     event.stopPropagation()
     try {
+      // The window loads the loopback page: a listener that never bound would
+      // open a blank window, so say why instead of summoning one.
+      const status = await bridge('status')
+      const server = status && status.server
+      if (server && !server.serving && (server.error || server.port === 0)) {
+        showError(t('client.portBusy', { port: server.attempt || server.port, code: server.error || 'ECONNREFUSED' }))
+        return
+      }
       const result = await bridge('bind', { sessionId: sessionId })
       // Bind failures are shown as-is: no silent fallback.
       if (result.error) {
@@ -1549,10 +1579,25 @@ function followCurrentSession() {
  */
 function followHandoff(uiCtx) {
   let last = -1
-  bridge('web-url').then(function (body) {
-    const origin = body && body.url ? new URL(body.url, location.href).origin : ''
-    if (!origin) return
+  let origin = ''
+  let ticks = 0
+
+  /** The dock's address moves with its port: never keep a stale origin. */
+  function refreshOrigin() {
+    return bridge('web-url').then(function (body) {
+      const url = body && body.url
+      if (url) origin = new URL(url, location.href).origin
+      return origin
+    }).catch(function () { return origin })
+  }
+
+  refreshOrigin().then(function (first) {
+    if (!first) return
     const tick = function () {
+      if (!origin) return
+      ticks += 1
+      // Re-resolve now and then: a port change must not strand this poll.
+      if (ticks % 15 === 0) void refreshOrigin()
       fetch(origin + '/quickdock/api/handoff', { cache: 'no-store' })
         .then(function (response) { return response.json() })
         .then(function (info) {
@@ -1575,7 +1620,10 @@ function followHandoff(uiCtx) {
           setTimeout(raise, 400)
           setTimeout(raise, 1500)
         })
-        .catch(function () { /* dock not running: nothing to do */ })
+        .catch(function () {
+          // The dock is down or moved: ask for the address again.
+          if (ticks % 3 === 0) void refreshOrigin()
+        })
     }
     setInterval(tick, 2000)
     tick()
@@ -1602,6 +1650,8 @@ const CONFIG_FIELDS = [
   { group: 'ball', key: 'snapToEdge', kind: 'bool' },
   { group: 'ball', key: 'closeAction', kind: 'enum', options: ['quit', 'ball'] },
   { group: 'dock', key: 'headerButton', kind: 'bool' },
+  { group: 'network', key: 'port', kind: 'port', min: 1024, max: 65535, noteKey: 'cfg.portHint' },
+  { group: 'network', key: 'serverStatus', kind: 'server' },
   { group: 'runtime', key: 'electronVersion', kind: 'version' },
   { group: 'runtime', key: 'runtimeStatus', kind: 'status' },
   { group: 'runtime', key: 'runtimeRedownload', kind: 'action', action: 'runtime-redownload' },
@@ -1612,6 +1662,7 @@ const CONFIG_GROUPS = [
   { id: 'window', label: 'cfg.group.window' },
   { id: 'ball', label: 'cfg.group.ball' },
   { id: 'dock', label: 'cfg.group.dock' },
+  { id: 'network', label: 'cfg.group.network' },
   { id: 'runtime', label: 'cfg.group.runtime' }
 ]
 
@@ -1622,6 +1673,7 @@ const ROW_STYLE = { display: 'flex', alignItems: 'center', gap: '12px', padding:
 const LABEL_STYLE = { flex: '1 1 auto', minWidth: 0, fontSize: '13px' }
 const VALUE_STYLE = { fontSize: '12px', opacity: .8, fontVariantNumeric: 'tabular-nums', minWidth: '48px', textAlign: 'right' }
 const GROUP_STYLE = { fontSize: '12px', opacity: .55, margin: '18px 2px 4px' }
+const HINT_STYLE = { fontSize: '12px', opacity: .55, padding: '0 2px 8px', lineHeight: 1.5 }
 
 /**
  * The plugin's settings page in DSH: one row per configuration key.
@@ -1637,11 +1689,25 @@ function QuickDockSettings() {
   const [runtime, setRuntime] = React.useState(null)
   const [versions, setVersions] = React.useState(null)
   const [note, setNote] = React.useState('')
+  const [server, setServer] = React.useState(null)
+  // The port is edited as a draft: nothing binds until the button is pressed.
+  const [portDraft, setPortDraft] = React.useState('')
+
+  /** Read the listener state; a port change answers after the bind attempt. */
+  function refreshServer() {
+    bridge('status').then(function (result) {
+      if (result && result.server) setServer(result.server)
+    }).catch(function () { /* host not up yet */ })
+  }
 
   React.useEffect(function () {
     let alive = true
+    refreshServer()
     bridge('config-get').then(function (result) {
-      if (alive && result && result.config) setConfig(result.config)
+      if (alive && result && result.config) {
+        setConfig(result.config)
+        setPortDraft(String(result.config.port))
+      }
     }).catch(function () { /* host not up yet */ })
     bridge('runtime-status').then(function (result) {
       if (alive && result && result.ok) setRuntime(result)
@@ -1693,7 +1759,38 @@ function QuickDockSettings() {
     bridge('config-set', { patch: patch }).then(function (result) {
       setBusy(false)
       if (result && result.config) setConfig(result.config)
+      // A new port is a bind attempt, not a value: ask again once it resolved.
+      if ('port' in patch) {
+        setTimeout(refreshServer, 300)
+        setTimeout(refreshServer, 1500)
+      }
     }).catch(function () { setBusy(false) })
+  }
+
+  /**
+   * A port is a rebind, not a value: one deliberate action, restart, a result.
+   * The Host persists it, moves the listener and reopens the window on it.
+   */
+  function applyPort() {
+    const next = Number(portDraft)
+    if (!Number.isInteger(next) || next < 1024 || next > 65535) {
+      setNote(t(CFG_PREFIX + 'portInvalid'))
+      return
+    }
+    setBusy(true)
+    setNote('')
+    bridge('apply-port', { port: next }).then(function (result) {
+      setBusy(false)
+      if (result && result.server) setServer(result.server)
+      if (result && result.ok) {
+        setConfig(function (prev) { return prev ? Object.assign({}, prev, { port: result.port }) : prev })
+        return
+      }
+      setNote(t(CFG_PREFIX + 'portFailed', { code: (result && result.error) || 'EADDRINUSE' }))
+    }).catch(function (error) {
+      setBusy(false)
+      setNote(String(error && error.message || error))
+    })
   }
 
   if (!config) {
@@ -1741,6 +1838,46 @@ function QuickDockSettings() {
         }
       })
     }
+    if (field.kind === 'port') {
+      const unchanged = Number(portDraft) === Number(config.port)
+      return el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+        el('input', {
+          type: 'number',
+          min: field.min,
+          max: field.max,
+          step: 1,
+          value: portDraft,
+          disabled: busy,
+          'aria-label': t(CFG_PREFIX + field.key),
+          onChange: function (event) { setPortDraft(event.target.value) },
+          onKeyDown: function (event) { if (event.key === 'Enter' && !busy && !unchanged) applyPort() },
+          style: {
+            width: '84px',
+            fontSize: '12px',
+            padding: '4px 6px',
+            borderRadius: '6px',
+            background: 'var(--dsw-alias-bg-layer-2, #232326)',
+            color: 'inherit',
+            border: '1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.12))'
+          }
+        }),
+        el('button', {
+          type: 'button',
+          disabled: busy || unchanged,
+          'aria-label': t(CFG_PREFIX + 'portApply'),
+          onClick: applyPort,
+          style: {
+            height: '26px',
+            padding: '0 10px',
+            fontSize: '12px',
+            borderRadius: '6px',
+            cursor: unchanged ? 'default' : 'pointer',
+            color: 'inherit',
+            background: 'var(--dsw-alias-bg-layer-2, #232326)',
+            border: '1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.12))'
+          }
+        }, t(CFG_PREFIX + 'portApply')))
+    }
     if (field.kind === 'version') {
       const list = versions && Array.isArray(versions.versions) ? versions.versions : []
       const installed = versions && Array.isArray(versions.installed) ? versions.installed : []
@@ -1772,6 +1909,26 @@ function QuickDockSettings() {
         return el('option', { key: entry, value: entry },
           entry + (isInstalled ? ' · ' + t(CFG_PREFIX + 'runtimeInstalled') : ''))
       }))
+    }
+    if (field.kind === 'server') {
+      if (!server) return el('span', { style: VALUE_STYLE }, '…')
+      const port = server.attempt || server.port
+      const text = server.error
+        ? t(CFG_PREFIX + 'serverBusy', { port: port, code: server.error })
+        : server.ok
+          ? t(CFG_PREFIX + 'serverListening', { port: server.port })
+          : t(CFG_PREFIX + 'serverOff')
+      return el('span', {
+        style: Object.assign({}, VALUE_STYLE, {
+          maxWidth: '340px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          // A taken port is the one value a user has to act on.
+          color: server.error ? 'var(--dsw-alias-state-error-primary, #ff6b6b)' : undefined
+        }),
+        title: text
+      }, text)
     }
     if (field.kind === 'status') {
       if (!runtime) return el('span', { style: VALUE_STYLE }, '…')
@@ -1866,6 +2023,9 @@ function QuickDockSettings() {
         el('div', { style: LABEL_STYLE }, t(CFG_PREFIX + field.key)),
         control(field)
       ))
+      if (field.noteKey) {
+        rows.push(el('div', { key: field.key + '-hint', style: HINT_STYLE }, t(field.noteKey)))
+      }
     }
   }
 

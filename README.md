@@ -23,8 +23,9 @@ DSH main window [Dock] ──► Host binds the session ──► Electron windo
   window navigates to it;
 - **Title bar**: drag the window, toggle the sidebar (expands over the whole
   window, collapses when you pick a session), pin on top, OS close/minimise;
-- **Fixed loopback port, no token**: `http://127.0.0.1:47910`, so any local client
-  (an IDE webview) can load the same shell URL;
+- **Stable loopback port, no token**: `http://127.0.0.1:47910` by default (change
+  it in Settings → QuickDock when taken), so any local client (an IDE webview) can
+  load the same shell URL;
 - Bilingual (English / 简体中文), following DSH's language.
 
 ## Requirements
@@ -61,7 +62,7 @@ dsh plugin install C:\path\to\dsh-quickdock
 
 | Field | Default | Meaning |
 |---|---|---|
-| `port` | `47910` | Fixed loopback port for the shell page and API |
+| `port` | `47910` | Loopback port for the shell page and API. Edit it under Settings → QuickDock → Connection and press **Apply and restart**: the listener rebinds, the window reopens on the new address. `0` disables the listener |
 | `windowControls` | `custom` | `system` uses the OS close/minimise buttons (recommended) |
 | `clickThrough` | `true` | Set `false` when embedding a foreign page |
 | `width` / `inputHeight` | `480` / `820` | Dock window size |
