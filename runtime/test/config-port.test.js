@@ -44,11 +44,11 @@ test('config: setConfig keeps the stored port and the listener state', async () 
   assert.strictEqual(stored.port, 0, 'the settings page gets the saved value back');
 });
 
-test('config: applyPort refuses a privileged port instead of binding it', async () => {
+test('config: applyPort refuses an out-of-range port instead of binding it', async () => {
   const { apply } = await import(SERVICE);
   const { ctx } = createContext();
   const app = apply(ctx, config());
-  const result = await app.applyPort(80);
+  const result = await app.applyPort(70000);
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.error, 'invalid port');
   assert.strictEqual(app.effectiveConfig().port, 0, 'nothing was persisted');

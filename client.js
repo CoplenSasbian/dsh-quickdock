@@ -236,9 +236,9 @@ var MESSAGES = {
     'cfg.group.dock': 'Dock window',
     'cfg.group.network': 'Connection',
     'cfg.port': 'Loopback port',
-    'cfg.portHint': 'Where the shell page and the API listen. Apply rebinds the listener and reopens the window on the new address (1024-65535).',
+    'cfg.portHint': 'Where the shell page and the API listen. Apply rebinds the listener and reopens the window on the new address (1-65535).',
     'cfg.portApply': 'Apply and restart',
-    'cfg.portInvalid': 'Port must be 1024-65535',
+    'cfg.portInvalid': 'Port must be 1-65535',
     'cfg.portFailed': 'Could not bind: {code}. The window still uses the old address.',
     'cfg.serverStatus': 'Listener',
     'cfg.serverListening': 'Listening on 127.0.0.1:{port}',
@@ -468,9 +468,9 @@ var MESSAGES = {
     'cfg.group.dock': 'dock 窗口',
     'cfg.group.network': '连接',
     'cfg.port': '回环端口',
-    'cfg.portHint': '壳页和 API 监听的端口；点“应用并重启”会在新端口重建监听并让窗口重连（1024-65535）。',
+    'cfg.portHint': '壳页和 API 监听的端口；点“应用并重启”会在新端口重建监听并让窗口重连（1-65535）。',
     'cfg.portApply': '应用并重启',
-    'cfg.portInvalid': '端口必须是 1024-65535',
+    'cfg.portInvalid': '端口必须是 1-65535',
     'cfg.portFailed': '绑定失败：{code}，窗口仍在旧地址上。',
     'cfg.serverStatus': '监听状态',
     'cfg.serverListening': '正在监听 127.0.0.1:{port}',
@@ -1650,7 +1650,7 @@ const CONFIG_FIELDS = [
   { group: 'ball', key: 'snapToEdge', kind: 'bool' },
   { group: 'ball', key: 'closeAction', kind: 'enum', options: ['quit', 'ball'] },
   { group: 'dock', key: 'headerButton', kind: 'bool' },
-  { group: 'network', key: 'port', kind: 'port', min: 1024, max: 65535, noteKey: 'cfg.portHint' },
+  { group: 'network', key: 'port', kind: 'port', min: 1, max: 65535, noteKey: 'cfg.portHint' },
   { group: 'network', key: 'serverStatus', kind: 'server' },
   { group: 'runtime', key: 'electronVersion', kind: 'version' },
   { group: 'runtime', key: 'runtimeStatus', kind: 'status' },
@@ -1773,7 +1773,7 @@ function QuickDockSettings() {
    */
   function applyPort() {
     const next = Number(portDraft)
-    if (!Number.isInteger(next) || next < 1024 || next > 65535) {
+    if (!Number.isInteger(next) || next < 1 || next > 65535) {
       setNote(t(CFG_PREFIX + 'portInvalid'))
       return
     }

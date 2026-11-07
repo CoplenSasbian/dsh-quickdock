@@ -678,12 +678,12 @@ export class QuickDockHost {
    * The order matters: persist, rebind, wait for the bind attempt to settle, and
    * only then reopen the window - a window opened earlier would carry the old
    * address (`DSH_QUICKDOCK_URL` is fixed at spawn).
-   * @param {number} port new loopback port (1024-65535).
+   * @param {number} port new loopback port (1-65535; 0 is not a port).
    * @returns {Promise<{ok: boolean, port?: number, error?: string, server: object}>} outcome.
    */
   async applyPort(port) {
     const next = Math.trunc(Number(port))
-    if (!Number.isInteger(next) || next < 1024 || next > 65535) {
+    if (!Number.isInteger(next) || next < 1 || next > 65535) {
       return { ok: false, error: 'invalid port', server: this.serverStatus() }
     }
     // Re-applying the serving port would collide with the listener it replaces.
