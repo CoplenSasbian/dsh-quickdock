@@ -1179,12 +1179,16 @@ const DOCK_STYLE_ID = PLUGIN_ID + '-dock-layout'
 /**
  * Layout fixes that only make sense in the dock window.
  *
- * At dock width the shipped sidebar squeezes the conversation into a sliver, so
- * while it is expanded it covers the whole window instead; picking a session
- * then collapses it, which is what a dock-sized window wants.
+ * DSH has two sidebar modes, split at 768px (its `data-sidebar-drawer`
+ * breakpoint): below it the sidebar is a drawer that closes on a session pick,
+ * above it a persistent column that stays put. The dock's full-window overlay
+ * only fits the drawer mode - at 768px and wider it would cover the conversation
+ * with no built-in way to close it, so the shipped column layout is left alone
+ * and the overlay CSS is scoped to `html[data-qd-overlay]`, which `syncOverlay()`
+ * keeps in step with the width.
  *
  * The frame carries `data-sidebar-collapsed="true"` exactly while the sidebar is
- * a rail, so the rule can key off the app's own state instead of measuring.
+ * a rail, so the rules can key off the app's own state instead of measuring.
  */
 /**
  * Tag the app's floating sidebar toggle so the dock can hide it.
@@ -1226,17 +1230,20 @@ function applyDockMode() {
   style.id = DOCK_STYLE_ID
   style.textContent = `
 /* The dock has no right rail, and the conversation must fill the frame in both
-   states. Pinning the centre column across every grid track keeps it full width
-   no matter which side columns are hidden or lifted out of the flow. */
+   states. */
 html[data-qd-dock] [class*="rightbarCol"] {
   display: none !important;
 }
-html[data-qd-dock] [class*="centerCol"] {
+/* Drawer width only (<768px - DSH's own breakpoint for data-sidebar-drawer):
+   the sidebar floats over the whole window instead of squeezing the
+   conversation into a sliver. Wider windows keep the shipped column layout:
+   there the sidebar is persistent, DSH does not close it on a session pick, and
+   a full-window overlay would just sit on top of the conversation forever. */
+html[data-qd-dock][data-qd-overlay] [class*="centerCol"] {
   grid-column: 1 / -1 !important;
   min-width: 0 !important;
 }
-/* Expanded: the sidebar floats over the whole window instead of squeezing it. */
-html[data-qd-dock] [class*="_frame"][data-rightbar-collapsed]:not([data-sidebar-collapsed="true"]) [class*="sidebarCol"] {
+html[data-qd-dock][data-qd-overlay] [class*="_frame"]:not([data-sidebar-collapsed="true"]) [class*="sidebarCol"] {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
@@ -1260,7 +1267,7 @@ html[data-qd-dock][data-qd-trim-tabs] [class*="tabs"] {
 html[data-qd-dock] [class*="drawerMask"] {
   display: none !important;
 }
-html[data-qd-dock] [class*="sidebarCol"] {
+html[data-qd-dock][data-qd-overlay] [class*="sidebarCol"] {
   width: 100% !important;
 }
 /* The shell title bar owns the sidebar toggle; the app's floating one is noise. */
@@ -1282,6 +1289,18 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
   document.documentElement.setAttribute('data-qd-trim-sidebar', '1')
   document.documentElement.setAttribute('data-qd-trim-tabs', '1')
   hideSidebarToggle()
+
+  // DSH switches to a drawer below 768px (its own `data-sidebar-drawer`
+  // breakpoint) and keeps a persistent column above it. The full-window overlay
+  // only fits the former: above it, the overlay covers the conversation while
+  // DSH - by design - never closes the sidebar on a session pick, so it would
+  // look like a mask that never goes away.
+  const syncOverlay = function () {
+    if (window.innerWidth < 768) document.documentElement.setAttribute('data-qd-overlay', '1')
+    else document.documentElement.removeAttribute('data-qd-overlay')
+  }
+  syncOverlay()
+  window.addEventListener('resize', syncOverlay)
 
   // Picking a session already closes the drawer in DSH's narrow layout; an extra
   // click on the toggle here reopened it, which looked like a close/reopen loop.
