@@ -19,8 +19,10 @@ DeepSeek Harness（DSH）插件：把 **DSH 自己的 Web UI** 装进一个常�
 - **跟着对话走**：点 Dock 时绑定的是你正在看的会话，dock 窗口会切过去；
 - **标题栏**：拖拽移动、侧栏开关（展开时铺满整窗，选会话后自动收起）、置顶、
   系统关闭/最小化按钮；
-- **无鉴权、端口可改**：默认 `http://127.0.0.1:47910`（设置 → QuickDock 里可改），
-  其他本地客户端（IDE 的 webview）也能直接加载；
+- **无鉴权、端口可改**：默认 `http://127.0.0.1:47910`（设置 → QuickDock 里可改）；
+  外壳页用 `?view=` 说明是哪个客户端在看它：`view=electron` 是桌面窗口，
+  `view=vscode` 是 IDE 的 webview（精简标题栏，应用由宿主内的 app 代理提供），
+  `view=browser` 是普通标签页；
 - 双语界面跟随 DSH 语言。
 
 ## 环境要求
@@ -66,6 +68,7 @@ dsh plugin install C:\path\to\dsh-quickdock
 | `rememberGeometry` | `true` | 记住窗口位置 |
 | `ballSize` | `64` | 收起的悬浮鲸鱼球直径（24–160） |
 | `headerButton` / `headerButtonOrder` | `true` / `1010` | 表头 Dock 按钮 |
+| `mcpPairing` | `true` | 注册已配对编辑器的 MCP 服务器：轮询 `mcp.json`，在编辑器在线期间保持 `mcp-dsh-vsdock` 行启用（见 `MCP-PAIRING.md`）。关闭后完全不碰 profile patch |
 
 ## 开发
 
@@ -82,10 +85,12 @@ npm run lint      # eslint
 ```
 index.js / service.js / dock.js   入口（一行挂两个组件）
 client.js                         表头按钮、下载徽标、dock 模式适配
-host/                             监听、外壳页、bridge、Electron 监督
+host/                             监听、外壳页、bridge、Electron 监督、MCP 配对
 runtime/                          Electron 进程（窗口、系统按钮、preload）
 locale/                           中英文案
 API.md                            对外契约与 postMessage 消息表
+MCP-PAIRING.md                    VS Code MCP 服务器：发现、确认、loader 行
+DOCK-CONTEXT.md                   每个 dock 的上下文：身份、工具、绑定
 DESIGN.md                         架构说明
 ```
 

@@ -7,6 +7,62 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Added
 
+- **`?view=` names the client, and the Host renders for it**: `electron` (the
+  desktop window), `vscode` (an IDE webview: trimmed bar, no dead pin/collapse/
+  close buttons) and `browser` (a plain tab). `frame` stays as an alias for
+  `electron`, so URLs written before views existed keep working. `meta` reports
+  `views` and bumps `apiVersion` to 2.
+- **An app proxy for embedded views**: DSH authenticates its page with an
+  httpOnly, `SameSite=Strict` cookie, which a webview (a third-party context for
+  `127.0.0.1`) never stores or sends. `view=vscode` therefore serves the app from
+  an ephemeral loopback origin owned by the Host, which adds the launch token,
+  keeps the auth cookie (retrying with the token when it goes stale), forwards
+  API calls and WebSockets, and drops `Set-Cookie`. The embedding client never
+  sees the token or the cookie, and no future IDE client needs its own bridge.
+- `host/views.js` (view table and normalization) and `host/app-proxy.js`
+  (the proxy), with tests for the view matrix and the token/cookie flow.
+- **MCP pairing is implemented, not just specified**: the Host polls `mcp.json`
+  in the state directory, validates it (loopback http with a port, non-empty
+  token, live pid, fresh heartbeat, `200` from `/health`) and keeps one
+  `@deepseek-ai/dsh-mcp-client` row (`mcp-dsh-vsdock`) enabled in the profile
+  patch while the editor's server is live. A non-live descriptor disables the
+  row and keeps it as the record; an absent one writes nothing unless the row
+  already exists. A stale descriptor left by a killed editor is removed.
+- **Settings → QuickDock shows the connected docks**: a live list with each
+  dock's type, id, bound session, tool state and workspace, refreshed while the
+  page is open (the `dock-contexts` bridge action).- **Dock contexts are implemented in the Host**: an in-memory registry keyed by a
+  client-generated dock id (`randomBytes` per window, `vscode.env.sessionId`
+  later), per-dock `bind` / `dock-target`, `dock-contexts` + `dock-context`
+  endpoints (`GET`/`POST`/`DELETE`), the shell registering its own context on
+  load, and a Client-half dock picker: the Dock button binds the current session
+  to the chosen dock instead of every dock showing the same session.- **Dock context contract (draft)**: `DOCK-CONTEXT.md` replaces the global row
+  with one in-memory context per connected dock (`docks\<id>.json`): identity,
+  tools, a per-dock session binding, and the reserved `workspace` /
+  `systemPrompt` fields. Tools become conditional registrations scoped to the
+  session that the dock is showing, so two docks never share a tool set.
+- **A running turn knows which dock started it**: the dock's client reports its
+  own accepted prompt (`requestId`, echoed by DSH as the durable `user/message`
+  `rpcId`); the Host attributes the inbox message the agent loop claims for the
+  turn, before the step resolves its tools. Per-dock tools can then use a `when`
+  predicate that follows the turn owner instead of the session binding, so a turn
+  started in the main window never gets a dock's tools, and steering from another
+  dock cannot steal a running turn. A turn nobody claimed (a goal round, a
+  resume) has no owner and therefore no dock tools.
+- `host/turn-owners.js` (the expectation/claim/turn registry) and
+  `host/turn-attribution.js` (the `agent/inbox/claimed`, `session/event` and
+  `agent/status` wiring), exposed through `turnOwnerOf`, `toolPredicate`,
+  `dock-contexts` and the `dock-submission` bridge action.
+- **The patch file is spliced, never re-serialised**: the header and every row
+  QuickDock does not own stay byte-for-byte identical, a shared `- insert:`
+  block is left alone, the document is re-validated right before the rename, and
+  the lock plus `.tmp`/`.bak` files make the write atomic. `meta` reports the
+  current verdict under `mcp` (see `API.md`).
+- `host/mcp-descriptor.js` (validation and liveness rules),
+  `host/mcp-patch.js` (splice, lock, atomic replace) and
+  `host/mcp-pairing.js` (the 2 s poller and its state machine), with tests for
+  every rejection rule, the splice matrix, the lock, and the
+  absent → live → stale → live transitions. `mcpPairing` (default on) turns the
+  watcher off entirely.
 - **The loopback port is a setting**: `port` now lives in the plugin's
   `config.json` (and has a row under Settings → QuickDock → Connection). Editing it
   is a deliberate action: type the port, press **Apply and restart**, and the Host
@@ -21,6 +77,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 - **A moved port cannot be reloaded into the old address**: `reload-shell` now
   carries the current page URL (Electron's `config.url` was fixed at spawn), and the
   main window's handoff poll re-resolves the dock origin instead of caching it.
+
+### Fixed
+
+- **The sidebar overlay follows DSH's width breakpoint**: the dock forces its
+  sidebar to cover the whole window only below 768px, where DSH itself uses a
+  drawer. Wider windows keep the shipped column layout, so the overlay no longer
+  sits on top of the conversation forever after a session pick that DSH (by design)
+  does not collapse.
 
 ## [0.6.0-beta.2] - 2026-11-05
 

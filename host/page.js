@@ -38,30 +38,43 @@ export class PageRenderer {
   }
 
   /**
-   * Render the frame shell.
-   * @param {string} src absolute, already-authenticated Web UI URL.
-   * @param {{systemControls?: boolean}} [options] the OS draws close/minimise.
+   * Render the frame shell for one client.
+   * @param {string} src absolute, already-authenticated Web UI URL (or the app proxy's).
+   * @param {{view?: string, systemControls?: boolean, ballIcon?: string}} [options]
+   *   `view` picks the chrome: `electron` (desktop window), `vscode` or
+   *   `browser` (trimmed editor bar); the default is `electron`.
    * @returns {string} complete HTML document.
    */
   renderFrame(src, options) {
     const scheme = this.theme.colorScheme()
     const theme = themeCss(this.theme.current())
     const href = escapeAttribute(src)
+    const view = options && options.view ? options.view : 'electron'
+    // Only the desktop window owns pin/collapse/close: inside an editor tab
+    // those actions belong to the client, and dead buttons are worse than none.
+    const electron = view === 'electron'
     // The OS keeps the close button; its minimise is replaced by our own button,
     // because only we can collapse the window into the floating ball.
-    const system = Boolean(options && options.systemControls)
-    const barClass = system ? ' qd-frame-bar--system' : ''
-    const closeButton = system ? '' : '\n    <button type="button" data-action="close" title="Close">✕</button>'
+    const system = electron && Boolean(options && options.systemControls)
+    const barClass = (electron ? '' : ' qd-frame-bar--editor') + (system ? ' qd-frame-bar--system' : '')
+    const closeButton = electron && !system ? '\n    <button type="button" data-action="close" title="Close">✕</button>' : ''
     // Not a minimise: the icon is the whale the window collapses into.
     // The button shows the same mark as the disc it produces.
     const dot = Boolean(options && options.ballIcon === 'dot')
     const mark = dot
       ? '<span class="qd-dot"></span>'
       : '<svg viewBox="' + WHALE_VIEWBOX + '" fill="none" aria-hidden="true"><path d="' + WHALE_PATH + '" fill="currentColor"></path></svg>'
-    const collapseButton = '\n    <button type="button" data-action="collapse" title="Collapse to the floating ball">'
-      + mark + '</button>'
+    const collapseButton = electron
+      ? '\n    <button type="button" data-action="collapse" title="Collapse to the floating ball">' + mark + '</button>'
+      : ''
+    const pinButton = electron
+      ? '\n    <button type="button" data-action="pin" title="Pin on top" data-on="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"></path><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path></svg></button>'
+      : ''
+    // The shell tells the app which client is looking at it; the app uses it to
+    // decide whether desktop-only affordances make sense.
+    const host = electron ? 'desktop' : view
     return `<!doctype html>
-<html lang="${htmlLang(this.locale.locale)}" data-theme="${scheme}">
+<html lang="${htmlLang(this.locale.locale)}" data-theme="${scheme}" data-qd-view="${view}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -103,6 +116,8 @@ ${theme}
   .qd-frame-bar .qd-dot { width: 12px; height: 12px; border-radius: 50%; background: currentColor; display: block; }
   /* Room for the OS close button drawn over the bar's right edge. */
   .qd-frame-bar--system { padding-right: 56px; }
+  /* Outside the Electron window the bar is page chrome, not a window handle. */
+  .qd-frame-bar--editor { -webkit-app-region: no-drag; }
   iframe { flex: 1 1 auto; width: 100%; border: 0; display: block; background: #fff; }
 </style>
 </head>
@@ -112,7 +127,7 @@ ${theme}
     <button type="button" data-action="new-session" title="New session"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"></path></svg></button>
     <span class="qd-frame-title">DeepSeek Harness</span>
     <button type="button" data-action="handoff" title="Show in DSH" disabled><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2.5H13.5V6.5"></path><path d="M13.5 2.5 7.5 8.5"></path><path d="M11.5 9.5V12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12V6A1.5 1.5 0 0 1 4 4.5h2.5"></path></svg></button>
-    <button type="button" data-action="pin" title="Pin on top" data-on="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"></path><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path></svg></button>${collapseButton}${closeButton}
+    ${pinButton}${collapseButton}${closeButton}
   </div>
   <iframe src="${href}" allow="clipboard-read; clipboard-write" referrerpolicy="no-referrer"></iframe>
   <script>
@@ -121,6 +136,30 @@ ${theme}
     var frame = document.querySelector('iframe');
     var origin = null;
     try { origin = frame ? new URL(frame.src).origin : null } catch (error) { origin = null }
+
+    /* ---- dock context ----
+       The shell connects as one dock: it registers the context QuickDock keeps
+       (identity, type, workspace). The id is stable per tab and, for the desktop
+       window, supplied by the Host in the URL. */
+    var dockView = ${JSON.stringify(view)};
+    var dockId = '';
+    try {
+      var params = new URLSearchParams(location.search);
+      dockId = params.get('dock') || sessionStorage.getItem('quickdock.dock') || '';
+      if (!dockId) dockId = 'dock-' + Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem('quickdock.dock', dockId);
+      var dockWorkspace = params.get('workspace') || '';
+      fetch('/quickdock/api/dock-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: dockId,
+          type: dockView,
+          client: { name: navigator.userAgent },
+          workspace: dockWorkspace ? { path: dockWorkspace } : undefined
+        })
+      }).catch(function () { /* dock-target recreates the context on demand */ });
+    } catch (error) { dockId = ''; /* storage denied: legacy binding */ }
 
     /* ---- shell -> app ---- */
     function tell(message) {
@@ -162,7 +201,7 @@ ${theme}
     }
 
     function syncTarget() {
-      fetch('/quickdock/api/dock-target', { cache: 'no-store' })
+      fetch('/quickdock/api/dock-target' + (dockId ? '?dock=' + encodeURIComponent(dockId) : ''), { cache: 'no-store' })
         .then(function (response) { return response.json() })
         .then(function (info) {
           if (!info) return;
@@ -201,10 +240,22 @@ ${theme}
           if (currentSessionId) handoffButton.removeAttribute('disabled');
           else handoffButton.setAttribute('disabled', 'disabled');
         }
+        // The app switched sessions inside this dock: report the binding so the
+        // context (and its later tool set) follows what this dock actually shows.
+        // The quiet flag keeps the Host from summoning the window on every switch.
+        if (dockId && currentSessionId) {
+          fetch('/quickdock/api/bind?dock=' + encodeURIComponent(dockId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId: currentSessionId, quiet: true })
+          }).catch(function () { /* the next switch retries */ });
+        }
         return;
       }
       if (data.type === 'quickdock:ready') {
-        // The dock window follows the session the Dock button bound.
+        // The dock window follows the session the Dock button bound. Re-sending
+        // the context here also labels a page that booted before its shell.
+        tell({ type: 'quickdock:context', dock: true, host: '${host}', view: '${view}', id: dockId });
         lastTargetSeq = -1;
         syncTarget();
       }
@@ -214,7 +265,7 @@ ${theme}
     // for targets bound while the window is already open.
     if (frame) {
       frame.addEventListener('load', function () {
-        tell({ type: 'quickdock:context', dock: true, host: 'desktop' });
+        tell({ type: 'quickdock:context', dock: true, host: '${host}', view: '${view}', id: dockId });
         lastTargetSeq = -1;
         syncTarget();
       });

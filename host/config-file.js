@@ -16,11 +16,6 @@ import { dirname, join } from 'node:path'
 export const DEFAULT_CONFIG = Object.freeze({
   // Loopback listener for the shell page and its API. 0 disables it (tests).
   port: 47910,
-  // Window bounds (the size itself is remembered by the window)
-  minWidth: 360,
-  minHeight: 420,
-  maxWidth: 900,
-  maxHeight: 1400,
   alwaysOnTop: false,
   rememberGeometry: true,
   focusOnSummon: false,
@@ -36,17 +31,15 @@ export const DEFAULT_CONFIG = Object.freeze({
   // Empty = the version this release ships with (see electron-resolver).
   electronVersion: '',
   // DSH integration
-  headerButton: true
+  headerButton: true,
+  // Register the paired editor's MCP server (see MCP-PAIRING.md).
+  mcpPairing: true
 })
 
 /** Numeric bounds applied to every stored value. */
 const RANGES = {
   // 0 is a documented value: it turns the listener off instead of clamping it up.
   port: [0, 65535],
-  minWidth: [280, 1200],
-  minHeight: [280, 1600],
-  maxWidth: [320, 2000],
-  maxHeight: [320, 2000],
   ballSize: [24, 160],
   headerButtonOrder: [0, 10000]
 }

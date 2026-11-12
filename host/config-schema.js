@@ -53,10 +53,21 @@ export const configSchema = {
   headerButton: Schema.boolean().default(true),
   headerButtonOrder: Schema.number().default(1010),
   /**
+   * Register the MCP server a paired editor publishes.
+   *
+   * The VS Code extension writes `mcp.json` into the QuickDock state directory
+   * after its one-time consent; the Host keeps one `@deepseek-ai/dsh-mcp-client`
+   * row in the profile patch enabled while that server is live (MCP-PAIRING.md).
+   * Off means QuickDock ignores the descriptor and leaves the patch untouched.
+   */
+  mcpPairing: Schema.boolean().default(true),
+  /**
    * Loopback port for the shell page and its API.
    *
    * The address is the whole handshake: there is no token, so any local client -
-   * the dock window, an IDE extension - only needs `http://127.0.0.1:<port>`.
+   * the dock window, an IDE extension - only needs
+   * `http://127.0.0.1:<port>/quickdock?view=<electron|vscode|browser>` (see
+   * host/views.js).
    * This is the deploy-time default; the value a user changes (Settings →
    * QuickDock, or config.json) wins over it. When the port is taken the Host logs
    * EADDRINUSE and keeps serving nothing new until it is moved. 0 disables the
@@ -75,14 +86,6 @@ export const configSchema = {
    * buttons; 'system' lets the OS draw close/minimise/maximise over the page.
    */
   windowControls: Schema.string().default('custom'),
-  /**
-   * Drag-resize bounds. The window is resizable; these cap how small or large it
-   * can get before the layout stops making sense.
-   */
-  minWidth: Schema.number().default(360),
-  minHeight: Schema.number().default(420),
-  maxWidth: Schema.number().default(900),
-  maxHeight: Schema.number().default(1400),
   /** Diameter of the floating whale ball the window collapses into (24-160). */
   ballSize: Schema.number().default(64)
 }

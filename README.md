@@ -24,8 +24,10 @@ DSH main window [Dock] ──► Host binds the session ──► Electron windo
 - **Title bar**: drag the window, toggle the sidebar (expands over the whole
   window, collapses when you pick a session), pin on top, OS close/minimise;
 - **Stable loopback port, no token**: `http://127.0.0.1:47910` by default (change
-  it in Settings → QuickDock when taken), so any local client (an IDE webview) can
-  load the same shell URL;
+  it in Settings → QuickDock when taken), and the shell page says which client is
+  looking at it: `?view=electron` for the window, `?view=vscode` for an IDE
+  webview (trimmed chrome, the app served through the Host's app proxy) or
+  `?view=browser` for a plain tab;
 - Bilingual (English / 简体中文), following DSH's language.
 
 ## Requirements
@@ -72,6 +74,7 @@ dsh plugin install C:\path\to\dsh-quickdock
 | `rememberGeometry` | `true` | Remember the window position |
 | `ballSize` | `64` | Diameter of the floating whale ball the window collapses into (24–160) |
 | `headerButton` / `headerButtonOrder` | `true` / `1010` | Header Dock button |
+| `mcpPairing` | `true` | Register the paired editor's MCP server: poll `mcp.json` and keep the `mcp-dsh-vsdock` row enabled while it is live (see `MCP-PAIRING.md`). Off leaves the profile patch untouched |
 
 ## Development
 
@@ -88,10 +91,12 @@ Logs: `%LOCALAPPDATA%\dsh-quickdock\host.log` (Host) and `dock.log` (window).
 ```
 index.js / service.js / dock.js   entry points (one row mounts both components)
 client.js                         header button, download badge, dock-mode shims
-host/                             listener, shell page, bridge, Electron supervisor
+host/                             listener, shell page, bridge, Electron supervisor, MCP pairing
 runtime/                          Electron process (window, system controls, preload)
 locale/                           English / Chinese catalogs
 API.md                            contract and postMessage message table
+MCP-PAIRING.md                    VS Code MCP server: discovery, consent, loader row
+DOCK-CONTEXT.md                   per-dock context: identity, tools, binding
 DESIGN.md                         architecture notes
 ```
 

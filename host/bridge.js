@@ -17,7 +17,7 @@ export function createBridgeHandler(deps) {
     bind(body) {
       const sessionId = String(body?.sessionId ?? '')
       if (!sessionId) return { status: 400, body: { ok: false, error: 'sessionId required' } }
-      return { body: app.postBind({ sessionId }) }
+      return { body: app.postBind(body) }
     },
     summon() {
       app.dock?.summon()
@@ -68,6 +68,20 @@ export function createBridgeHandler(deps) {
       // process: stop kills it and summon brings a new one up.
       app.restartDock()
       return { body: { ok: true } }
+    },
+    'dock-contexts'() {
+      return { body: app.dockContextsInfo() }
+    },
+    /**
+     * A dock accepted a prompt: hand the Host the identity of that submission.
+     *
+     * The dock's own client half observes its accepted submissions and reports
+     * them here, because only it knows which page the user pressed Enter in.
+     * The identity is the `rpcId` the Host records in the durable message source,
+     * so the turn is attributed exactly (see host/turn-owners.js).
+     */
+    'dock-submission'(body) {
+      return { body: app.recordDockSubmission(body) }
     },
     status() {
       // The Client polls this because dock start-up is asynchronous.

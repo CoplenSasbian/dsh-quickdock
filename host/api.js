@@ -1,19 +1,63 @@
 /**
- * The dock API: two read-only endpoints.
+ * The dock API: the little the shell (and a connecting dock) has to ask the
+ * Host about — which session a dock shows, which docks are connected, and the
+ * context a client registers when it connects.
  *
- * The dock window is the DSH Web UI itself (in an iframe), so there is no dock
- * data model to expose any more - the app talks to DSH directly. What remains is
- * the little the shell has to ask the Host about: which session the window should
- * show, and whether the user asked for a reload.
+ * The dock window is the DSH Web UI itself (in an iframe), so there is still no
+ * dock data model beyond `DockContext` (see `DOCK-CONTEXT.md`).
  */
 
 import { sendJson } from './http.js'
+
+/** Read a JSON body; an empty body is an empty object. */
+async function readBody(req) {
+  const limit = 64 * 1024
+  const chunks = []
+  let size = 0
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > limit) throw new Error('request body too large')
+    chunks.push(chunk)
+  }
+  if (chunks.length === 0) return {}
+  const text = Buffer.concat(chunks).toString('utf8')
+  if (!text.trim()) return {}
+  const parsed = JSON.parse(text)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('body must be an object')
+  return parsed
+}
 
 const ROUTES = [
   {
     method: 'GET',
     path: 'dock-target',
-    handle: ({ app }) => app.dockTargetInfo()
+    // Per-dock binding; no dock falls back to the pre-context global binding.
+    handle: ({ app, url }) => app.dockTargetInfo(url.searchParams.get('dock') || '')
+  },
+  {
+    // Every connected dock, for the Client half's dock menu.
+    method: 'GET',
+    path: 'dock-contexts',
+    handle: ({ app }) => app.dockContextsInfo()
+  },
+  {
+    // A connecting dock registers/updates its context: id, type, tools, workspace.
+    method: 'POST',
+    path: 'dock-context',
+    handle: async ({ app, req }) => app.postDockContext(await readBody(req))
+  },
+  {
+    // Closed dock: remove the context, its binding and its tools.
+    method: 'DELETE',
+    path: 'dock-context',
+    handle: ({ app, url }) => app.deleteDockContext(url.searchParams.get('id') || '')
+  },
+  {
+    // The shell or an IDE binds its own dock to a session.
+    method: 'POST',
+    path: 'bind',
+    handle: async ({ app, req, url }) =>
+      app.postBind(await readBody(req), url.searchParams.get('dock') || '')
   },
   {
     // The reverse direction: the dock asks the main DSH window to show a session.

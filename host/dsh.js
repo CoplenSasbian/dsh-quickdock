@@ -52,6 +52,11 @@ export class DshFacade {
     return this.#get('theme')
   }
 
+  /** The Loader surface: entries and their persisted raw configs. */
+  get configEditor() {
+    return this.#get('configEditor')
+  }
+
   /**
    * Workspaces with their session ids.
    * @returns {{id: string, name: string, path: string, sessionIds: string[]}[]}

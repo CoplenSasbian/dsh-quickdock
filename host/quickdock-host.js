@@ -8,6 +8,7 @@
  */
 
 import { createServer } from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import { get } from 'node:https'
@@ -17,14 +18,21 @@ import { fileURLToPath } from 'node:url'
 
 import { createApiRouter } from './api.js'
 import { createBridgeHandler } from './bridge.js'
-import { API_PREFIX, API_VERSION, BIND_HOST, BRIDGE_PATH, DEFAULT_PORT, PAGE_PATH } from './constants.js'
+import { API_PREFIX, API_VERSION, BIND_HOST, BRIDGE_PATH, DEFAULT_PORT, PAGE_PATH, WINDOW_BOUNDS } from './constants.js'
+import { startAppProxy } from './app-proxy.js'
 import { DshFacade } from './dsh.js'
+import { DockContexts } from './dock-contexts.js'
+import { TurnAttribution } from './turn-attribution.js'
+import { TurnOwners } from './turn-owners.js'
 import { DEFAULT_ELECTRON_VERSION, ElectronResolver } from './electron-resolver.js'
 import { sendJson } from './http.js'
 import { LocaleController } from './locale.js'
 import { PageRenderer } from './page.js'
 import { DEFAULT_CONFIG, configPath, readConfig, resolveValue, sanitize, writeConfig, writeTemplateIfMissing } from './config-file.js'
 import { createDockComponent } from './dock-component.js'
+import { descriptorPath } from './mcp-descriptor.js'
+import { McpPairing, profilePatchPath } from './mcp-pairing.js'
+import { viewNames, normalizeView, viewTransport } from './views.js'
 import { readVersion } from './version.js'
 import { ThemeStore } from './theme.js'
 import { createTrace, traceLogPath } from './trace.js'
@@ -76,6 +84,9 @@ export class QuickDockHost {
   constructor(ctx, config) {
     this.ctx = ctx
     this.config = config
+    // Fixed window bounds, not settings: every consumer (window options, the
+    // runtime payload, a resize) reads them from here.
+    Object.assign(this.config, WINDOW_BOUNDS)
     this.dsh = new DshFacade(ctx)
     this.tracePath = traceLogPath()
     this.trace = createTrace({ path: this.tracePath })
@@ -86,6 +97,12 @@ export class QuickDockHost {
     this.disposers = []
     /** The loopback listener that serves the shell page and the API. */
     this.server = null
+    /** Loopback proxy for embedded views (`view=vscode`), started on demand. */
+    this.appProxy = null
+    /** The app origin the current proxy serves. */
+    this.appProxyOrigin = ''
+    /** Registers the paired editor's MCP server in the profile patch. */
+    this.mcpPairing = null
 
     this.state = {
       sessionId: null,
@@ -102,6 +119,17 @@ export class QuickDockHost {
     this.dockTargetSeq = 0
     /** Bumped on request: the dock shell reloads the app in its iframe. */
     this.dockReloadSeq = 0
+    /** This Electron window's own dock id (the shell URL carries it). */
+    this.dockId = 'electron-' + randomBytes(6).toString('hex')
+    /** Every connected dock: identity, tools, workspace and its own binding. */
+    this.dockContexts = new DockContexts({ trace: (line) => this.trace(line) })
+    /** Which dock started the running turn of each session (see turn-owners.js). */
+    this.turnOwners = new TurnOwners({ trace: (line) => this.trace(line) })
+    this.turnAttribution = new TurnAttribution({
+      owners: this.turnOwners,
+      trace: (line) => this.trace(line),
+      logger: this.dsh.logger
+    })
     /** The reverse request: "show this session in the DSH main window". */
     this.handoff = { sessionId: '', seq: 0 }
     this.lastDownloadPublishAt = 0
@@ -207,8 +235,119 @@ export class QuickDockHost {
    * change to the app, which navigates to it explicitly.
    * @returns {{sessionId: string, seq: number, reloadSeq: number}} target and counters.
    */
-  dockTargetInfo() {
-    return { sessionId: this.state.sessionId || '', seq: this.dockTargetSeq, reloadSeq: this.dockReloadSeq }
+  dockTargetInfo(dockId) {
+    const dock = String(dockId || '').trim()
+    if (!dock) return { sessionId: this.state.sessionId || '', seq: this.dockTargetSeq, reloadSeq: this.dockReloadSeq }
+    this.dockContexts.touch(dock)
+    const session = this.dockContexts.target(dock)
+    if (!session) return { sessionId: '', seq: 0, reloadSeq: 0 }
+    return { sessionId: session.sessionId, seq: session.seq, reloadSeq: session.reloadSeq }
+  }
+
+  /** Every connected dock, for the Client half's dock menu. */
+  dockContextsInfo() {
+    this.dockContexts.prune()
+    this.turnOwners.sweep()
+    return {
+      ok: true,
+      docks: this.dockContexts.list().map((context) => {
+        const dock = this.dockContexts.snapshot(context.id)
+        // The running turn of the session this dock shows, when that dock
+        // started it. Bindings answer "shown here"; `turn` answers "started by".
+        dock.turn = this.turnOwners.currentOf(dock.sessionId) || null
+        return dock
+      }),
+      turns: this.turnOwners.snapshot(),
+      legacy: { sessionId: this.state.sessionId || '' }
+    }
+  }
+
+  /**
+   * A client accepted one submitted prompt, with the identity the Host will echo
+   * into the durable `user/message` source as `rpcId`.
+   *
+   * The dock reports its own submissions because nothing else can tell two
+   * clients apart: the request carries no dock identity, and by the time the
+   * durable message exists the transport has forgotten which page sent it.
+   * @param {{dockId?: string, sessionId?: string, requestId?: string}} body
+   * @returns {{ok: boolean, error?: string}} whether the expectation was stored.
+   */
+  recordDockSubmission(body) {
+    const dockId = String(body?.dockId ?? '').trim()
+    const sessionId = String(body?.sessionId ?? '').trim()
+    const requestId = String(body?.requestId ?? '').trim()
+    if (!dockId || !sessionId || !requestId) {
+      return { ok: false, error: 'dockId, sessionId and requestId are required' }
+    }
+    if (!this.turnOwners.expect({ dockId, sessionId, requestId })) {
+      return { ok: false, error: 'submission rejected' }
+    }
+    // A submission is also a heartbeat for a context the shell created earlier.
+    if (this.dockContexts.get(dockId)) this.dockContexts.touch(dockId)
+    this.trace('dock submission: ' + dockId + ' -> ' + sessionId + ' (' + requestId.slice(0, 8) + ')')
+    return { ok: true }
+  }
+
+  /**
+   * Which dock started the session's running turn.
+   * @param {string} sessionId session id.
+   * @returns {string} dock id, or '' when the turn is not a dock's.
+   */
+  turnOwnerOf(sessionId) {
+    return this.turnOwners.ownerOf(sessionId)
+  }
+
+  /** The running and last attributed turns of one session. */
+  turnInfo(sessionId) {
+    return {
+      id: String(sessionId || ''),
+      owner: this.turnOwners.ownerOf(sessionId),
+      current: this.turnOwners.currentOf(sessionId),
+      last: this.turnOwners.lastOf(sessionId)
+    }
+  }
+
+  /**
+   * Build the `when` predicate for one dock's tools.
+   *
+   * Tool sets are resolved per model step, so the predicate is a synchronous
+   * read of the running turn's owner (see `tools.resolve` in the agent loop).
+   * A turn nobody claimed - a goal round, a resume, a prompt from the main
+   * window - has no owner and therefore no dock tools.
+   * @param {string} dockId dock whose tools are being offered.
+   * @returns {(context: object) => boolean} predicate for `ctx.tools.register`.
+   */
+  toolPredicate(dockId) {
+    const id = String(dockId || '').trim()
+    return (context) => {
+      if (!id) return false
+      const agent = context && context.agent ? context.agent : context
+      const session = agent && agent.session
+      const sessionId = String((session && (session.id || session.sessionId)) || (agent && agent.sessionId) || '')
+      return Boolean(sessionId) && this.turnOwnerOf(sessionId) === id
+    }
+  }
+
+  /** Create or update a dock context from what the client sent on connect. */
+  postDockContext(body) {
+    const id = String(body?.id ?? '').trim()
+    if (!id) return { ok: false, error: 'id required' }
+    const context = this.dockContexts.upsert({
+      id,
+      type: body?.type,
+      client: body?.client,
+      tools: body?.tools,
+      workspace: body?.workspace,
+      systemPrompt: body?.systemPrompt
+    })
+    this.trace('dock context: upsert ' + id + ' (' + context.type + ')')
+    return { ok: true, dock: this.dockContexts.snapshot(id) }
+  }
+
+  /** A dock went away: drop its context, binding and tools. */
+  deleteDockContext(id) {
+    const removed = this.dockContexts.remove(id)
+    return { ok: removed, id: String(id || '') }
   }
 
   /** Ask an already-open dock window to reload the app inside its iframe. */
@@ -242,10 +381,45 @@ export class QuickDockHost {
     return { ok: true, seq: this.handoff.seq }
   }
 
+  /**
+   * Start (or reuse) the loopback proxy embedded views load the app from.
+   *
+   * DSH authenticates its page with an httpOnly, `SameSite=Strict` cookie; a
+   * page inside another application (an IDE webview) is a third-party context
+   * for `127.0.0.1` and never gets that cookie. Serving the app from this Host
+   * makes it same-origin with the shell page and adds the token upstream (see
+   * host/app-proxy.js). One proxy serves every embedded view; only a different
+   * app origin (a DSH restart) replaces it.
+   * @param {string} upstreamUrl the authenticated Web UI URL.
+   * @returns {Promise<string>} the proxy origin, or '' when it could not start.
+   */
+  async ensureAppProxy(upstreamUrl) {
+    let origin = ''
+    try {
+      origin = new URL(upstreamUrl).origin
+    } catch (_) {
+      return ''
+    }
+    if (this.appProxy && this.appProxyOrigin === origin) return this.appProxy.origin
+    this.appProxy?.dispose?.()
+    this.appProxy = null
+    this.appProxyOrigin = origin
+    try {
+      this.appProxy = await startAppProxy({ upstreamUrl, trace: (line) => this.trace(line) })
+      return this.appProxy.origin
+    } catch (error) {
+      const message = String(error?.message || error)
+      this.trace('app proxy failed: ' + message)
+      this.dsh.logger?.warn?.('quickdock: app proxy failed: %s', message)
+      return ''
+    }
+  }
+
   /** The shell page address (no token: the fixed port is the handshake). */
   pageUrl() {
     const port = (this.state.server && this.state.server.port) || this.serverPort()
-    return 'http://' + BIND_HOST + ':' + port + PAGE_PATH + '?view=frame'
+    return 'http://' + BIND_HOST + ':' + port + PAGE_PATH
+      + '?view=electron&dock=' + encodeURIComponent(this.dockId)
   }
 
   /* ------------------------------ lifecycle ------------------------------ */
@@ -258,6 +432,12 @@ export class QuickDockHost {
     const service = components ? components.service !== false : true
     const dock = service && (components ? components.dock !== false : true)
     this.state.components = { service, dock }
+    // The app proxy is part of the service: take it down with the plugin.
+    this.#disposeOn(() => {
+      this.appProxy?.dispose?.()
+      this.appProxy = null
+      this.appProxyOrigin = ''
+    }, 'quickdock: app proxy')
     if (this.dockComponent) this.dockComponent.mount({ dock })
     if (dock) {
       // Reloading the plugin must take the window with it: an orphaned Electron
@@ -268,6 +448,8 @@ export class QuickDockHost {
     if (service) {
       this.#startServer()
       this.#registerBridge()
+      this.#startMcpPairing()
+      this.#attachTurnAttribution()
     }
     const version = readVersion(ROOT_DIR)
     this.state.version = version
@@ -491,10 +673,10 @@ export class QuickDockHost {
     }
     // ...and push the runtime-safe ones to a window that is already open.
     this.dock?.applyRuntimeConfig?.({
-      minWidth: config.minWidth,
-      minHeight: config.minHeight,
-      maxWidth: config.maxWidth,
-      maxHeight: config.maxHeight,
+      minWidth: WINDOW_BOUNDS.minWidth,
+      minHeight: WINDOW_BOUNDS.minHeight,
+      maxWidth: WINDOW_BOUNDS.maxWidth,
+      maxHeight: WINDOW_BOUNDS.maxHeight,
       ballSize: config.ballSize,
       ballIcon: config.ballIcon,
       snapToEdge: config.snapToEdge,
@@ -740,7 +922,7 @@ export class QuickDockHost {
     res.setHeader('Access-Control-Allow-Origin', '*')
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Max-Age': '600'
       })
@@ -748,14 +930,32 @@ export class QuickDockHost {
       return
     }
     if (url.pathname === PAGE_PATH || url.pathname === PAGE_PATH + '/') {
+      // The view picks both the chrome and how the app is embedded.
+      const view = normalizeView(url.searchParams.get('view'))
+      if (!view) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('unknown view; expected one of ' + viewNames().join(', '))
+        return
+      }
       const source = this.webUiUrl()
       if (!source) {
         res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' })
         res.end('the DSH Web UI is not available in this composition')
         return
       }
+      let embedded = source
+      if (viewTransport(view) === 'proxy') {
+        const origin = await this.ensureAppProxy(source)
+        if (!origin) {
+          res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' })
+          res.end('the QuickDock app proxy could not start')
+          return
+        }
+        embedded = origin + '/?dock=1'
+      }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
-      res.end(this.page.renderFrame(source, {
+      res.end(this.page.renderFrame(embedded, {
+        view,
         systemControls: this.config?.windowControls === 'system',
         ballIcon: this.config?.ballIcon
       }))
@@ -786,10 +986,6 @@ export class QuickDockHost {
     const config = this.effectiveConfig()
     // The listener address: every out-of-process client depends on this value.
     this.config.port = config.port
-    this.config.minWidth = config.minWidth
-    this.config.minHeight = config.minHeight
-    this.config.maxWidth = config.maxWidth
-    this.config.maxHeight = config.maxHeight
     this.config.alwaysOnTop = config.alwaysOnTop
     this.config.rememberGeometry = config.rememberGeometry
     this.config.focusOnSummon = config.focusOnSummon
@@ -803,6 +999,7 @@ export class QuickDockHost {
     this.config.snapToEdge = config.snapToEdge
     this.config.closeAction = config.closeAction
     this.config.collapseOnClose = config.closeAction === 'ball'
+    this.config.mcpPairing = config.mcpPairing
     /** Mark currently drawn by the shell, to avoid a needless shell reload. */
     this.lastBallIcon = config.ballIcon
   }
@@ -814,6 +1011,55 @@ export class QuickDockHost {
       requestBody: 'buffered',
       fetch: this.bridge
     }), 'quickdock: browser bridge route')
+  }
+
+  /**
+   * Start the MCP pairing watcher.
+   *
+   * The editor publishes `mcp.json` in the state directory once its user has
+   * consented; this Host keeps one MCP client row in the profile patch enabled
+   * while that server is live (see MCP-PAIRING.md). Without a profile patch to
+   * maintain - a headless composition, a profile launched outside DSH - there is
+   * nothing to do, and nothing is guessed.
+   */
+  /**
+   * Start following the agent loop, so every running turn knows its dock.
+   *
+   * `agent/inbox/claimed` fires before the step resolves its tools, and the
+   * durable `turn/start` / `turn/end` keep the marker scoped to one turn (see
+   * host/turn-attribution.js). This is part of the service: without it the
+   * per-dock tool predicates have nothing to read.
+   */
+  #attachTurnAttribution() {
+    const detach = this.turnAttribution.attach(this.ctx)
+    // The dispose callback only runs on teardown: attach happens right here, so
+    // the very first prompt of this process is already covered.
+    this.#disposeOn(detach, 'quickdock: turn attribution')
+  }
+
+  #startMcpPairing() {
+    if (this.config.mcpPairing === false) {
+      this.trace('mcp pairing: disabled by config')
+      return
+    }
+    const patchFile = profilePatchPath({ env: process.env, homeDir: this.dsh.baseDir })
+    if (!patchFile) {
+      this.trace('mcp pairing: no profile patch to maintain (profile unknown)')
+      return
+    }
+    this.mcpPairing = new McpPairing({
+      descriptorFile: descriptorPath(this.tracePath),
+      patchFile,
+      trace: this.trace,
+      logger: this.dsh.logger,
+      configEditor: this.dsh.configEditor
+    })
+    this.mcpPairing.start()
+    this.#disposeOn(() => {
+      this.mcpPairing?.stop()
+      this.mcpPairing = null
+    }, 'quickdock: mcp pairing')
+    this.trace('mcp pairing: watching ' + this.mcpPairing.descriptorFile + ' -> ' + patchFile)
   }
 
   #disposeOn(dispose, label) {
@@ -844,20 +1090,38 @@ export class QuickDockHost {
    * @param {{sessionId?: string}} body request body.
    * @returns {object} dock status for the Client to poll.
    */
-  postBind(body) {
+  postBind(body, dockId) {
     const sessionId = String(body?.sessionId ?? '')
     if (!sessionId) return { ok: false }
+    const dock = String(dockId || body?.dock || '').trim()
+    if (dock) {
+      // One dock, one binding: the shell polls only its own target.
+      this.dockContexts.bind(dock, sessionId)
+      this.publish()
+      // A dock reporting the session it shows (`quiet`) never summons a window.
+      const quiet = body?.quiet === true
+      if (!quiet && dock === this.dockId && this.state.components.dock) {
+        this.dock?.summon()
+        this.dockComponent?.focus?.()
+        this.dock?.notifyAttach(sessionId)
+      }
+      return {
+        ok: true,
+        dock,
+        dockRunning: Boolean(this.dock && this.dock.alive),
+        starting: Boolean(this.dock && this.dock.starting),
+        error: this.state.dock.error || undefined,
+        server: this.serverStatus()
+      }
+    }
+    // Legacy callers (no dock id): keep the global binding and mirror it onto
+    // this Electron window's own context, which the shell polls by id now.
     this.state.sessionId = sessionId
-    // Bump the target: the dock window is a separate app instance, and the shell
-    // forwards `seq` changes to it over postMessage.
     this.dockTargetSeq += 1
+    this.dockContexts.bind(this.dockId, sessionId)
     this.publish()
-    // On-demand mode: creating the dock here is the expected transition - but
-    // only when this composition actually mounted the window component.
     if (this.state.components.dock) {
       this.dock?.summon()
-      // The user clicked Dock in the main window: the window must come forward,
-      // not just become visible behind it.
       this.dockComponent?.focus?.()
       this.dock?.notifyAttach(sessionId)
     }
@@ -866,8 +1130,6 @@ export class QuickDockHost {
       dockRunning: Boolean(this.dock && this.dock.alive),
       starting: Boolean(this.dock && this.dock.starting),
       error: this.state.dock.error || undefined,
-      // The window is only as good as its shell address: the Client warns when
-      // the listener is down instead of opening a page that cannot answer.
       server: this.serverStatus()
     }
   }
@@ -878,7 +1140,14 @@ export class QuickDockHost {
       name: 'dsh-quickdock',
       apiVersion: API_VERSION,
       components: this.state.components,
-      capabilities: ['dock-target', 'handoff'],
+      capabilities: ['dock-target', 'handoff', 'app-proxy', 'mcp-pairing', 'dock-contexts', 'turn-attribution'],
+      dockId: this.dockId,
+      // Which shell variants a client may ask for; the pick also decides whether
+      // the app comes through the proxy (see host/views.js).
+      views: viewNames(),
+      // The paired editor's MCP row: what the poller last saw and wrote. Null
+      // when the profile has no patch to maintain (headless, foreign profile).
+      mcp: this.mcpPairing ? this.mcpPairing.status() : null,
       version: this.state.version?.pkg || null
     }
   }

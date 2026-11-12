@@ -100,7 +100,14 @@ function createContext() {
     }
   };
 
-  return { ctx, routes, fetchRoutes, events, listenerOptions, services, setOrigin: (value) => { origin = value; } };
+  /** Dispatch one host event to every registered listener (Host-half wiring). */
+  const emit = (event, ...args) => {
+    const handlers = events.get(event) || [];
+    for (const handler of handlers) handler(...args);
+    return handlers.length;
+  };
+
+  return { ctx, routes, fetchRoutes, events, listenerOptions, services, emit, setOrigin: (value) => { origin = value; } };
 }
 
 /** Plugin config with test defaults (mirrors the schema in index.js). */
@@ -118,6 +125,8 @@ function config(overrides) {
     locale: 'auto',
     headerButton: true,
     headerButtonOrder: 1010,
+    // Pairing writes the profile patch: a unit test must opt in explicitly.
+    mcpPairing: false,
     // 0 keeps the loopback listener off: tests call host.handleHttp directly and
     // must not bind a port (the files run in parallel).
     port: 0,
@@ -129,13 +138,13 @@ function config(overrides) {
 }
 
 /** Invoke a page/API handler with a minimal req/res pair and collect the body. */
-function invoke(handler, url, headers, rawBody) {
+function invoke(handler, url, headers, rawBody, method) {
   return new Promise((resolve) => {
     const chunks = [];
     const body = rawBody === undefined ? '' : String(rawBody);
     const req = {
       url,
-      method: body ? 'POST' : 'GET',
+      method: method || (body ? 'POST' : 'GET'),
       headers: headers || {},
       async *[Symbol.asyncIterator]() {
         if (body) yield Buffer.from(body);

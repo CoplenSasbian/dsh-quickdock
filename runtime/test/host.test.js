@@ -13,7 +13,7 @@ const assert = require('node:assert');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const { config, createContext, invoke } = require('./helpers');
+const { config, createContext, invoke, bridgeCall } = require('./helpers');
 
 const SERVICE = pathToFileURL(path.join(__dirname, '..', '..', 'service.js')).href;
 
@@ -30,10 +30,50 @@ test('shell: the page embeds the Web UI in an iframe', async () => {
   const page = await get('/quickdock');
   assert.strictEqual(page.status, 200);
   assert.match(page.body, /class="qd-frame-bar/);
+  assert.match(page.body, /data-qd-view="electron"/);
   assert.match(page.body, /<iframe src="http:\/\/127\.0\.0\.1:1234\/\?token=test-token&amp;dock=1"/);
   assert.match(page.body, /quickdock:toggle-sidebar/, 'the title bar drives the sidebar over postMessage');
   assert.match(page.body, /data-action="pin"/);
-  assert.strictEqual(app.pageUrl(), 'http://127.0.0.1:47910/quickdock?view=frame');
+  assert.match(app.pageUrl(), /^http:\/\/127\.0\.0\.1:47910\/quickdock\?view=electron&dock=electron-[0-9a-f]+$/);
+});
+
+test('shell: view=vscode trims the window chrome and embeds the app proxy', async () => {
+  const { app, get } = await start();
+  try {
+    const page = await get('/quickdock?view=vscode');
+    assert.strictEqual(page.status, 200);
+    assert.match(page.body, /data-qd-view="vscode"/);
+    assert.match(page.body, /qd-frame-bar--editor/);
+    assert.doesNotMatch(page.body, /<button[^>]*data-action="pin"/, 'no dead window controls in an editor tab');
+    assert.doesNotMatch(page.body, /<button[^>]*data-action="collapse"/);
+    assert.doesNotMatch(page.body, /<button[^>]*data-action="close"/);
+    assert.ok(app.appProxy, 'the embedded view starts the app proxy');
+    assert.match(
+      page.body,
+      new RegExp('<iframe src="' + app.appProxy.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/\\?dock=1"')
+    );
+  } finally {
+    app.appProxy?.dispose?.();
+    app.appProxy = null;
+  }
+});
+
+test('shell: the old view=frame URL still renders the desktop window', async () => {
+  const { app, get } = await start();
+  const page = await get('/quickdock?view=frame');
+  assert.strictEqual(page.status, 200);
+  assert.match(page.body, /data-qd-view="electron"/);
+  assert.match(page.body, /data-action="pin"/);
+  assert.doesNotMatch(page.body, /\/\/127\.0\.0\.1:\d+\/\?dock=1/, 'frame keeps the direct app URL');
+  assert.strictEqual(app.appProxy, null, 'the desktop view needs no proxy');
+});
+
+test('shell: an unknown view is a readable 400', async () => {
+  const { get } = await start();
+  const page = await get('/quickdock?view=nope');
+  assert.strictEqual(page.status, 400);
+  assert.match(page.body, /unknown view/);
+  assert.match(page.body, /electron/);
 });
 
 test('shell: a composition without a Web UI answers 503 instead of a broken page', async () => {
@@ -60,11 +100,46 @@ test('api: dock-target reports the bound session and the counters', async () => 
   assert.strictEqual(reloaded.reloadSeq, 1);
 });
 
+test('bridge: dock-contexts lists the connected docks', async () => {
+  const { app, fetchRoutes } = await start();
+  app.postDockContext({ id: 'vscode-1', type: 'vscode' });
+  const result = await bridgeCall(fetchRoutes, 'dock-contexts');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.docks.map((dock) => dock.id), ['vscode-1']);
+  assert.equal(result.docks[0].hasTools, false);
+});
+test('api: dock contexts register, bind and remove per dock', async () => {
+  const { app } = await start();
+  const call = (url, body, method) => invoke((req, res) => app.handleHttp(req, res), url, {}, body === undefined ? undefined : JSON.stringify(body), method);
+  const json = (result) => JSON.parse(result.body);
+
+  const created = await call('/quickdock/api/dock-context', { id: 'vscode-1', type: 'vscode', workspace: { path: 'C:\\work' } });
+  assert.equal(created.status, 200);
+  assert.equal(json(created).dock.id, 'vscode-1');
+
+  const listed = json(await call('/quickdock/api/dock-contexts'));
+  assert.deepEqual(listed.docks.map((dock) => dock.id), ['vscode-1']);
+  assert.equal(listed.docks[0].type, 'vscode');
+
+  const bound = await call('/quickdock/api/bind?dock=vscode-1', { sessionId: 'session-1' });
+  assert.equal(bound.status, 200);
+  assert.equal(json(bound).dock, 'vscode-1');
+
+  assert.equal(json(await call('/quickdock/api/dock-target?dock=vscode-1')).sessionId, 'session-1');
+  // The legacy target is untouched: a dock with an id does not move it.
+  assert.equal(json(await call('/quickdock/api/dock-target')).sessionId, '');
+
+  const removed = await call('/quickdock/api/dock-context?id=vscode-1', undefined, 'DELETE');
+  assert.equal(removed.status, 200);
+  assert.deepEqual(json(await call('/quickdock/api/dock-contexts')).docks, []);
+});
 test('api: meta describes the remaining contract', async () => {
   const { app, get } = await start();
   const meta = JSON.parse((await get('/quickdock/api/meta')).body);
-  assert.strictEqual(meta.apiVersion, 1);
-  assert.deepStrictEqual(meta.capabilities, ['dock-target', 'handoff']);
+  assert.strictEqual(meta.apiVersion, 2);
+  assert.deepStrictEqual(meta.capabilities, ['dock-target', 'handoff', 'app-proxy', 'mcp-pairing', 'dock-contexts', 'turn-attribution']);
+  assert.deepStrictEqual(meta.views, ['electron', 'vscode', 'browser']);
+  assert.strictEqual(meta.mcp, null, 'pairing off: there is no watcher to report');
   assert.strictEqual(meta.name, 'dsh-quickdock');
   assert.strictEqual(app.meta().components.service, true);
 });

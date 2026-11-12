@@ -40,21 +40,31 @@ button, and applies the dock-only layout rules.
 | `host/page.js` | the shell HTML (title bar + iframe + message script) |
 | `host/api.js` | `dock-target`, `meta` |
 | `host/bridge.js` | `/api/quickdock` actions for the Client half |
+| `host/mcp-descriptor.js` | the editor's `mcp.json`: validation and liveness rules |
+| `host/mcp-patch.js` | the two loader rows: splice, lock, atomic replace |
+| `host/mcp-pairing.js` | the 2 s poller that keeps those rows in step with the editor |
 | `host/dock-*.js` | Electron supervisor (spawn, control channel, geometry) |
 | `runtime/main.cjs` | the Electron process: window, system controls, preload |
 | `client.js` | header button, download badge, theme/locale sync, dock-mode shims |
 
 ## Dock-only layout rules (`client.js`)
 
-At dock width the shipped sidebar would squeeze the conversation, so:
+DSH switches between a drawer and a persistent sidebar at 768px, so the dock only
+rewrites the drawer mode:
 
-- while expanded it covers the whole window (`position: fixed; width: 100vw`);
-- picking a session collapses it again;
+- below 768px, an expanded sidebar covers the whole window
+  (`position: fixed; width: 100vw`) and picking a session collapses it again -
+  the drawer has no room to sit next to the conversation;
+- at 768px and wider the shipped column layout is left untouched: the sidebar is
+  persistent there, DSH does not close it on a session pick, and a full-window
+  overlay would stay on top of the conversation like a mask;
 - the window opens on the conversation even if the main window left the sidebar
   expanded (state is shared through `localStorage`).
 
-The selectors key off the app's own state (`data-sidebar-collapsed` on the frame),
-and are scoped to `html[data-qd-dock]`, so the normal window is untouched.
+The overlay selectors are scoped to `html[data-qd-overlay]`, which `client.js`
+sets from the width on load and resize; the rest key off the app's own state
+(`data-sidebar-collapsed` on the frame) and `html[data-qd-dock]`, so the normal
+window is untouched.
 
 ## Window
 

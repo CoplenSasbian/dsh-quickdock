@@ -22,6 +22,15 @@ const HEADER_SLOT = 'conversation.session.header.actions'
 const FOOTER_SLOT = 'sidebar.footer.action'
 const BRIDGE = '/api/quickdock'
 
+/**
+ * This page's dock identity, sent by the embedding shell.
+ *
+ * It is what makes a prompt attributable: the Host cannot tell two clients
+ * apart, so this page reports its own accepted submissions together with the
+ * id (see `startDockSubmissions`). Empty outside a dock.
+ */
+let DOCK_ID = ''
+
 function el(tag, props) {
   return React.createElement.apply(React, arguments)
 }
@@ -62,6 +71,7 @@ var MESSAGES = {
     'client.label': 'Dock',
     'client.portBusy': 'Cannot open the window: 127.0.0.1:{port} is not listening ({code}). Change the port in Settings → QuickDock → Connection.',
     'client.more': 'More dock actions',
+    'client.dockPicker': 'Send to {name}',
     'client.preparing': 'QuickDock is preparing its desktop window (the first run downloads Electron, ~1–2 minutes, once)…',
     'client.reloadApp': 'Reload the app',
     'client.reloadFailed': 'Reload failed: {reason}',
@@ -216,10 +226,10 @@ var MESSAGES = {
     'todo.status.pending': 'Pending',
     'todo.title': 'Tasks',
     'settings.quickdock': 'QuickDock',
-    'cfg.minWidth': 'Minimum width',
-    'cfg.minHeight': 'Minimum height',
-    'cfg.maxWidth': 'Maximum width',
-    'cfg.maxHeight': 'Maximum height',
+    'cfg.docksTitle': 'Connected docks',
+    'cfg.docksEmpty': 'No dock is connected.',
+    'cfg.docksIdle': 'idle',
+    'cfg.docksTools': 'tools',
     'cfg.alwaysOnTop': 'Always on top',
     'cfg.rememberGeometry': 'Remember size and position',
     'cfg.focusOnSummon': 'Focus when opened',
@@ -294,6 +304,7 @@ var MESSAGES = {
     'client.label': 'Dock',
     'client.portBusy': '无法打开窗口：127.0.0.1:{port} 没有在监听（{code}）。请到 设置 → QuickDock → 连接 改端口。',
     'client.more': '更多 Dock 操作',
+    'client.dockPicker': '发送到 {name}',
     'client.preparing': 'QuickDock 正在准备桌面窗口（首次需要下载 Electron，约 1–2 分钟，只需一次）…',
     'client.reloadApp': '重新加载应用',
     'client.reloadFailed': '重新加载失败：{reason}',
@@ -448,10 +459,10 @@ var MESSAGES = {
     'todo.status.pending': '待处理',
     'todo.title': '任务',
     'settings.quickdock': 'QuickDock 设置',
-    'cfg.minWidth': '最小宽度',
-    'cfg.minHeight': '最小高度',
-    'cfg.maxWidth': '最大宽度',
-    'cfg.maxHeight': '最大高度',
+    'cfg.docksTitle': '已连接的 dock',
+    'cfg.docksEmpty': '还没有 dock 连接。',
+    'cfg.docksIdle': '空闲',
+    'cfg.docksTools': '工具',
     'cfg.alwaysOnTop': '窗口置顶',
     'cfg.rememberGeometry': '记住窗口大小和位置',
     'cfg.focusOnSummon': '打开时聚焦',
@@ -619,6 +630,12 @@ function showToast(message, kind) {
   }
 }
 
+function dockTypeLabel(dock) {
+  const type = String((dock && dock.type) || 'dock')
+  const id = String((dock && dock.id) || '')
+  return type + (id ? ' \u00b7 ' + id.slice(-4) : '')
+}
+
 function showError(message) {
   showToast(message, 'error')
 }
@@ -697,7 +714,19 @@ function SendToDock(props) {
   if (!sessionId) return null
   const suffix = React.useRef(null)
   const [menu, setMenu] = React.useState(null)
+  const [dockList, setDockList] = React.useState([])
 
+  // Connected docks, for the picker. Best effort: an unreachable Host means
+  // the button falls back to the legacy single-dock bind.
+  const listDocks = async () => {
+    try {
+      const data = await bridge('dock-contexts')
+      const docks = data && Array.isArray(data.docks) ? data.docks : []
+      return docks.filter((dock) => dock && dock.id)
+    } catch (error) {
+      return []
+    }
+  }
   // The header row may clip its children, so the menu is positioned from the
   // suffix' own rectangle with position:fixed and closed on any outside click.
   React.useEffect(() => {
@@ -721,6 +750,15 @@ function SendToDock(props) {
   const onClick = async (event) => {
     event.stopPropagation()
     try {
+      // More than one dock: the click becomes a picker instead of a guess.
+      const docks = await listDocks()
+      if (docks.length > 1) {
+        setDockList(docks)
+        openMenu(event)
+        return
+      }
+      const dockTarget = docks.length === 1 ? docks[0] : undefined
+      const dock = dockTarget ? dockTarget.id : undefined
       // The window loads the loopback page: a listener that never bound would
       // open a blank window, so say why instead of summoning one.
       const status = await bridge('status')
@@ -729,13 +767,14 @@ function SendToDock(props) {
         showError(t('client.portBusy', { port: server.attempt || server.port, code: server.error || 'ECONNREFUSED' }))
         return
       }
-      const result = await bridge('bind', { sessionId: sessionId })
+      const result = await bridge('bind', { sessionId: sessionId, dock: dock })
       // Bind failures are shown as-is: no silent fallback.
       if (result.error) {
         showError(result.error)
         return
       }
-      await waitForDockResult()
+      // A non-desktop dock is already visible; only the window has a start-up.
+      if (!dockTarget || dockTarget.type === 'electron') await waitForDockResult()
     } catch (error) {
       showError(t('client.dockFailed', { reason: String(error && error.message || error) }))
     }
@@ -749,6 +788,7 @@ function SendToDock(props) {
     }
     const box = suffix.current ? suffix.current.getBoundingClientRect() : null
     setMenu(box ? { top: Math.round(box.bottom + 4), right: Math.round(window.innerWidth - box.right) } : { top: 0, right: 0 })
+    listDocks().then(function (docks) { setDockList(docks) })
   }
 
   const resetWindows = async (event) => {
@@ -786,12 +826,35 @@ function SendToDock(props) {
 
   // Only the actions that still mean something: the window has its own close
   // button, and reloading the app is lighter than restarting the process.
+  const bindTo = async (event, dock) => {
+    event.stopPropagation()
+    setMenu(null)
+    try {
+      const result = await bridge('bind', { sessionId: sessionId, dock: dock && dock.id })
+      if (result && result.error) {
+        showError(result.error)
+        return
+      }
+      // Only the desktop window has a start-up to wait for.
+      if (dock && dock.type === 'electron') await waitForDockResult()
+    } catch (error) {
+      showError(t('client.dockFailed', { reason: String(error && error.message || error) }))
+    }
+  }
+
+
   const menuItems = [
     { key: 'reset', label: t('client.resetWindows'), onClick: resetWindows },
     { key: 'reload', label: t('client.reloadApp'), onClick: reloadApp },
     { key: 'restart', label: t('client.restartDock'), onClick: restart }
   ]
 
+  // Docks first: the button menu doubles as the dock picker.
+  const items = dockList.map((dock) => ({
+    key: 'dock-' + dock.id,
+    label: t('client.dockPicker', { name: dockTypeLabel(dock) }),
+    onClick: (event) => bindTo(event, dock)
+  })).concat(menuItems)
   const pill = {
     height: '22px',
     border: '1px solid rgba(77,142,255,.55)',
@@ -865,7 +928,7 @@ function SendToDock(props) {
         boxShadow: 'var(--dsw-elevation-panel, 0 12px 32px -8px rgba(0,0,0,.55))',
         zIndex: 3000
       }
-    }, menuItems.map((item) => el('button', {
+    }, items.map((item) => el('button', {
       key: item.key,
       type: 'button',
       role: 'menuitem',
@@ -1342,6 +1405,12 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     if (event.source !== window.parent) return
     const data = event.data
     if (!data) return
+    if (data.type === 'quickdock:context') {
+      // The shell names this dock. It repeats the message on `quickdock:ready`,
+      // so a page that booted before its parent is ready still gets an id.
+      if (data.id) DOCK_ID = String(data.id)
+      return
+    }
     if (data.type === 'quickdock:toggle-sidebar') {
       // The user is driving now: the boot-time collapse must not fight the click.
       clearInterval(collapseOnStart)
@@ -1574,19 +1643,118 @@ function findToggle() {
 function followCurrentSession() {
   let last = ''
   const report = function () {
-    let sessionId = ''
-    try {
-      const raw = localStorage.getItem('dsh.sessions.current')
-      if (raw) sessionId = String(JSON.parse(raw).sessionId || '')
-    } catch (error) {
-      sessionId = ''
-    }
+    const sessionId = readCurrentSessionId()
     if (sessionId === last) return
     last = sessionId
     try { window.parent.postMessage({ type: 'quickdock:session', sessionId: sessionId }, '*') } catch (error) { /* ignore */ }
   }
   report()
   setInterval(report, 1000)
+}
+
+/** The session the app currently shows, from the key the app itself keeps. */
+function readCurrentSessionId() {
+  try {
+    const raw = localStorage.getItem('dsh.sessions.current')
+    if (raw) return String(JSON.parse(raw).sessionId || '')
+  } catch (error) {
+    /* storage denied or a value being rewritten */
+  }
+  return ''
+}
+
+/**
+ * Report this dock's own accepted prompts, so the Host can tag the turn.
+ *
+ * The Host sees a prompt arrive but not which page sent it. The client Session
+ * publishes each submission it got accepted as `pendingSubmissions[].requestId`
+ * - the exact identity the Host records as `rpcId` in the durable message
+ * source - so reporting the new ones, together with this dock's id, is what
+ * makes the turn's tool set exact (see host/turn-owners.js).
+ *
+ * Failures fail closed: a submission the Host never hears about leaves the turn
+ * unattributed, and an unattributed turn gets no dock tools.
+ */
+function startDockSubmissions(ctx) {
+  try {
+    ctx.inject(['sessions'], function (sessionsCtx) {
+      const sessions = sessionsCtx && sessionsCtx.sessions
+      if (!sessions || typeof sessions.binding !== 'function') return
+      let watched = null
+      let unsubscribe = null
+      let seen = new Set()
+
+      const unwatch = function () {
+        if (unsubscribe) {
+          try { unsubscribe() } catch (error) { /* already detached */ }
+        }
+        unsubscribe = null
+        watched = null
+        seen = new Set()
+      }
+
+      const report = function (sessionId, requestId) {
+        if (!DOCK_ID || !sessionId || !requestId) return
+        bridge('dock-submission', { dockId: DOCK_ID, sessionId: sessionId, requestId: requestId })
+          .catch(function () { /* Host restarting: the next submission retries */ })
+      }
+
+      const watch = function (session) {
+        unwatch()
+        watched = session
+        // Echoes accepted before this page started watching are already covered
+        // by the Host's message source; only new ones are reported.
+        try {
+          const snapshot = session.getSnapshot()
+          for (const echo of (snapshot && snapshot.pendingSubmissions) || []) {
+            if (echo && echo.requestId) seen.add(echo.requestId)
+          }
+        } catch (error) { /* a session that is not open yet seeds nothing */ }
+        try {
+          unsubscribe = session.subscribe(function () {
+            let list
+            try {
+              const snapshot = session.getSnapshot()
+              list = (snapshot && snapshot.pendingSubmissions) || []
+            } catch (error) {
+              return
+            }
+            for (const echo of list) {
+              if (!echo || !echo.requestId || seen.has(echo.requestId)) continue
+              seen.add(echo.requestId)
+              report(session.sessionId, echo.requestId)
+            }
+          })
+        } catch (error) {
+          unwatch()
+        }
+      }
+
+      const tick = function () {
+        const sessionId = readCurrentSessionId()
+        if (!sessionId) return
+        let session = null
+        try {
+          const binding = sessions.binding(sessionId)
+          session = binding && binding.session
+        } catch (error) {
+          session = null
+        }
+        if (!session) {
+          if (watched) unwatch()
+          return
+        }
+        if (session !== watched) watch(session)
+      }
+
+      tick()
+      // The app switches sessions without a page reload; a short poll keeps the
+      // watched Session object the one that is actually on screen.
+      setInterval(tick, 250)
+    })
+  } catch (error) {
+    console.warn('[dsh-quickdock] submission tracking unavailable:', error)
+  }
 }
 
 /**
@@ -1655,10 +1823,6 @@ const SETTINGS_SECTION = 'settings.section'
 
 /** Rows of the settings page: key, control kind and bounds. */
 const CONFIG_FIELDS = [
-  { group: 'window', key: 'minWidth', kind: 'number', min: 280, max: 1200, step: 10 },
-  { group: 'window', key: 'minHeight', kind: 'number', min: 280, max: 1600, step: 10 },
-  { group: 'window', key: 'maxWidth', kind: 'number', min: 320, max: 2000, step: 10 },
-  { group: 'window', key: 'maxHeight', kind: 'number', min: 320, max: 2000, step: 10 },
   { group: 'window', key: 'alwaysOnTop', kind: 'bool' },
   { group: 'window', key: 'rememberGeometry', kind: 'bool' },
   { group: 'window', key: 'focusOnSummon', kind: 'bool' },
@@ -1711,6 +1875,7 @@ function QuickDockSettings() {
   const [server, setServer] = React.useState(null)
   // The port is edited as a draft: nothing binds until the button is pressed.
   const [portDraft, setPortDraft] = React.useState('')
+  const [docks, setDocks] = React.useState(null)
 
   /** Read the listener state; a port change answers after the bind attempt. */
   function refreshServer() {
@@ -1735,6 +1900,19 @@ function QuickDockSettings() {
       if (alive && result && result.ok) setVersions(result)
     }).catch(function () { /* offline: the field keeps the current value */ })
     return function () { alive = false }
+  }, [])
+
+  /** Connected docks: refreshed while the page is open, they come and go. */
+  React.useEffect(function () {
+    let alive = true
+    function refresh() {
+      bridge('dock-contexts').then(function (result) {
+        if (alive && result && Array.isArray(result.docks)) setDocks(result.docks)
+      }).catch(function () { /* host not up yet */ })
+    }
+    refresh()
+    const timer = setInterval(refresh, 2000)
+    return function () { alive = false; clearInterval(timer) }
   }, [])
 
   /** Poll while a download runs, so the status line follows it. */
@@ -2048,6 +2226,24 @@ function QuickDockSettings() {
     }
   }
 
+  // Which docks are connected right now: identity, binding and whether the dock
+  // brings tools. This is the one place a user can see the other clients.
+  rows.push(el('div', { key: 'g-docks', style: GROUP_STYLE }, t(CFG_PREFIX + 'docksTitle')))
+  if (!docks || docks.length === 0) {
+    rows.push(el('div', { key: 'docks-empty', style: HINT_STYLE }, t(CFG_PREFIX + 'docksEmpty')))
+  } else {
+    for (const dock of docks) {
+      const details = []
+      if (dock.sessionId) details.push(dock.sessionId)
+      if (dock.hasTools) details.push(t(CFG_PREFIX + 'docksTools'))
+      if (dock.workspace && dock.workspace.path) details.push(dock.workspace.path)
+      rows.push(el('div', { key: 'dock-' + dock.id, style: ROW_STYLE },
+        el('div', { style: LABEL_STYLE }, dockTypeLabel(dock)),
+        el('span', { style: VALUE_STYLE }, details.length ? details.join(' · ') : t(CFG_PREFIX + 'docksIdle'))
+      ))
+    }
+  }
+
   const friendlyRuntimeError = runtime && runtime.error ? friendly(runtime.error) : ''
   if (note || friendlyRuntimeError) {
     rows.push(el('div', { key: 'note', style: { padding: '6px 12px', fontSize: '12px', color: 'var(--dsw-alias-state-error-primary, #ff6b6b)' } }, note || friendlyRuntimeError))
@@ -2061,6 +2257,7 @@ function apply(ctx) {
     // This page is the dock, not the window that opens it: no header button, no
     // download badge - only the layout fixes below.
     applyDockMode()
+    startDockSubmissions(ctx)
     try {
       ctx.inject(['uiWorkspace'], function (uiCtx) {
         // The Dock button in the main window bound a session: follow it. The shell
