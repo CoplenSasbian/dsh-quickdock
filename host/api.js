@@ -70,6 +70,35 @@ const ROUTES = [
     method: 'GET',
     path: 'meta',
     handle: ({ app }) => app.meta()
+  },
+  {
+    // An IDE dock hands over its MCP endpoint together with the directory it
+    // edits. The Host forwards the call to the workspace MCP bridge on DSH's Web
+    // origin, so a dock only ever has to know this listener (see MCP-BRIDGE.md).
+    method: 'POST',
+    path: 'mcp-register',
+    handle: async ({ app, req }) => app.registerDockMcp(await readBody(req))
+  },
+  {
+    // The dock went away, or the user turned its tools off.
+    method: 'POST',
+    path: 'mcp-unregister',
+    handle: async ({ app, req }) => app.unregisterDockMcp(await readBody(req))
+  },
+  {
+    // What this directory currently registers, so a dock can tell "already
+    // mounted" from "DSH restarted and forgot me" without remounting.
+    method: 'GET',
+    path: 'mcp-list',
+    handle: ({ app, url }) => app.listDockMcp(url.searchParams.get('workspace') || '')
+  },
+  {
+    // What the docks in one directory publish about their MCP servers - names,
+    // tool lists and the bridge's live mount state - so the shell can show them.
+    // Read-only: it never mounts anything.
+    method: 'GET',
+    path: 'mcp-servers',
+    handle: ({ app, url }) => app.refreshDockMcpServers(url.searchParams.get('workspace') || '')
   }
 ]
 

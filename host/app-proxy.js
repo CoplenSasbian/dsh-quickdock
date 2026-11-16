@@ -151,6 +151,16 @@ export function startAppProxy(input) {
     delete headers['set-cookie']
     delete headers['transfer-encoding']
     delete headers['connection']
+    // The embedding webview keeps a disk cache, and DSH's app shell carries no
+    // freshness headers: without this an extension reload could keep running the
+    // client bundle it cached before the plugin was rebuilt. Documents are never
+    // cached; their hashed assets keep their own headers.
+    if (document) {
+      headers['cache-control'] = 'no-store, must-revalidate'
+      delete headers.etag
+      delete headers['last-modified']
+      delete headers.expires
+    }
     const location = headers.location
     if (typeof location === 'string') {
       try {

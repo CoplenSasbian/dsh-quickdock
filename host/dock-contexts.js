@@ -3,7 +3,7 @@
  *
  * One `DockContext` per connected dock instance (a VS Code window, the Electron
  * window, a browser tab, a future IDE). The descriptor a client writes only
- * carries identity, tools and the reserved fields; the binding is owned here.
+ * carries identity and the reserved fields; the binding is owned here.
  *
  * The registry is intentionally pure: the clock is injectable, nothing touches
  * the filesystem, and the HTTP layer only decides which calls reach it.
@@ -50,7 +50,6 @@ export class DockContexts {
         id,
         type: 'unknown',
         client: undefined,
-        tools: undefined,
         workspace: undefined,
         systemPrompt: undefined,
         session: { sessionId: '', seq: 0, reloadSeq: 0 },
@@ -62,9 +61,6 @@ export class DockContexts {
     }
     if (typeof fields.type === 'string' && fields.type.trim()) context.type = fields.type.trim()
     if (fields.client !== undefined) context.client = fields.client && typeof fields.client === 'object' ? fields.client : undefined
-    if (fields.tools !== undefined) {
-      context.tools = fields.tools && typeof fields.tools === 'object' ? fields.tools : undefined
-    }
     if (fields.workspace !== undefined) {
       context.workspace = fields.workspace && typeof fields.workspace === 'object' ? fields.workspace : undefined
     }
@@ -86,7 +82,7 @@ export class DockContexts {
     return [...this.contexts.values()]
   }
 
-  /** Remove a context; its binding and tools go with it. */
+  /** Remove a context; its binding goes with it. */
   remove(id) {
     const key = text(id)
     const existed = this.contexts.delete(key)
@@ -159,8 +155,6 @@ export class DockContexts {
       type: context.type,
       client: context.client,
       workspace: context.workspace,
-      hasTools: Boolean(context.tools && context.tools.url),
-      toolsUrl: context.tools && context.tools.url ? String(context.tools.url) : undefined,
       sessionId: context.session.sessionId || undefined,
       seq: context.session.seq,
       reloadSeq: context.session.reloadSeq,

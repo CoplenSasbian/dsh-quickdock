@@ -30,6 +30,11 @@ const BRIDGE = '/api/quickdock'
  * id (see `startDockSubmissions`). Empty outside a dock.
  */
 let DOCK_ID = ''
+/**
+ * Which client embedded this page: `electron`, `vscode` or `browser`, as the
+ * shell reports it. Only an editor dock routes file clicks to the editor.
+ */
+let DOCK_HOST = ''
 
 function el(tag, props) {
   return React.createElement.apply(React, arguments)
@@ -229,7 +234,6 @@ var MESSAGES = {
     'cfg.docksTitle': 'Connected docks',
     'cfg.docksEmpty': 'No dock is connected.',
     'cfg.docksIdle': 'idle',
-    'cfg.docksTools': 'tools',
     'cfg.alwaysOnTop': 'Always on top',
     'cfg.rememberGeometry': 'Remember size and position',
     'cfg.focusOnSummon': 'Focus when opened',
@@ -462,7 +466,6 @@ var MESSAGES = {
     'cfg.docksTitle': '已连接的 dock',
     'cfg.docksEmpty': '还没有 dock 连接。',
     'cfg.docksIdle': '空闲',
-    'cfg.docksTools': '工具',
     'cfg.alwaysOnTop': '窗口置顶',
     'cfg.rememberGeometry': '记住窗口大小和位置',
     'cfg.focusOnSummon': '打开时聚焦',
@@ -1387,6 +1390,94 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     if (attempts > 30) clearInterval(collapseOnStart)
   }, 100)
 
+  /* ---- file links belong to the host editor in an editor dock ----
+     DSH opens a clicked path in its own preview panel, which in an editor dock is
+     the wrong window: the user is looking at VS Code and expects the file there.
+     The shell names the client (`quickdock:context.host`), so this only rewrites
+     clicks seen inside an editor dock; the desktop window and a plain browser tab
+     keep DSH's behaviour. */
+
+  /** Absolute path at the start of a click target, or '' when there is none. */
+  function pathFromText(text, allowRelative) {
+    const cleaned = String(text).replace(/\s+/g, ' ').trim()
+    if (cleaned.length === 0 || cleaned.length > 200) return ''
+    const match = /(?:[A-Za-z]:[\\/]|\/)[^\n\r<>"|?*]*/.exec(cleaned)
+    if (match) {
+      let path = match[0].trim()
+      // The row decorates the path: a size, a line-count delta, a quote, a paren.
+      path = path.replace(/\s+\d+(?:[.,]\d+)?\s*[KMGT]?B\b.*$/i, '')
+      path = path.replace(/\s+[+-]\d+\s+[+-]\d+\s*$/, '')
+      path = path.replace(/[),;:'"\]]+$/, '')
+      if (!/[\\/]/.test(path)) return ''
+      if (!/\.[A-Za-z0-9]{1,8}$/.test(path)) return ''
+      if (path.length > 200) return ''
+      return path
+    }
+    if (!allowRelative) return ''
+    // A row that only shows `src/dir/file.ts`: the embedding editor resolves it
+    // against its own folders, which is enough to open the right file.
+    const relative = /(?:^|\s)([A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)*\.[A-Za-z0-9]{1,8})\s*$/.exec(cleaned)
+    if (!relative) return ''
+    const path = relative[1]
+    if (!/[\\/]/.test(path)) return ''
+    return path
+  }
+
+  /** The path a clicked node stands for: attributes first, then its own text. */
+  function pathFromNode(node, allowRelative) {
+    if (!node || typeof node.getAttribute !== 'function') return ''
+    // Any attribute may carry it (`title`, `data-path`, an unknown `data-*`), and
+    // an `href` often keeps it in a query string.
+    if (node.attributes) {
+      for (const attribute of node.attributes) {
+        const path = pathFromText(attribute.value, false)
+        if (path) return path
+      }
+    }
+    // Only a leaf's text is trusted: an ancestor's text also holds the label,
+    // the size and whatever else the row shows.
+    if (node.children && node.children.length > 0) return ''
+    return pathFromText(node.textContent || '', allowRelative)
+  }
+
+  let lastOpenAt = 0
+  let lastOpenPath = ''
+
+  /**
+   * Open a file path in the embedding editor.
+   *
+   * `mousedown` is handled as well: DSH may open its own preview before a `click`
+   * is dispatched, and stopping the earlier event is the only way to win.
+   */
+  function routeFileClick(event) {
+    if (DOCK_HOST !== 'vscode' || event.button !== 0) return
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+    let node = event.target
+    for (let depth = 0; node && node !== document.body && depth < 6; depth += 1) {
+      const path = pathFromNode(node, depth >= 4)
+      if (path) {
+        // DSH's own handler would open its preview inside the dock: stop it and
+        // let the embedding editor open the file instead. The element is appended
+        // after a NUL so a click that opens nothing still says what was clicked.
+        event.preventDefault()
+        event.stopPropagation()
+        const now = Date.now()
+        if (path === lastOpenPath && now - lastOpenAt < 600) return
+        lastOpenAt = now
+        lastOpenPath = path
+        const source = node.tagName.toLowerCase() + (node.className ? '.' + String(node.className).split(' ')[0] : '')
+        try {
+          window.parent.postMessage({ type: 'quickdock:open-file', path: path + '\u0000' + source }, '*')
+        } catch (error) { /* ignore */ }
+        return
+      }
+      node = node.parentElement
+    }
+  }
+
+  document.addEventListener('mousedown', routeFileClick, true)
+  document.addEventListener('click', routeFileClick, true)
+
   /* ---- shell <-> app channel (the dock title bar drives the sidebar) ---- */
 
   /**
@@ -1409,6 +1500,7 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
       // The shell names this dock. It repeats the message on `quickdock:ready`,
       // so a page that booted before its parent is ready still gets an id.
       if (data.id) DOCK_ID = String(data.id)
+      if (data.host) DOCK_HOST = String(data.host)
       return
     }
     if (data.type === 'quickdock:toggle-sidebar') {
@@ -2226,8 +2318,8 @@ function QuickDockSettings() {
     }
   }
 
-  // Which docks are connected right now: identity, binding and whether the dock
-  // brings tools. This is the one place a user can see the other clients.
+  // Which docks are connected right now: identity, binding and workspace. This
+  // is the one place a user can see the other clients.
   rows.push(el('div', { key: 'g-docks', style: GROUP_STYLE }, t(CFG_PREFIX + 'docksTitle')))
   if (!docks || docks.length === 0) {
     rows.push(el('div', { key: 'docks-empty', style: HINT_STYLE }, t(CFG_PREFIX + 'docksEmpty')))
@@ -2235,7 +2327,6 @@ function QuickDockSettings() {
     for (const dock of docks) {
       const details = []
       if (dock.sessionId) details.push(dock.sessionId)
-      if (dock.hasTools) details.push(t(CFG_PREFIX + 'docksTools'))
       if (dock.workspace && dock.workspace.path) details.push(dock.workspace.path)
       rows.push(el('div', { key: 'dock-' + dock.id, style: ROW_STYLE },
         el('div', { style: LABEL_STYLE }, dockTypeLabel(dock)),

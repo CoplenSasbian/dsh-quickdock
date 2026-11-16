@@ -125,8 +125,6 @@ function config(overrides) {
     locale: 'auto',
     headerButton: true,
     headerButtonOrder: 1010,
-    // Pairing writes the profile patch: a unit test must opt in explicitly.
-    mcpPairing: false,
     // 0 keeps the loopback listener off: tests call host.handleHttp directly and
     // must not bind a port (the files run in parallel).
     port: 0,

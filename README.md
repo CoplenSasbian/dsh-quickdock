@@ -28,6 +28,12 @@ DSH main window [Dock] ──► Host binds the session ──► Electron windo
   looking at it: `?view=electron` for the window, `?view=vscode` for an IDE
   webview (trimmed chrome, the app served through the Host's app proxy) or
   `?view=browser` for a plain tab;
+- **Tools from an IDE, scoped to the folder it edits**: a dock registers its MCP
+  endpoint on this same port (`POST /quickdock/api/mcp-register`) and only
+  sessions whose working directory is inside that folder mount them. A list button
+  in the title bar opens **the tool panel**: which servers this dock published,
+  their build and tool names, and whether they are mounted right now
+  (`GET /quickdock/api/mcp-servers`);
 - Bilingual (English / 简体中文), following DSH's language.
 
 ## Requirements
@@ -74,7 +80,7 @@ dsh plugin install C:\path\to\dsh-quickdock
 | `rememberGeometry` | `true` | Remember the window position |
 | `ballSize` | `64` | Diameter of the floating whale ball the window collapses into (24–160) |
 | `headerButton` / `headerButtonOrder` | `true` / `1010` | Header Dock button |
-| `mcpPairing` | `true` | Register the paired editor's MCP server: poll `mcp.json` and keep the `mcp-dsh-vsdock` row enabled while it is live (see `MCP-PAIRING.md`). Off leaves the profile patch untouched |
+| `mcpBridge` / `mcpBridgeToken` | `true` / `''` | Serve the per-workspace MCP bridge: a dock registers its endpoint for a directory and only sessions inside it get the tools (see `MCP-BRIDGE.md`). Empty token accepts loopback only |
 
 ## Development
 
@@ -91,12 +97,12 @@ Logs: `%LOCALAPPDATA%\dsh-quickdock\host.log` (Host) and `dock.log` (window).
 ```
 index.js / service.js / dock.js   entry points (one row mounts both components)
 client.js                         header button, download badge, dock-mode shims
-host/                             listener, shell page, bridge, Electron supervisor, MCP pairing
+host/                             listener, shell page, bridge, Electron supervisor, workspace MCP bridge
 runtime/                          Electron process (window, system controls, preload)
 locale/                           English / Chinese catalogs
 API.md                            contract and postMessage message table
-MCP-PAIRING.md                    VS Code MCP server: discovery, consent, loader row
-DOCK-CONTEXT.md                   per-dock context: identity, tools, binding
+MCP-BRIDGE.md                     per-workspace MCP registration for IDE docks
+DOCK-CONTEXT.md                   per-dock context: identity, binding
 DESIGN.md                         architecture notes
 ```
 

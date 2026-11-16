@@ -40,9 +40,11 @@ export class PageRenderer {
   /**
    * Render the frame shell for one client.
    * @param {string} src absolute, already-authenticated Web UI URL (or the app proxy's).
-   * @param {{view?: string, systemControls?: boolean, ballIcon?: string}} [options]
+   * @param {{view?: string, systemControls?: boolean, ballIcon?: string, dockMcp?: boolean}} [options]
    *   `view` picks the chrome: `electron` (desktop window), `vscode` or
-   *   `browser` (trimmed editor bar); the default is `electron`.
+   *   `browser` (trimmed editor bar); the default is `electron`. `dockMcp` shows
+   *   the editor-tools toggle: the embedding client owns that server, so it is
+   *   the only one that can ask for the button.
    * @returns {string} complete HTML document.
    */
   renderFrame(src, options) {
@@ -57,6 +59,10 @@ export class PageRenderer {
     // because only we can collapse the window into the floating ball.
     const system = electron && Boolean(options && options.systemControls)
     const barClass = (electron ? '' : ' qd-frame-bar--editor') + (system ? ' qd-frame-bar--system' : '')
+    // An IDE dock runs the MCP server the agent calls; the shell only hosts the
+    // switch, next to the session controls it already owns. The desktop window
+    // has no such client (and no parent to report a click to), so it never shows it.
+    const dockMcp = Boolean(options && options.dockMcp) && !electron
     const closeButton = electron && !system ? '\n    <button type="button" data-action="close" title="Close">✕</button>' : ''
     // Not a minimise: the icon is the whale the window collapses into.
     // The button shows the same mark as the disc it produces.
@@ -114,10 +120,50 @@ ${theme}
   .qd-frame-bar button[data-action="sidebar"][data-expanded="1"] ~ button[data-action="new-session"] { display: none; }
   .qd-frame-bar button svg { width: 16px; height: 16px; display: block; }
   .qd-frame-bar .qd-dot { width: 12px; height: 12px; border-radius: 50%; background: currentColor; display: block; }
+  /* Contract controls an embedding client may ask for (an IDE dock's editor
+     tools): hidden until the client says it owns them. */
+  .qd-frame-bar [hidden] { display: none !important; }
+  .qd-frame-bar button[data-action="mcp"]:not([data-on="1"]) { opacity: .6; }
+  .qd-frame-bar .qd-frame-warn {
+    -webkit-app-region: no-drag; display: none; align-items: center; justify-content: center;
+    width: 24px; height: 22px; color: #e6b23f;
+  }
+  .qd-frame-bar .qd-frame-warn[data-on="1"] { display: flex; }
+  .qd-frame-bar .qd-frame-warn svg { width: 15px; height: 15px; display: block; }
   /* Room for the OS close button drawn over the bar's right edge. */
   .qd-frame-bar--system { padding-right: 56px; }
   /* Outside the Electron window the bar is page chrome, not a window handle. */
   .qd-frame-bar--editor { -webkit-app-region: no-drag; }
+  /* ---- the tool panel ----
+     What the dock in this folder has connected: one card per MCP server with the
+     tools it publishes and whether DSH has it mounted right now. */
+  body { position: relative; }
+  .qd-mcp-panel {
+    position: absolute; top: 34px; right: 8px; z-index: 30;
+    width: min(460px, calc(100vw - 16px)); max-height: min(72vh, 560px);
+    display: flex; flex-direction: column; overflow: hidden;
+    background: #1b1b1c; color: #e8e8ea;
+    border: 1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.12)); border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.5);
+    font: 12px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    text-align: left;
+  }
+  .qd-mcp-panel[hidden] { display: none; }
+  .qd-mcp-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .qd-mcp-head h2 { margin: 0; font-size: 12px; font-weight: 600; flex: 1 1 auto; }
+  .qd-mcp-close { background: none; border: 0; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; opacity: .65; }
+  .qd-mcp-close:hover { opacity: 1; }
+  .qd-mcp-ws { padding: 7px 10px 0; color: #9a9aa2; font-family: ui-monospace, Consolas, monospace; font-size: 11px; word-break: break-all; }
+  .qd-mcp-body { overflow: auto; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 10px; }
+  .qd-mcp-server { border: 1px solid rgba(255,255,255,.08); border-radius: 6px; padding: 8px; }
+  .qd-mcp-server-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .qd-mcp-server-name { font-weight: 600; font-family: ui-monospace, Consolas, monospace; }
+  .qd-mcp-badge { padding: 0 6px; border-radius: 999px; font-size: 10px; background: rgba(255,255,255,.1); color: #c9c9cf; }
+  .qd-mcp-badge[data-state="mounted"] { background: rgba(64,160,255,.18); color: #8cc4ff; }
+  .qd-mcp-url { margin-top: 3px; color: #8a8a92; font-family: ui-monospace, Consolas, monospace; font-size: 11px; word-break: break-all; }
+  .qd-mcp-tools { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; }
+  .qd-mcp-tool { font-family: ui-monospace, Consolas, monospace; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,.07); }
+  .qd-mcp-empty { color: #9a9aa2; }
   iframe { flex: 1 1 auto; width: 100%; border: 0; display: block; background: #fff; }
 </style>
 </head>
@@ -126,8 +172,19 @@ ${theme}
     <button type="button" data-action="sidebar" title="Toggle sidebar" data-expanded="0"><svg viewBox="0 0 16 16" fill="none" stroke-width="1" aria-hidden="true"><path d="M13.5 1.5H2.5C1.94772 1.5 1.5 1.94772 1.5 2.5V13.5C1.5 14.0523 1.94772 14.5 2.5 14.5H13.5C14.0523 14.5 14.5 14.0523 14.5 13.5V2.5C14.5 1.94772 14.0523 1.5 13.5 1.5Z" stroke="currentColor"></path><path d="M5.5 1.5V14.5" stroke="currentColor"></path></svg></button>
     <button type="button" data-action="new-session" title="New session"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"></path></svg></button>
     <span class="qd-frame-title">DeepSeek Harness</span>
+    <span class="qd-frame-warn" data-warn="workspace" title="" aria-live="polite"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.8 15 14H1z"></path><path d="M8 6v3.5"></path><path d="M8 11.8v.2"></path></svg></span>
+    <button type="button" data-action="mcp-info" title="Editor tools connected to this dock"${dockMcp ? '' : ' hidden'}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true"><path d="M4.5 4h9M4.5 8h9M4.5 12h9"></path><circle cx="2.2" cy="4" r=".9" fill="currentColor" stroke="none"></circle><circle cx="2.2" cy="8" r=".9" fill="currentColor" stroke="none"></circle><circle cx="2.2" cy="12" r=".9" fill="currentColor" stroke="none"></circle></svg></button>
+    <button type="button" data-action="mcp" title="Editor tools"${dockMcp ? '' : ' hidden'}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 1.5v3"></path><path d="M10.5 1.5v3"></path><path d="M3.5 4.5h9v2.5a4.5 4.5 0 0 1-9 0z"></path><path d="M8 11.5V15"></path></svg></button>
     <button type="button" data-action="handoff" title="Show in DSH" disabled><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2.5H13.5V6.5"></path><path d="M13.5 2.5 7.5 8.5"></path><path d="M11.5 9.5V12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12V6A1.5 1.5 0 0 1 4 4.5h2.5"></path></svg></button>
     ${pinButton}${collapseButton}${closeButton}
+  </div>
+  <div class="qd-mcp-panel" data-panel="mcp" hidden>
+    <div class="qd-mcp-head">
+      <h2>Editor tools</h2>
+      <button type="button" class="qd-mcp-close" aria-label="Close">×</button>
+    </div>
+    <div class="qd-mcp-ws"></div>
+    <div class="qd-mcp-body" aria-live="polite"></div>
   </div>
   <iframe src="${href}" allow="clipboard-read; clipboard-write" referrerpolicy="no-referrer"></iframe>
   <script>
@@ -143,12 +200,17 @@ ${theme}
        window, supplied by the Host in the URL. */
     var dockView = ${JSON.stringify(view)};
     var dockId = '';
+    /* Folders this dock edits (an IDE may pass several) and whether the client
+       owns the editor-tools toggle: both decide what the bar shows. */
+    var dockWorkspaces = [];
+    var dockMcpRequested = false;
     try {
       var params = new URLSearchParams(location.search);
       dockId = params.get('dock') || sessionStorage.getItem('quickdock.dock') || '';
       if (!dockId) dockId = 'dock-' + Math.random().toString(36).slice(2, 10);
       sessionStorage.setItem('quickdock.dock', dockId);
-      var dockWorkspace = params.get('workspace') || '';
+      dockWorkspaces = params.getAll('workspace').filter(function (path) { return Boolean(path) });
+      dockMcpRequested = params.get('mcp') !== null;
       fetch('/quickdock/api/dock-context', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -156,7 +218,9 @@ ${theme}
           id: dockId,
           type: dockView,
           client: { name: navigator.userAgent },
-          workspace: dockWorkspace ? { path: dockWorkspace } : undefined
+          workspace: dockWorkspaces.length
+            ? { path: dockWorkspaces[0], paths: dockWorkspaces }
+            : undefined
         })
       }).catch(function () { /* dock-target recreates the context on demand */ });
     } catch (error) { dockId = ''; /* storage denied: legacy binding */ }
@@ -175,6 +239,147 @@ ${theme}
     if (newSessionButton) {
       newSessionButton.addEventListener('click', function () { tell({ type: 'quickdock:new-session' }) });
     }
+
+    /* ---- editor tools (the MCP server an IDE dock runs) ----
+       The client that embedded this page owns that server, so it owns the toggle
+       too: the bar reports a click upward and the client posts the state back.
+       The desktop window has no parent, so the button never appears there. */
+    var mcpButton = document.querySelector('[data-action="mcp"]');
+    var workspaceWarn = document.querySelector('[data-warn="workspace"]');
+    var mcpOn = false;
+    var workspaceInfo = null;
+
+    function refreshWorkspaceWarning() {
+      if (!workspaceWarn) return;
+      var mismatched = Boolean(mcpOn && workspaceInfo && workspaceInfo.matches === false);
+      workspaceWarn.setAttribute('data-on', mismatched ? '1' : '0');
+      if (!mismatched) return;
+      workspaceWarn.title = 'This session works in ' + workspaceInfo.session
+        + ', outside ' + workspaceInfo.dock
+        + ' — the editor tools are not mounted here.';
+    }
+
+    function applyMcpState(on, detail) {
+      mcpOn = Boolean(on);
+      if (mcpButton) {
+        mcpButton.setAttribute('data-on', mcpOn ? '1' : '0');
+        mcpButton.removeAttribute('data-pending');
+        mcpButton.title = 'Editor tools for DSH: ' + (mcpOn ? 'on' : 'off')
+          + ' — click to ' + (mcpOn ? 'turn off' : 'turn on')
+          + (detail ? ' (' + detail + ')' : '');
+      }
+      refreshWorkspaceWarning();
+    }
+
+    if (mcpButton && dockMcpRequested && window.parent !== window) {
+      mcpButton.hidden = false;
+      mcpButton.addEventListener('click', function () {
+        if (mcpButton.hasAttribute('data-pending')) return;
+        mcpButton.setAttribute('data-pending', '');
+        try { window.parent.postMessage({ type: 'quickdock:mcp-toggle' }, '*') }
+        catch (error) { mcpButton.removeAttribute('data-pending') }
+      });
+    }
+    if (dockMcpRequested) applyMcpState(new URLSearchParams(location.search).get('mcp') === '1', '');
+
+    /* ---- the tool panel ----
+       The Host keeps what each dock published about its MCP server (name, url,
+       build, tool names) and the bridge's live mount state; this panel is the one
+       place that shows both, so "is the editor connected here, and to what?" has
+       an answer that does not need a log file. */
+    var mcpInfoButton = document.querySelector('[data-action="mcp-info"]');
+    var mcpPanel = document.querySelector('[data-panel="mcp"]');
+    var mcpPanelTimer = 0;
+
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined && text !== null) node.textContent = String(text);
+      return node;
+    }
+
+    function renderMcpServers(answer) {
+      var body = mcpPanel.querySelector('.qd-mcp-body');
+      var where = mcpPanel.querySelector('.qd-mcp-ws');
+      body.textContent = '';
+      var workspace = answer && answer.workspace ? String(answer.workspace) : '';
+      if (where) {
+        where.textContent = workspace
+          ? 'folder: ' + workspace
+          : 'no folder declared by this dock';
+      }
+      var servers = answer && Array.isArray(answer.servers) ? answer.servers : [];
+      if (servers.length === 0) {
+        body.appendChild(el('div', 'qd-mcp-empty',
+          'No editor published tools for this folder. Turn the plug on in the editor, or enable the editor tools (dshVsdock.mcp).'));
+        return;
+      }
+      for (var index = 0; index < servers.length; index += 1) {
+        var server = servers[index] || {};
+        var card = el('div', 'qd-mcp-server');
+        var head = el('div', 'qd-mcp-server-head');
+        head.appendChild(el('span', 'qd-mcp-server-name', server.name || 'mcp'));
+        var sessions = server.mounted && typeof server.mounted.sessions === 'number' ? server.mounted.sessions : 0;
+        var badge = el('span', 'qd-mcp-badge', sessions > 0
+          ? 'mounted in ' + sessions + ' session' + (sessions === 1 ? '' : 's')
+          : 'published, nothing mounted');
+        badge.setAttribute('data-state', sessions > 0 ? 'mounted' : 'idle');
+        head.appendChild(badge);
+        if (server.version) head.appendChild(el('span', 'qd-mcp-badge', 'v' + server.version));
+        card.appendChild(head);
+        if (server.url) card.appendChild(el('div', 'qd-mcp-url', server.url));
+        var tools = Array.isArray(server.tools) ? server.tools : [];
+        if (tools.length === 0) {
+          card.appendChild(el('div', 'qd-mcp-empty', 'the dock did not publish its tool list'));
+        } else {
+          var list = el('div', 'qd-mcp-tools');
+          for (var t = 0; t < tools.length; t += 1) list.appendChild(el('span', 'qd-mcp-tool', tools[t]));
+          card.appendChild(list);
+        }
+        body.appendChild(card);
+      }
+    }
+
+    function loadMcpServers() {
+      var workspace = dockWorkspaces.length > 0 ? dockWorkspaces[0] : '';
+      var query = workspace ? '?workspace=' + encodeURIComponent(workspace) : '';
+      fetch('/quickdock/api/mcp-servers' + query)
+        .then(function (response) { return response.json() })
+        .then(function (answer) { if (!mcpPanel.hidden) renderMcpServers(answer) })
+        .catch(function () {
+          if (mcpPanel.hidden) return;
+          var body = mcpPanel.querySelector('.qd-mcp-body');
+          body.textContent = '';
+          body.appendChild(el('div', 'qd-mcp-empty', 'cannot read the editor tools from this dock'));
+        });
+    }
+
+    function setMcpPanel(open) {
+      if (!mcpPanel) return;
+      mcpPanel.hidden = !open;
+      if (mcpInfoButton) mcpInfoButton.setAttribute('data-on', open ? '1' : '0');
+      if (mcpPanelTimer) { clearInterval(mcpPanelTimer); mcpPanelTimer = 0 }
+      if (!open) return;
+      loadMcpServers();
+      mcpPanelTimer = setInterval(loadMcpServers, 5000);
+    }
+
+    if (mcpInfoButton && mcpPanel && dockMcpRequested && window.parent !== window) {
+      mcpInfoButton.hidden = false;
+      mcpInfoButton.addEventListener('click', function () { setMcpPanel(mcpPanel.hidden) });
+      mcpPanel.querySelector('.qd-mcp-close').addEventListener('click', function () { setMcpPanel(false) });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !mcpPanel.hidden) setMcpPanel(false);
+      });
+    }
+
+    /* The embedding page (a VS Code webview) answers with the real state. */
+    window.addEventListener('message', function (event) {
+      if (window.parent === window || event.source !== window.parent) return;
+      var data = event.data;
+      if (!data || data.type !== 'quickdock:mcp-state') return;
+      applyMcpState(data.on, data.detail);
+    });
     // The app reports which session it currently shows; the handoff button asks
     // the main DSH window to open the same one.
     var currentSessionId = '';
@@ -205,6 +410,10 @@ ${theme}
         .then(function (response) { return response.json() })
         .then(function (info) {
           if (!info) return;
+          // Whether the session on screen works inside the folder this dock
+          // edits decides the warning icon next to the title.
+          workspaceInfo = info.workspace && typeof info.workspace === 'object' ? info.workspace : null;
+          refreshWorkspaceWarning();
           if (typeof info.reloadSeq === 'number' && info.reloadSeq !== lastReloadSeq) {
             var first = lastReloadSeq === -1;
             lastReloadSeq = info.reloadSeq;
@@ -250,6 +459,16 @@ ${theme}
             body: JSON.stringify({ sessionId: currentSessionId, quiet: true })
           }).catch(function () { /* the next switch retries */ });
         }
+        return;
+      }
+      if (data.type === 'quickdock:open-file') {
+        // The app wants a file opened, and in an editor dock the editor owns that
+        // window: hand it up to the embedding page (window.parent), which knows
+        // how to open it. The desktop window has no parent to tell.
+        if (dockView === 'electron' || window.parent === window) return;
+        var file = typeof data.path === 'string' ? data.path : '';
+        if (!file) return;
+        try { window.parent.postMessage({ type: 'quickdock:open-file', path: file }, '*') } catch (error) { /* ignore */ }
         return;
       }
       if (data.type === 'quickdock:ready') {

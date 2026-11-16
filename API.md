@@ -41,11 +41,34 @@ known ones.
 The shell page: a draggable title bar and an iframe with the authenticated DSH
 Web UI (`/?token=…&dock=1`, or the app proxy's root for `view=vscode`).
 
+An embedding client may add three parameters:
+
+| Parameter | Meaning |
+|---|---|
+| `dock=<id>` | The dock id the shell registers and binds under (default: a random id kept in `sessionStorage`) |
+| `mcp=0` \| `mcp=1` | Show the **editor-tools switch** in the bar, in that state. Only an IDE dock, which runs the MCP server itself, passes it; without it the button is not rendered at all |
+| `workspace=<dir>` | A directory this dock edits, send once per root folder. The bar warns when the session on screen works outside all of them |
+
 ### `GET /quickdock/api/dock-target?dock=<id>`
 
 Which session **that dock** should show, and whether its user asked for a
 reload. Without `dock` the pre-context global binding answers (the Electron
-window's compatibility path).
+window's compatibility path): `{ sessionId, seq, reloadSeq, workspace }`.
+
+```json
+{
+  "sessionId": "session-…",
+  "seq": 3,
+  "reloadSeq": 1,
+  "workspace": { "dock": "C:\\work\\proj", "session": "C:\\work\\proj", "matches": true }
+}
+```
+
+`workspace` compares the directories a dock declared (`workspace` above) with the
+one the session on screen belongs to. `matches: false` is what the bar's warning
+icon is for: the dock registers tools per directory, so that session mounts none.
+`matches: null` means "cannot tell" (nothing declared, or a session outside every
+workspace) and nothing is shown.
 
 ### `GET /quickdock/api/dock-contexts`
 
@@ -96,22 +119,24 @@ What the main window polls (every 2 s) to notice a handoff.
 ### `GET /quickdock/api/meta`
 
 ```json
-{ "name": "dsh-quickdock", "apiVersion": 2, "components": { "service": true, "dock": true }, "capabilities": ["dock-target", "handoff", "app-proxy", "mcp-pairing", "dock-contexts", "turn-attribution"], "views": ["electron", "vscode", "browser"], "mcp": null, "version": "0.6.0" }
+{ "name": "dsh-quickdock", "apiVersion": 2, "components": { "service": true, "dock": true }, "capabilities": ["dock-target", "handoff", "app-proxy", "dock-contexts", "turn-attribution"], "views": ["electron", "vscode", "browser"], "mcpBridge": { "enabled": true, "origin": "http://127.0.0.1:58935", "route": "/workspace-mcp", "tokenRequired": false }, "version": "0.6.0" }
 ```
 
 `views` is the list a client may pass as `?view=`; `app-proxy` means the Host can
 embed the app for a webview (`view=vscode`), so a client that cannot carry
 cookies has a supported way in.
 
+`mcpBridge` says where a dock's MCP endpoint is registered. The dock-side
+shortcuts are on this listener, so a client needs only the object above and never
+DSH's own port (see *Workspace MCP bridge*).
+
 `dock-contexts` and `turn-attribution` mean the Host keeps one context per
 connected dock and records which dock started the running turn of a session (see
 [`DOCK-CONTEXT.md`](DOCK-CONTEXT.md)).
 
-`mcp-pairing` means the Host watches `mcp.json` for a paired editor (see
-[`MCP-PAIRING.md`](MCP-PAIRING.md)). `mcp` is `null` when the watcher is off
-(`mcpPairing: false`, or no profile patch to maintain), otherwise the last
-verdict: `enabled`, `known`, `state`, `code`, `reason`, `health`,
-`patchFile`, `descriptorFile`, `lastWriteAt`, `error`.
+Dock tools are not part of this metadata: an IDE dock registers its MCP endpoint
+per working directory (see [`MCP-BRIDGE.md`](MCP-BRIDGE.md)), and the tools only
+reach sessions inside that directory.
 
 ## App proxy
 
@@ -146,6 +171,23 @@ Both frames are on different origins, so `postMessage` is the whole channel.
 | app → shell | `{ type: 'quickdock:sidebar-state', expanded }` | Reflect the real sidebar state on the button |
 | app → shell | `{ type: 'quickdock:title', title }` | Session title, mirrored into the dock title bar |
 | app → shell | `{ type: 'quickdock:session', sessionId }` | Which session is on screen (enables the handoff button) |
+| app → shell | `{ type: 'quickdock:open-file', path }` | A path the user clicked; the shell hands it to the embedding editor |
+
+## Shell ↔ embedding client messages
+
+An IDE dock embeds the shell page in a webview, and the bar carries two controls
+that belong to that client: the editor-tools switch and the workspace warning.
+The client page relays both directions over `postMessage` (the shell's `window.parent`).
+
+| Direction | Message | Meaning |
+|---|---|---|
+| shell → client | `{ type: 'quickdock:mcp-toggle' }` | The user clicked the bar's plug; flip the editor tools |
+| client → shell | `{ type: 'quickdock:mcp-state', on, detail? }` | Current state for the bar: `on` decides the plug's highlight, `detail` goes in its tooltip |
+| shell → client | `{ type: 'quickdock:open-file', path }` | A file the user clicked in the docked conversation: open it in this editor |
+
+The warning icon is built from `dock-target`'s `workspace.matches`, not from a
+message: it shows while the tools are on and the session on screen works outside
+every `workspace=` directory the client declared (`API.md`, `GET /quickdock?view=`).
 
 ## Browser bridge (DSH origin, cookie-authenticated)
 
@@ -154,7 +196,7 @@ Both frames are on different origins, so `postMessage` is the whole channel.
 | Action | Body | Result |
 |---|---|---|
 | `bind` | `{ sessionId, dock? }` | Binds one dock (or the legacy global binding) and summons the Electron window; returns dock status |
-| `dock-contexts` | – | Every connected dock: id, type, binding, tools, workspace, running turn owner |
+| `dock-contexts` | – | Every connected dock: id, type, binding, workspace, running turn owner |
 | `dock-submission` | `{ dockId, sessionId, requestId }` | The dock's client reports an accepted prompt, so the turn it opens belongs to that dock |
 | `summon` | – | Shows the window |
 | `reset` | – | Restores the configured window size/position |
@@ -165,10 +207,37 @@ Both frames are on different origins, so `postMessage` is the whole channel.
 | `theme` / `locale` | `{ theme }` / `{ locale }` | Adopt what the browser reports |
 | `web-url` | – | The shell page URL |
 
-## VS Code MCP pairing
+## Workspace MCP bridge
 
-The editor side of the same bridge is an MCP server owned by the VS Code
-extension, registered by this Host as a `@deepseek-ai/dsh-mcp-client` row. The
-descriptor (`mcp.json` in the state directory), liveness rules, the one-time
-consent and the loader row are specified in
-[`MCP-PAIRING.md`](MCP-PAIRING.md).
+An editor dock brings tools by registering its MCP endpoint together with the
+working directory it belongs to:
+
+```
+POST /workspace-mcp/register   { workspace, url, name?, headers? }
+```
+
+The route lives on DSH's Web origin, not on this listener. Only sessions whose
+working directory is that directory or below it get the server's tools; see
+[`MCP-BRIDGE.md`](MCP-BRIDGE.md) for the full interface and the
+`/workspace-mcp/list` and `/workspace-mcp/doctor` diagnostics.
+
+A dock that only knows this listener (an IDE extension) uses the mirrored calls,
+which the Host forwards to the bridge with the origin and the configured
+`mcpBridgeToken` added:
+
+| Request | Purpose |
+|---|---|
+| `POST /quickdock/api/mcp-register` | Register or replace one dock's endpoint for one directory |
+| `POST /quickdock/api/mcp-unregister` | Remove one `name`, or every registration of a directory |
+| `GET /quickdock/api/mcp-list?workspace=` | Registrations for that directory, with their live sessions |
+| `GET /quickdock/api/mcp-servers?workspace=` | What the docks in that directory published: name, url, build, tool names, and whether the bridge has them mounted. Read-only |
+
+Bodies and answers are the bridge's own. Refusals keep the bridge's message and
+come back as `400 { ok: false, error }`. Registrations live in memory in DSH, so a
+dock polls `mcp-list` and registers again after a DSH restart.
+
+This listener has no token (see *Address*), so a local process that can reach it
+can register an endpoint — the same trust the rest of this API already assumes.
+The bridge's own `mcpBridgeToken` still guards DSH's Web origin, and the Host
+presents it on the dock's behalf; it is not a substitute for keeping this port on
+loopback only.

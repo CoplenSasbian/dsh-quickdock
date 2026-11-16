@@ -7,6 +7,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ### Added
 
+- **A dock can show what editor tools it has**: the title bar gained a list button
+  that opens a panel with the MCP servers this dock published - name, build, url,
+  tool names - and whether the bridge has them mounted right now
+  (`GET /quickdock/api/mcp-servers?workspace=`, read-only). A dock describes itself
+  by adding `version` and `tools` to its `mcp-register` body; the Host keeps those
+  fields and forwards the body stripped, so the DSH bridge still sees url, name and
+  headers only.
 - **`?view=` names the client, and the Host renders for it**: `electron` (the
   desktop window), `vscode` (an IDE webview: trimmed bar, no dead pin/collapse/
   close buttons) and `browser` (a plain tab). `frame` stays as an alias for

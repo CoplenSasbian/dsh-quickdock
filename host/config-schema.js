@@ -53,14 +53,27 @@ export const configSchema = {
   headerButton: Schema.boolean().default(true),
   headerButtonOrder: Schema.number().default(1010),
   /**
-   * Register the MCP server a paired editor publishes.
+   * Serve the per-workspace MCP bridge.
    *
-   * The VS Code extension writes `mcp.json` into the QuickDock state directory
-   * after its one-time consent; the Host keeps one `@deepseek-ai/dsh-mcp-client`
-   * row in the profile patch enabled while that server is live (MCP-PAIRING.md).
-   * Off means QuickDock ignores the descriptor and leaves the patch untouched.
+   * A dock registers its MCP endpoint with the working directory it belongs to
+   * (`POST /workspace-mcp/register` on the DSH web origin); sessions inside that
+   * directory mount the endpoint's tools, sessions elsewhere never see them.
+   * A dock also reaches the same registry through this listener
+   * (`/quickdock/api/mcp-register` and friends), which is how an IDE that knows
+   * only the QuickDock port pairs. See MCP-BRIDGE.md. This is the same package -
+   * one bundle, one install.
    */
-  mcpPairing: Schema.boolean().default(true),
+  mcpBridge: Schema.boolean().default(true),
+  /**
+   * Shared secret for the bridge route.
+   *
+   * Empty keeps loopback-only access (default). Set to require
+   * `x-workspace-mcp-token: <value>` (or `Authorization: Bearer <value>`) from
+   * docks, which matters when DSH's web server is reachable from another host.
+   */
+  mcpBridgeToken: Schema.string().default(''),
+  /** How long a register call waits for already-running sessions to settle (ms). */
+  mcpBridgeWaitMs: Schema.number().default(15000),
   /**
    * Loopback port for the shell page and its API.
    *

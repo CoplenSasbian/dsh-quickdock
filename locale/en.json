@@ -190,7 +190,6 @@
   "cfg.docksTitle": "Connected docks",
   "cfg.docksEmpty": "No dock is connected.",
   "cfg.docksIdle": "idle",
-  "cfg.docksTools": "tools",
   "cfg.alwaysOnTop": "Always on top",
   "cfg.rememberGeometry": "Remember size and position",
   "cfg.focusOnSummon": "Focus when opened",

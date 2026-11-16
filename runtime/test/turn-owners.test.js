@@ -105,7 +105,7 @@ test('turn owners: expectations expire instead of leaking forever', async () => 
   assert.strictEqual(owners.dockFor('s1', 'r1'), '');
 });
 
-test('host: a claimed prompt attributes the turn and the tool predicate', async () => {
+test('host: a claimed prompt attributes the turn', async () => {
   const { app, emit } = await start();
   assert.deepStrictEqual(
     app.recordDockSubmission({ dockId: 'dock-a', sessionId: 's1', requestId: 'r1' }),
@@ -115,21 +115,18 @@ test('host: a claimed prompt attributes the turn and the tool predicate', async 
   emit('agent/inbox/claimed', { agent: agent('s1'), message: userMessage('r1'), turn: 1 });
 
   assert.strictEqual(app.turnOwnerOf('s1'), 'dock-a');
-  assert.strictEqual(app.toolPredicate('dock-a')({ agent: agent('s1') }), true);
-  assert.strictEqual(app.toolPredicate('dock-b')({ agent: agent('s1') }), false);
-  assert.strictEqual(app.toolPredicate('dock-a')({ agent: agent('s2') }), false);
+  assert.strictEqual(app.turnInfo('s1').owner, 'dock-a');
+  assert.strictEqual(app.turnOwnerOf('s2'), '');
 
   emit('session/event', { id: 's1' }, { type: 'turn/end', data: { turn: 1 } });
   assert.strictEqual(app.turnOwnerOf('s1'), '');
-  assert.strictEqual(app.toolPredicate('dock-a')({ agent: agent('s1') }), false);
 });
 
-test('host: a prompt from the main window gets no dock tools', async () => {
+test('host: a turn claimed by no dock has no owner', async () => {
   const { app, emit } = await start();
   emit('session/event', { id: 's1' }, { type: 'turn/start', data: { turn: 1 } });
   emit('agent/inbox/claimed', { agent: agent('s1'), message: userMessage('elsewhere'), turn: 1 });
   assert.strictEqual(app.turnOwnerOf('s1'), '');
-  assert.strictEqual(app.toolPredicate('dock-a')({ agent: agent('s1') }), false);
 });
 
 test('host: the durable feed attributes a turn whose claim was missed', async () => {

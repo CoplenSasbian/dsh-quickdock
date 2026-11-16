@@ -21,6 +21,7 @@ import { createBridgeHandler } from './bridge.js'
 import { API_PREFIX, API_VERSION, BIND_HOST, BRIDGE_PATH, DEFAULT_PORT, PAGE_PATH, WINDOW_BOUNDS } from './constants.js'
 import { startAppProxy } from './app-proxy.js'
 import { DshFacade } from './dsh.js'
+import { BRIDGE_ROUTE, bridgeOrigin, createBridgeClient } from './dock-mcp.js'
 import { DockContexts } from './dock-contexts.js'
 import { TurnAttribution } from './turn-attribution.js'
 import { TurnOwners } from './turn-owners.js'
@@ -30,8 +31,6 @@ import { LocaleController } from './locale.js'
 import { PageRenderer } from './page.js'
 import { DEFAULT_CONFIG, configPath, readConfig, resolveValue, sanitize, writeConfig, writeTemplateIfMissing } from './config-file.js'
 import { createDockComponent } from './dock-component.js'
-import { descriptorPath } from './mcp-descriptor.js'
-import { McpPairing, profilePatchPath } from './mcp-pairing.js'
 import { viewNames, normalizeView, viewTransport } from './views.js'
 import { readVersion } from './version.js'
 import { ThemeStore } from './theme.js'
@@ -46,6 +45,74 @@ function compareVersions(a, b) {
     if (diff !== 0) return diff
   }
   return 0
+}
+
+/**
+ * Whether one absolute directory is another, or sits below it.
+ *
+ * Mirrors the workspace MCP bridge's rule for which sessions mount a dock's
+ * tools, so the shell's warning icon and the mounted tool set cannot disagree:
+ * Windows compares case-insensitively, and both separators are equivalent.
+ * @param {string} path directory to test (a session's workspace).
+ * @param {string} directory directory it should be inside.
+ * @returns {boolean} true for the directory itself and every descendant.
+ */
+function withinDirectory(path, directory) {
+  const normalize = (value) => {
+    const text = String(value).replace(/\\/g, '/').replace(/\/+$/, '')
+    return process.platform === 'win32' ? text.toLowerCase() : text
+  }
+  const child = normalize(path)
+  const parent = normalize(directory)
+  if (!child || !parent) return false
+  if (child === parent) return true
+  return child.startsWith(parent + '/')
+}
+
+/** Whether two directory paths name the same directory. */
+function samePath(left, right) {
+  const normalize = (value) => {
+    const text = String(value ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
+    return process.platform === 'win32' ? text.toLowerCase() : text
+  }
+  const a = normalize(left)
+  const b = normalize(right)
+  return a.length > 0 && a === b
+}
+
+/** One dock's published MCP server, keyed by the directory it serves plus its name. */
+function mountKey(workspace, name) {
+  return String(workspace ?? '').replace(/\\/g, '/').toLowerCase() + '\u0000' + String(name ?? '')
+}
+
+/** Upper bound on what one dock may publish about itself. */
+const MAX_PUBLISHED_TOOLS = 200
+const MAX_PUBLISHED_TOOL_NAME = 120
+
+/**
+ * What a dock says about its own MCP server.
+ *
+ * The bridge stores url/name/headers only; the dock panel also wants the tool list
+ * and the build that serves it, so those fields are validated here and kept by the
+ * Host instead of being forwarded.
+ * @param {object} body the `mcp-register` body.
+ * @returns {object|null} `{ workspace, name, url, version, tools }`, or null when
+ *   the body carries nothing worth remembering.
+ */
+function describeMcpServer(body) {
+  if (!body || typeof body !== 'object') return null
+  const workspace = typeof body.workspace === 'string' ? body.workspace.trim() : ''
+  if (!workspace) return null
+  const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : 'mcp'
+  const url = typeof body.url === 'string' ? body.url.trim() : ''
+  const version = typeof body.version === 'string' ? body.version.trim() : ''
+  const tools = Array.isArray(body.tools)
+    ? body.tools
+        .filter((tool) => typeof tool === 'string' && tool.trim().length > 0)
+        .map((tool) => tool.trim().slice(0, MAX_PUBLISHED_TOOL_NAME))
+        .slice(0, MAX_PUBLISHED_TOOLS)
+    : []
+  return { workspace, name, url, version, tools }
 }
 
 /** Minimal HTTPS JSON GET with a timeout (no global fetch assumptions). */
@@ -101,8 +168,8 @@ export class QuickDockHost {
     this.appProxy = null
     /** The app origin the current proxy serves. */
     this.appProxyOrigin = ''
-    /** Registers the paired editor's MCP server in the profile patch. */
-    this.mcpPairing = null
+    /** Cached client for the dock-side MCP bridge (see dock-mcp.js). */
+    this.mcpClient = null
 
     this.state = {
       sessionId: null,
@@ -123,6 +190,10 @@ export class QuickDockHost {
     this.dockId = 'electron-' + randomBytes(6).toString('hex')
     /** Every connected dock: identity, tools, workspace and its own binding. */
     this.dockContexts = new DockContexts({ trace: (line) => this.trace(line) })
+    /** What each dock published about its MCP server (see registerDockMcp). */
+    this.dockMcpServers = new Map()
+    /** Live mount state from the bridge, filled by refreshDockMcpServers. */
+    this.dockMcpServersLive = new Map()
     /** Which dock started the running turn of each session (see turn-owners.js). */
     this.turnOwners = new TurnOwners({ trace: (line) => this.trace(line) })
     this.turnAttribution = new TurnAttribution({
@@ -233,15 +304,69 @@ export class QuickDockHost {
    * The dock window is a separate app instance (in an iframe), so the Dock button
    * cannot simply "be" the conversation: the shell polls this and forwards the
    * change to the app, which navigates to it explicitly.
-   * @returns {{sessionId: string, seq: number, reloadSeq: number}} target and counters.
+   * @param {string} [dockId] the dock asking.
+   * @returns {{sessionId: string, seq: number, reloadSeq: number, workspace: object|null}}
+   *   target, counters, and whether that session works in the directory this dock
+   *   declared (an IDE dock's editor tools are registered per directory).
    */
   dockTargetInfo(dockId) {
     const dock = String(dockId || '').trim()
-    if (!dock) return { sessionId: this.state.sessionId || '', seq: this.dockTargetSeq, reloadSeq: this.dockReloadSeq }
+    if (!dock) {
+      return {
+        sessionId: this.state.sessionId || '',
+        seq: this.dockTargetSeq,
+        reloadSeq: this.dockReloadSeq,
+        workspace: null
+      }
+    }
     this.dockContexts.touch(dock)
     const session = this.dockContexts.target(dock)
-    if (!session) return { sessionId: '', seq: 0, reloadSeq: 0 }
-    return { sessionId: session.sessionId, seq: session.seq, reloadSeq: session.reloadSeq }
+    if (!session) return { sessionId: '', seq: 0, reloadSeq: 0, workspace: null }
+    return {
+      sessionId: session.sessionId,
+      seq: session.seq,
+      reloadSeq: session.reloadSeq,
+      workspace: this.dockWorkspaceInfo(dock, session.sessionId)
+    }
+  }
+
+  /**
+   * Whether the session a dock shows works inside a directory that dock declared.
+   *
+   * A dock registers its editor tools for one or more directories, and sessions
+   * outside them mount nothing: the shell shows a warning icon instead of leaving
+   * the user to wonder why the editor tools do not appear. `matches: null` means
+   * "cannot tell" — no declared directory, or a session outside every workspace —
+   * and the shell keeps the icon hidden.
+   * @param {string} dockId dock asking.
+   * @param {string} [sessionId] session the dock shows.
+   * @returns {{dock: string|null, session: string|null, matches: boolean|null}} the comparison.
+   */
+  dockWorkspaceInfo(dockId, sessionId) {
+    const context = this.dockContexts.snapshot(String(dockId || '').trim())
+    const declared = context && context.workspace ? context.workspace : null
+    const directories = []
+    if (declared) {
+      // `paths` is what an editor with several root folders sends; `path` stays
+      // the one a single-folder client has always used (DOCK-CONTEXT.md).
+      if (Array.isArray(declared.paths)) {
+        for (const path of declared.paths) {
+          if (typeof path === 'string' && path.length > 0 && !directories.includes(path)) directories.push(path)
+        }
+      }
+      if (typeof declared.path === 'string' && declared.path.length > 0 && !directories.includes(declared.path)) {
+        directories.unshift(declared.path)
+      }
+    }
+    const session = sessionId ? this.dsh.workspacePathOf(sessionId) : null
+    if (directories.length === 0 || !session) {
+      return { dock: directories[0] || null, session, matches: null }
+    }
+    return {
+      dock: directories[0],
+      session,
+      matches: directories.some((directory) => withinDirectory(session, directory))
+    }
   }
 
   /** Every connected dock, for the Client half's dock menu. */
@@ -304,27 +429,6 @@ export class QuickDockHost {
       owner: this.turnOwners.ownerOf(sessionId),
       current: this.turnOwners.currentOf(sessionId),
       last: this.turnOwners.lastOf(sessionId)
-    }
-  }
-
-  /**
-   * Build the `when` predicate for one dock's tools.
-   *
-   * Tool sets are resolved per model step, so the predicate is a synchronous
-   * read of the running turn's owner (see `tools.resolve` in the agent loop).
-   * A turn nobody claimed - a goal round, a resume, a prompt from the main
-   * window - has no owner and therefore no dock tools.
-   * @param {string} dockId dock whose tools are being offered.
-   * @returns {(context: object) => boolean} predicate for `ctx.tools.register`.
-   */
-  toolPredicate(dockId) {
-    const id = String(dockId || '').trim()
-    return (context) => {
-      if (!id) return false
-      const agent = context && context.agent ? context.agent : context
-      const session = agent && agent.session
-      const sessionId = String((session && (session.id || session.sessionId)) || (agent && agent.sessionId) || '')
-      return Boolean(sessionId) && this.turnOwnerOf(sessionId) === id
     }
   }
 
@@ -448,7 +552,6 @@ export class QuickDockHost {
     if (service) {
       this.#startServer()
       this.#registerBridge()
-      this.#startMcpPairing()
       this.#attachTurnAttribution()
     }
     const version = readVersion(ROOT_DIR)
@@ -953,11 +1056,18 @@ export class QuickDockHost {
         }
         embedded = origin + '/?dock=1'
       }
+      // A rebuilt client bundle must reach the page: the app shell is not cached
+      // (see app-proxy.js), and this token keeps a cached document from being
+      // reused by the embedding webview.
+      embedded += (embedded.includes('?') ? '&' : '?') + 'qd=' + Date.now().toString(36)
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
       res.end(this.page.renderFrame(embedded, {
         view,
         systemControls: this.config?.windowControls === 'system',
-        ballIcon: this.config?.ballIcon
+        ballIcon: this.config?.ballIcon,
+        // An IDE dock passes `mcp=`: it owns the editor-tools server, so only it
+        // gets the toggle in the bar.
+        dockMcp: url.searchParams.has('mcp')
       }))
       return
     }
@@ -999,7 +1109,6 @@ export class QuickDockHost {
     this.config.snapToEdge = config.snapToEdge
     this.config.closeAction = config.closeAction
     this.config.collapseOnClose = config.closeAction === 'ball'
-    this.config.mcpPairing = config.mcpPairing
     /** Mark currently drawn by the shell, to avoid a needless shell reload. */
     this.lastBallIcon = config.ballIcon
   }
@@ -1014,52 +1123,18 @@ export class QuickDockHost {
   }
 
   /**
-   * Start the MCP pairing watcher.
-   *
-   * The editor publishes `mcp.json` in the state directory once its user has
-   * consented; this Host keeps one MCP client row in the profile patch enabled
-   * while that server is live (see MCP-PAIRING.md). Without a profile patch to
-   * maintain - a headless composition, a profile launched outside DSH - there is
-   * nothing to do, and nothing is guessed.
-   */
-  /**
    * Start following the agent loop, so every running turn knows its dock.
    *
    * `agent/inbox/claimed` fires before the step resolves its tools, and the
    * durable `turn/start` / `turn/end` keep the marker scoped to one turn (see
-   * host/turn-attribution.js). This is part of the service: without it the
-   * per-dock tool predicates have nothing to read.
+   * host/turn-attribution.js). This is part of the service: without it
+   * `dock-contexts` has no running turn to report.
    */
   #attachTurnAttribution() {
     const detach = this.turnAttribution.attach(this.ctx)
     // The dispose callback only runs on teardown: attach happens right here, so
     // the very first prompt of this process is already covered.
     this.#disposeOn(detach, 'quickdock: turn attribution')
-  }
-
-  #startMcpPairing() {
-    if (this.config.mcpPairing === false) {
-      this.trace('mcp pairing: disabled by config')
-      return
-    }
-    const patchFile = profilePatchPath({ env: process.env, homeDir: this.dsh.baseDir })
-    if (!patchFile) {
-      this.trace('mcp pairing: no profile patch to maintain (profile unknown)')
-      return
-    }
-    this.mcpPairing = new McpPairing({
-      descriptorFile: descriptorPath(this.tracePath),
-      patchFile,
-      trace: this.trace,
-      logger: this.dsh.logger,
-      configEditor: this.dsh.configEditor
-    })
-    this.mcpPairing.start()
-    this.#disposeOn(() => {
-      this.mcpPairing?.stop()
-      this.mcpPairing = null
-    }, 'quickdock: mcp pairing')
-    this.trace('mcp pairing: watching ' + this.mcpPairing.descriptorFile + ' -> ' + patchFile)
   }
 
   #disposeOn(dispose, label) {
@@ -1134,20 +1209,157 @@ export class QuickDockHost {
     }
   }
 
+  /* ------------------------------ dock MCP ------------------------------- */
+
+  /**
+   * Where an IDE dock's MCP endpoint is registered, for `meta` and diagnostics.
+   *
+   * Never throws: `meta` is answered by compositions that may serve no Web UI.
+   * @returns {{enabled: boolean, origin: string|null, route: string, tokenRequired: boolean}} the bridge address.
+   */
+  mcpBridgeInfo() {
+    return {
+      enabled: this.config?.mcpBridge !== false,
+      origin: this.#mcpBridgeOrigin(),
+      route: BRIDGE_ROUTE,
+      tokenRequired: Boolean(this.config?.mcpBridgeToken)
+    }
+  }
+
+  /**
+   * Register one dock's MCP endpoint for one directory.
+   *
+   * The body is the bridge's own (`MCP-BRIDGE.md`); the Host only adds the
+   * origin and the shared secret, so a dock needs this listener and nothing else.
+   *
+   * A dock may also describe itself (`version`, `tools`). The bridge knows only
+   * url/name/headers, so those fields are kept here and forwarded stripped: they
+   * are what the dock's tool panel shows.
+   * @param {object} body `{ workspace, url, name?, headers?, waitMs?, version?, tools? }`.
+   * @returns {Promise<object>} the bridge's answer.
+   */
+  registerDockMcp(body) {
+    const described = describeMcpServer(body)
+    if (described) this.#rememberDockMcp(described)
+    return this.#dockMcp().register(body)
+  }
+
+  /**
+   * What the docks in one directory say they serve, with the bridge's live view
+   * merged in: a server the bridge does not list is published but not mounted.
+   * @param {string} workspace absolute directory.
+   * @returns {object} `{ workspace, servers: [...] }`.
+   */
+  listDockMcpServers(workspace) {
+    const wanted = typeof workspace === 'string' ? workspace.trim() : ''
+    const described = [...this.dockMcpServers.values()]
+      .filter((server) => !wanted || samePath(server.workspace, wanted) || withinDirectory(server.workspace, wanted))
+    const servers = described.map((server) => {
+      const mounted = this.dockMcpServersLive.get(mountKey(server.workspace, server.name)) ?? null
+      return {
+        name: server.name,
+        url: server.url,
+        version: server.version,
+        tools: server.tools,
+        mounted
+      }
+    })
+    return { workspace: wanted || null, servers }
+  }
+
+  /**
+   * Remove one dock registration, or every registration of one directory.
+   * @param {object} body `{ workspace, name? }`.
+   * @returns {Promise<object>} the bridge's answer.
+   */
+  unregisterDockMcp(body) {
+    const workspace = typeof body?.workspace === 'string' ? body.workspace : ''
+    const name = typeof body?.name === 'string' ? body.name : ''
+    if (workspace) {
+      for (const key of [...this.dockMcpServers.keys()]) {
+        const server = this.dockMcpServers.get(key)
+        if (!server) continue
+        const sameWorkspace = samePath(server.workspace, workspace)
+        if (name ? sameWorkspace && server.name === name : sameWorkspace) this.dockMcpServers.delete(key)
+      }
+    }
+    return this.#dockMcp().unregister(body)
+  }
+
+  /** Remember what a dock published, keyed by directory and name. */
+  #rememberDockMcp(server) {
+    this.dockMcpServers.set(mountKey(server.workspace, server.name), server)
+  }
+
+  /**
+   * Ensure the small panel that lists a directory's editors tools has something to
+   * show: the live mount state comes from the bridge, so it is refreshed here.
+   * @param {string} workspace absolute directory.
+   */
+  async refreshDockMcpServers(workspace) {
+    const answer = await this.listDockMcp(workspace).catch(() => null)
+    const live = answer && Array.isArray(answer.workspaces) ? answer.workspaces : []
+    this.dockMcpServersLive = new Map()
+    for (const entry of live) {
+      for (const server of Array.isArray(entry?.servers) ? entry.servers : []) {
+        const key = mountKey(server.workspace ?? entry.workspace, server.name)
+        this.dockMcpServersLive.set(key, {
+          sessions: Array.isArray(server.sessions) ? server.sessions.length : 0,
+          url: server.url ?? null
+        })
+      }
+    }
+    return this.listDockMcpServers(workspace)
+  }
+
+  /**
+   * Read the bridge's registrations, narrowed to one directory when given.
+   * @param {string} [workspace] absolute directory.
+   * @returns {Promise<object>} the bridge's answer.
+   */
+  listDockMcp(workspace) {
+    return this.#dockMcp().list(workspace)
+  }
+
+  /**
+   * The bridge client for the running DSH Web origin.
+   * @returns {object} the cached client.
+   */
+  #dockMcp() {
+    if (this.config?.mcpBridge === false) {
+      throw new Error('the workspace MCP bridge is disabled (mcpBridge: false)')
+    }
+    const origin = this.#mcpBridgeOrigin()
+    if (!origin) {
+      throw new Error('this composition serves no DSH Web UI, so it has no workspace MCP bridge')
+    }
+    const token = this.config?.mcpBridgeToken || ''
+    if (!this.mcpClient || this.mcpClient.origin !== origin || this.mcpClient.token !== token) {
+      this.mcpClient = createBridgeClient({ origin, token, trace: (line) => this.trace(line) })
+    }
+    return this.mcpClient
+  }
+
+  /** The DSH Web origin, or null when this composition serves no Web UI. */
+  #mcpBridgeOrigin() {
+    return bridgeOrigin(this.dsh.webApp?.getAdvertisedUrl?.() || this.dsh.webServer?.getOrigin?.())
+  }
+
   /** Plugin metadata for the Client and for diagnostics. */
   meta() {
     return {
       name: 'dsh-quickdock',
       apiVersion: API_VERSION,
       components: this.state.components,
-      capabilities: ['dock-target', 'handoff', 'app-proxy', 'mcp-pairing', 'dock-contexts', 'turn-attribution'],
+      capabilities: ['dock-target', 'handoff', 'app-proxy', 'dock-contexts', 'turn-attribution'],
       dockId: this.dockId,
       // Which shell variants a client may ask for; the pick also decides whether
       // the app comes through the proxy (see host/views.js).
       views: viewNames(),
-      // The paired editor's MCP row: what the poller last saw and wrote. Null
-      // when the profile has no patch to maintain (headless, foreign profile).
-      mcp: this.mcpPairing ? this.mcpPairing.status() : null,
+      // Where a dock's MCP endpoint is registered. The dock-side shortcuts are on
+      // this listener (`/quickdock/api/mcp-register`), so an IDE never needs DSH's
+      // own port; see MCP-BRIDGE.md.
+      mcpBridge: this.mcpBridgeInfo(),
       version: this.state.version?.pkg || null
     }
   }

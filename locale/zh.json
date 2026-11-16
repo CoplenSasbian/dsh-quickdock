@@ -190,7 +190,6 @@
   "cfg.docksTitle": "已连接的 dock",
   "cfg.docksEmpty": "还没有 dock 连接。",
   "cfg.docksIdle": "空闲",
-  "cfg.docksTools": "工具",
   "cfg.alwaysOnTop": "窗口置顶",
   "cfg.rememberGeometry": "记住窗口大小和位置",
   "cfg.focusOnSummon": "打开时聚焦",

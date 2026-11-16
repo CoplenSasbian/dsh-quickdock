@@ -13,8 +13,10 @@ its context, its binding and its tools with it.
 Status: the Host half is implemented - registry, per-dock bind/dock-target,
 POST /quickdock/api/dock-context, the Client half's dock picker, and exact turn
 attribution (which dock started the running turn, the input every per-dock tool
-`when` needs). The `docks\<id>.json` descriptor directory and the tool
-registrations are next. `workspace` and `systemPrompt` remain reserved fields.
+`when` needs). The `docks\<id>.json` descriptor directory is next. `workspace`
+and `systemPrompt` remain reserved fields. Dock tools are not part of this
+context: an IDE dock registers its MCP endpoint per working directory instead
+(see [`MCP-BRIDGE.md`](MCP-BRIDGE.md)).
 
 ## Shape
 
@@ -31,12 +33,6 @@ interface DockContext {
     extensionId?: string // "dsh.dsh-vsdock"
     extensionVersion?: string
     pid?: number         // process that owns the heartbeat
-  }
-  /** The MCP server this dock brings. Absent = a dock without tools. */
-  tools?: {
-    url: string          // http://127.0.0.1:<port>/mcp
-    token: string        // bearer capability
-    healthUrl?: string   // defaults to <origin>/health
   }
   /** Reserved: the dock's working area, for IDE-like clients. */
   workspace?: {
@@ -62,8 +58,9 @@ Notes:
   are two contexts with different ids. Generate it, do not derive it from the
   project (two windows on one project would collide).
 - `type` drives the tool namespace (`vscode_*`) and the collision rule below.
-- `tools` is the client's MCP endpoint. A dock without `tools` is still a valid
-  context: it can bind a session, it just brings no tools.
+- A dock's MCP endpoint is registered per working directory, not per context: see
+  [`MCP-BRIDGE.md`](MCP-BRIDGE.md). A context with no bridge registration brings
+  no tools.
 - `session` is host-owned state, never written by the client.
 - `workspace` / `systemPrompt` are reserved; clients may send them today and
   both survive updates. Their semantics are decided later.
@@ -98,24 +95,18 @@ The host polls `docks\` every 2 s (and watches it):
 |---|---|
 | new, valid, live | create the context, register its tools |
 | changed | update the context; re-register tools only when the endpoint changed |
-| stale (heartbeat > 90 s, pid dead, health probe failing) | remove the context and its tools |
+| stale (heartbeat > 90 s, pid dead) | remove the context |
 | deleted | remove the context |
-| invalid (bad kind/apiVersion/url) | ignore and log; a previously registered context keeps its last good state until it goes stale |
+| invalid (bad kind/apiVersion) | ignore and log; a previously registered context keeps its last good state until it goes stale |
 
 Removing a context also removes its binding: a session that was shown by that
-dock is no longer "the dock's session" and loses the dock's tools on the next
-model step.
+dock is no longer "the dock's session". The dock's MCP tools are not affected by
+the binding - they follow the directory registration described in
+[`MCP-BRIDGE.md`](MCP-BRIDGE.md).
 
-The Electron window and browser tabs do not need a tools endpoint, but they do
-need an id: the host mints one for the Electron shell URL, and the browser shell
-generates one in `sessionStorage`.
-
-### Legacy descriptor
-
-A single `mcp.json` (the contract from before contexts existed) is read as a
-context with `id: "legacy"`, `type` inferred from `client` (`vscode` when the
-former extension id is present, otherwise `unknown`), and the tools block copied
-from it. It is removed when the file is removed. New clients must use `docks\`.
+The Electron window and browser tabs need an id but no MCP endpoint: the host
+mints one for the Electron shell URL, and the browser shell generates one in
+`sessionStorage`.
 
 ## Binding
 
@@ -135,23 +126,23 @@ Each context owns its own session binding:
 
 ### Collision rule
 
-Tool names are the client's own (the VS Code dock brings `vscode_*`). Two docks
-of the same `type` bound to the **same session** would collide.
+Two docks of the same `type` bound to the **same session** would present the same
+`vscode_*` surface twice in the dock menu, so the second bind is refused.
 
 - Default: a second bind of the same type to the same session is refused
   (`409 dock/conflict`), leaving both contexts untouched.
 - `POST /bind?dock=<id>` may carry `{ sessionId, replace: true }` to move the
   binding to the newer dock; the older dock keeps its context but loses the
-  session (and its tools disappear from that session).
+  session.
 
 Different types may share a session (a session shown by a VS Code dock and a
-browser dock shows both tool sets) — the namespaces differ by construction.
+browser dock).
 
 ## Turn attribution
 
-A binding says **which session a dock shows**. Tools must follow **which dock
-started the turn**, because the main window can prompt a session a dock is
-displaying. The two are therefore separate:
+A binding says **which session a dock shows**. It does not say **which dock
+started the current turn**, because the main window can prompt a session a dock
+is displaying. The two are therefore reported separately:
 
 | Question | Answer |
 |---|---|
@@ -177,47 +168,35 @@ the turn it eventually opens.
 
 Fail-closed rules:
 
-- a prompt from the main window has no expectation, so the turn has no owner and
-  no dock tools;
+- a prompt from the main window has no expectation, so the turn has no owner;
 - a turn that starts without a claimed message (a goal round, a resume) has no
   owner either;
 - attribution is in memory: a Host restart mid-turn loses the marker until the
-  next prompt, which is the safe direction (no tools rather than wrong ones).
+  next prompt, which is the safe direction (no attribution rather than wrong
+  attribution).
 
-Tool registration reads it through `host.turnOwnerOf(sessionId)` or
-`host.toolPredicate(dockId)`; `GET /quickdock/api/dock-contexts` reports the
-running turn next to each dock's binding.
+`GET /quickdock/api/dock-contexts` reports the running turn next to each dock's
+binding; `host.turnOwnerOf(sessionId)` answers it for one session.
 
 ## Tools
 
-For every live context with `tools`, the host registers one proxy tool set:
-
-```ts
-ctx.tools.register(defineTool({ name, description, parameters, execute }), {
-  when: ({ agent }) => host.turnOwnerOf(agent.session.id) === context.id
-    && context.toolsLive                       // health/liveness of the endpoint
-    && context.online                          // dock heartbeat, window running
-})
-```
-
-- The condition is evaluated once per model step; it is a few field reads, no
-  I/O. Opening or closing a dock is a state change, not a re-registration.
-- It follows the **turn owner**, not the binding: a dock that merely shows the
-  session gets no tools for a prompt sent from the main window.
-- `false` removes the tools from that agent's schemas, PTC bindings and
-  execution. Other docks' sessions never see them.
-- `execute` forwards `tools/call` to the context's MCP endpoint over loopback.
-- Context removal disposes its registrations.
-
-The host currently uses `when` (conditional registration) rather than presets:
-a preset cannot be switched once a session has started, while `when` follows
-the turn owner on the next step — which is what "the dock that started this
-turn" needs.
+A dock's tools are **not** part of its context. An IDE dock registers its MCP
+endpoint together with the working directory it edits, and only sessions inside
+that directory mount them ([`MCP-BRIDGE.md`](MCP-BRIDGE.md)). The earlier
+per-context design (one proxy tool set per dock, gated by the turn owner) is
+retired: it made tools follow a dock rather than a directory, which is not the
+unit users work in.
 
 ## Reserved: workspace
 
-`workspace.path` lets an IDE dock say which directory it is editing. The planned
-behaviour (not implemented):
+`workspace.path` lets an IDE dock say which directory it is editing. It is the
+same path that [`MCP-BRIDGE.md`](MCP-BRIDGE.md) uses to scope tools. An editor
+with several root folders also sends `workspace.paths` (the whole list, `path`
+staying the first one), and `dock-target` answers with
+`workspace: { dock, session, matches }` so the shell can warn when the session on
+screen works outside all of them.
+
+The binding behaviour is still open (not implemented):
 
 1. `workspaceRegistry.resolveByPath(path)` → existing DSH workspace, or
    `create(path)` when absent;
@@ -228,14 +207,14 @@ behaviour (not implemented):
 
 `systemPrompt` describes the client environment ("the user is in VS Code, the
 active file is …"). Its injection point is undecided; the likely shape is a
-prompt section whose visibility follows the same `when` predicate as the tools,
-so only the bound session's model sees it.
+prompt section scoped to the sessions of the directory the dock edits, so only
+those models see it.
 
 ## Host API summary
 
 | Endpoint | Meaning |
 |---|---|
-| `GET /quickdock/api/dock-contexts` | Debug view: every context, its binding and its tool state |
+| `GET /quickdock/api/dock-contexts` | Debug view: every context, its binding and its running turn owner |
 | `GET /quickdock/api/dock-target?dock=<id>` | Binding for one dock |
 | `POST /quickdock/api/bind?dock=<id>` | Bind one dock |
 | `GET /quickdock/api/meta` | Reports `dock-contexts` capability and the descriptor directory |
@@ -244,12 +223,12 @@ so only the bound session's model sees it.
 
 ## Compatibility
 
-- A client that writes `mcp.json` and calls the endpoints without `dock` keeps
-  the old behaviour (legacy context + global binding).
+- A client that calls the endpoints without `dock` keeps the old global binding.
 - A new client writes `docks\<id>.json`, puts `?dock=<id>` in its shell URL and
   passes the same id to `bind` / `dock-target`.
 - The profile patch never carries dock data; a DSH restart simply empties the
-  registry until clients reconnect.
+  registry until clients reconnect. MCP endpoints are registered per directory
+  at runtime and are likewise never persisted.
 
 ## Open questions
 

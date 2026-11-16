@@ -68,7 +68,7 @@ dsh plugin install C:\path\to\dsh-quickdock
 | `rememberGeometry` | `true` | 记住窗口位置 |
 | `ballSize` | `64` | 收起的悬浮鲸鱼球直径（24–160） |
 | `headerButton` / `headerButtonOrder` | `true` / `1010` | 表头 Dock 按钮 |
-| `mcpPairing` | `true` | 注册已配对编辑器的 MCP 服务器：轮询 `mcp.json`，在编辑器在线期间保持 `mcp-dsh-vsdock` 行启用（见 `MCP-PAIRING.md`）。关闭后完全不碰 profile patch |
+| `mcpBridge` / `mcpBridgeToken` | `true` / `''` | 按工作区注册 MCP：dock 为某个目录登记端点，只有该目录下的会话获得这些工具（见 `MCP-BRIDGE.md`）。token 为空时只接受本机回环请求 |
 
 ## 开发
 
@@ -85,12 +85,12 @@ npm run lint      # eslint
 ```
 index.js / service.js / dock.js   入口（一行挂两个组件）
 client.js                         表头按钮、下载徽标、dock 模式适配
-host/                             监听、外壳页、bridge、Electron 监督、MCP 配对
+host/                             监听、外壳页、bridge、Electron 监督、工作区 MCP 桥接
 runtime/                          Electron 进程（窗口、系统按钮、preload）
 locale/                           中英文案
 API.md                            对外契约与 postMessage 消息表
-MCP-PAIRING.md                    VS Code MCP 服务器：发现、确认、loader 行
-DOCK-CONTEXT.md                   每个 dock 的上下文：身份、工具、绑定
+MCP-BRIDGE.md                     按工作区注册 MCP（供 IDE dock 使用）
+DOCK-CONTEXT.md                   每个 dock 的上下文：身份、绑定
 DESIGN.md                         架构说明
 ```
 

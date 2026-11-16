@@ -40,9 +40,7 @@ button, and applies the dock-only layout rules.
 | `host/page.js` | the shell HTML (title bar + iframe + message script) |
 | `host/api.js` | `dock-target`, `meta` |
 | `host/bridge.js` | `/api/quickdock` actions for the Client half |
-| `host/mcp-descriptor.js` | the editor's `mcp.json`: validation and liveness rules |
-| `host/mcp-patch.js` | the two loader rows: splice, lock, atomic replace |
-| `host/mcp-pairing.js` | the 2 s poller that keeps those rows in step with the editor |
+| `host/workspace-mcp.js` | per-workspace MCP registration: HTTP route, agent-scoped mounting |
 | `host/dock-*.js` | Electron supervisor (spawn, control channel, geometry) |
 | `runtime/main.cjs` | the Electron process: window, system controls, preload |
 | `client.js` | header button, download badge, theme/locale sync, dock-mode shims |

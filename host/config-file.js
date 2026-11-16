@@ -31,9 +31,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   // Empty = the version this release ships with (see electron-resolver).
   electronVersion: '',
   // DSH integration
-  headerButton: true,
-  // Register the paired editor's MCP server (see MCP-PAIRING.md).
-  mcpPairing: true
+  headerButton: true
 })
 
 /** Numeric bounds applied to every stored value. */

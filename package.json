@@ -24,7 +24,8 @@
     "host",
     "locale",
     "scripts",
-    "icon.svg"
+    "icon.svg",
+    "MCP-BRIDGE.md"
   ],
   "scripts": {
     "test": "node scripts/run-tests.mjs",

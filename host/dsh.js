@@ -84,4 +84,20 @@ export class DshFacade {
     }
     return null
   }
+
+  /**
+   * The directory a session's workspace lives in.
+   *
+   * Used by the shell to tell an IDE dock whether the session it shows is inside
+   * the folder that dock registers its editor tools for; a session outside it
+   * gets none, and the user should see why.
+   * @param {string} sessionId session whose workspace directory is wanted.
+   * @returns {string|null} the absolute directory, or null when unknown.
+   */
+  workspacePathOf(sessionId) {
+    const id = this.workspaceIdOf(sessionId)
+    if (!id) return null
+    const workspace = this.workspaces().find((row) => row.id === id)
+    return workspace && workspace.path ? workspace.path : null
+  }
 }

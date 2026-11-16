@@ -31,7 +31,7 @@ test('shell: the page embeds the Web UI in an iframe', async () => {
   assert.strictEqual(page.status, 200);
   assert.match(page.body, /class="qd-frame-bar/);
   assert.match(page.body, /data-qd-view="electron"/);
-  assert.match(page.body, /<iframe src="http:\/\/127\.0\.0\.1:1234\/\?token=test-token&amp;dock=1"/);
+  assert.match(page.body, /<iframe src="http:\/\/127\.0\.0\.1:1234\/\?token=test-token&amp;dock=1&amp;qd=/);
   assert.match(page.body, /quickdock:toggle-sidebar/, 'the title bar drives the sidebar over postMessage');
   assert.match(page.body, /data-action="pin"/);
   assert.match(app.pageUrl(), /^http:\/\/127\.0\.0\.1:47910\/quickdock\?view=electron&dock=electron-[0-9a-f]+$/);
@@ -50,7 +50,7 @@ test('shell: view=vscode trims the window chrome and embeds the app proxy', asyn
     assert.ok(app.appProxy, 'the embedded view starts the app proxy');
     assert.match(
       page.body,
-      new RegExp('<iframe src="' + app.appProxy.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/\\?dock=1"')
+      new RegExp('<iframe src="' + app.appProxy.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/\\?dock=1&amp;qd=')
     );
   } finally {
     app.appProxy?.dispose?.();
@@ -87,7 +87,7 @@ test('shell: a composition without a Web UI answers 503 instead of a broken page
 test('api: dock-target reports the bound session and the counters', async () => {
   const { app, get } = await start();
   const first = JSON.parse((await get('/quickdock/api/dock-target')).body);
-  assert.deepStrictEqual(first, { sessionId: '', seq: 0, reloadSeq: 0 });
+  assert.deepStrictEqual(first, { sessionId: '', seq: 0, reloadSeq: 0, workspace: null });
 
   app.postBind({ sessionId: 's-demo' });
   const bound = JSON.parse((await get('/quickdock/api/dock-target')).body);
@@ -106,7 +106,7 @@ test('bridge: dock-contexts lists the connected docks', async () => {
   const result = await bridgeCall(fetchRoutes, 'dock-contexts');
   assert.equal(result.ok, true);
   assert.deepEqual(result.docks.map((dock) => dock.id), ['vscode-1']);
-  assert.equal(result.docks[0].hasTools, false);
+  assert.equal('hasTools' in result.docks[0], false);
 });
 test('api: dock contexts register, bind and remove per dock', async () => {
   const { app } = await start();
@@ -137,9 +137,9 @@ test('api: meta describes the remaining contract', async () => {
   const { app, get } = await start();
   const meta = JSON.parse((await get('/quickdock/api/meta')).body);
   assert.strictEqual(meta.apiVersion, 2);
-  assert.deepStrictEqual(meta.capabilities, ['dock-target', 'handoff', 'app-proxy', 'mcp-pairing', 'dock-contexts', 'turn-attribution']);
+  assert.deepStrictEqual(meta.capabilities, ['dock-target', 'handoff', 'app-proxy', 'dock-contexts', 'turn-attribution']);
   assert.deepStrictEqual(meta.views, ['electron', 'vscode', 'browser']);
-  assert.strictEqual(meta.mcp, null, 'pairing off: there is no watcher to report');
+  assert.equal('mcp' in meta, false, 'the legacy MCP pairing surface is gone');
   assert.strictEqual(meta.name, 'dsh-quickdock');
   assert.strictEqual(app.meta().components.service, true);
 });

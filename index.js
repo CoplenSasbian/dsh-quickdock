@@ -15,6 +15,9 @@ import Schema from '@deepseek-ai/schemastery'
 import { configSchema } from './host/config-schema.js'
 import { QuickDockHost } from './host/quickdock-host.js'
 import { setHost } from './host/shared.js'
+// Same package, same bundle: the workspace-scoped MCP bridge mounts as a child
+// plugin of this row instead of shipping a second package.
+import * as workspaceMcp from './host/workspace-mcp.js'
 
 export const name = 'dsh-quickdock'
 
@@ -34,6 +37,14 @@ export const Config = Schema.object(configSchema)
  */
 export function apply(ctx, config) {
   if (!config.enabled) return undefined
+  if (config.mcpBridge) {
+    // Per-workspace MCP registration (`POST /workspace-mcp/register`) so a dock
+    // can hand DSH tools that only apply to the directory it is editing.
+    ctx.plugin(workspaceMcp, {
+      token: config.mcpBridgeToken || null,
+      waitForSessionsMs: config.mcpBridgeWaitMs,
+    })
+  }
   const host = new QuickDockHost(ctx, config)
   // One row mounts both components again. DSH builds its client-module roster
   // from the bundle rows, and an inserted subpath row (dsh-quickdock/dock) is not
