@@ -79,7 +79,7 @@ export const configSchema = {
    *
    * The address is the whole handshake: there is no token, so any local client -
    * the dock window, an IDE extension - only needs
-   * `http://127.0.0.1:<port>/quickdock?view=<electron|vscode|intellij|browser>` (see
+   * `http://127.0.0.1:<port>/quickdock?view=<electron|vscode|intellij|visualstudio|browser>` (see
    * host/views.js).
    * This is the deploy-time default; the value a user changes (Settings →
    * QuickDock, or config.json) wins over it. When the port is taken the Host logs

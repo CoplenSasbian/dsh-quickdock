@@ -42,7 +42,7 @@ export class PageRenderer {
    * @param {string} src absolute, already-authenticated Web UI URL (or the app proxy's).
    * @param {{view?: string, systemControls?: boolean, ballIcon?: string, dockMcp?: boolean}} [options]
    *   `view` picks the chrome: `electron` (desktop window), an editor view
-   *   (`vscode`, `intellij`) or `browser` (trimmed editor bar); the default is
+   *   (`vscode`, `intellij`, `visualstudio`) or `browser` (trimmed editor bar); the default is
    *   `electron`. `dockMcp` shows
    *   the editor-tools toggle: the embedding client owns that server, so it is
    *   the only one that can ask for the button.

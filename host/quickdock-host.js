@@ -165,7 +165,7 @@ export class QuickDockHost {
     this.disposers = []
     /** The loopback listener that serves the shell page and the API. */
     this.server = null
-    /** Loopback proxy for embedded views (`view=vscode` / `view=intellij`), started on demand. */
+    /** Loopback proxy for embedded views (`view=vscode` / `view=intellij` / `view=visualstudio`), started on demand. */
     this.appProxy = null
     /** The app origin the current proxy serves. */
     this.appProxyOrigin = ''

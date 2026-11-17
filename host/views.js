@@ -10,9 +10,10 @@
  *   embedded webview that cannot carry DSH's `SameSite=Strict` cookie).
  *
  * Clients pick a view, never a transport: `view=electron` for the desktop
- * window, `view=vscode` / `view=intellij` for an editor webview (VS Code,
- * JetBrains), `view=browser` for a plain tab. `view=frame` is the name every
- * shell URL used before variants existed and still means `electron`.
+ * window, `view=vscode` / `view=intellij` / `view=visualstudio` for an editor
+ * webview (VS Code, JetBrains, Visual Studio), `view=browser` for a plain tab.
+ * `view=frame` is the name every shell URL used before variants existed and
+ * still means `electron`.
  *
  * An editor view is more than chrome: the shell passes its name to the app as
  * `host`, and the app uses it to decide that a clicked file belongs to the

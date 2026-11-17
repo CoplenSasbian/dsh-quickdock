@@ -29,6 +29,11 @@ export const VIEWS = Object.freeze({
    * dock registers as `type: 'intellij'`.
    */
   intellij: { app: 'proxy' },
+  /**
+   * A Visual Studio (VSIX) webview: same chrome and transport as `vscode`, under
+   * its own name so a dock registers as `type: 'visualstudio'`.
+   */
+  visualstudio: { app: 'proxy' },
   /** A plain browser tab: trimmed bar, the app is embedded directly. */
   browser: { app: 'direct' }
 })

@@ -78,6 +78,26 @@ test('shell: view=intellij is an editor view that names the JetBrains host', asy
   }
 });
 
+test('shell: view=visualstudio is an editor view that names the Visual Studio host', async () => {
+  const { app, get } = await start();
+  try {
+    const page = await get('/quickdock?view=visualstudio');
+    assert.strictEqual(page.status, 200);
+    assert.match(page.body, /data-qd-view="visualstudio"/);
+    assert.match(page.body, /qd-frame-bar--editor/);
+    assert.doesNotMatch(page.body, /<button[^>]*data-action="pin"/, 'no dead window controls in an IDE tab');
+    assert.match(page.body, /host: 'visualstudio'/, 'the app must be told which editor embedded it');
+    assert.ok(app.appProxy, 'the embedded view starts the app proxy');
+    assert.match(
+      page.body,
+      new RegExp('<iframe src="' + app.appProxy.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/\\?dock=1&amp;qd=')
+    );
+  } finally {
+    app.appProxy?.dispose?.();
+    app.appProxy = null;
+  }
+});
+
 test('shell: the old view=frame URL still renders the desktop window', async () => {
   const { app, get } = await start();
   const page = await get('/quickdock?view=frame');
@@ -158,7 +178,7 @@ test('api: meta describes the remaining contract', async () => {
   const meta = JSON.parse((await get('/quickdock/api/meta')).body);
   assert.strictEqual(meta.apiVersion, 2);
   assert.deepStrictEqual(meta.capabilities, ['dock-target', 'handoff', 'app-proxy', 'dock-contexts', 'turn-attribution', 'file-events', 'app-url']);
-  assert.deepStrictEqual(meta.views, ['electron', 'vscode', 'intellij', 'browser']);
+  assert.deepStrictEqual(meta.views, ['electron', 'vscode', 'intellij', 'visualstudio', 'browser']);
   assert.equal('mcp' in meta, false, 'the legacy MCP pairing surface is gone');
   assert.strictEqual(meta.name, 'dsh-quickdock');
   assert.strictEqual(app.meta().components.service, true);

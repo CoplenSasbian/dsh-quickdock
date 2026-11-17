@@ -31,16 +31,16 @@ const BRIDGE = '/api/quickdock'
  */
 let DOCK_ID = ''
 /**
- * Which client embedded this page: `electron`, an editor webview (`vscode` or
- * `intellij`) or `browser`, as the shell reports it. Only an editor dock routes
- * file clicks to the editor.
+ * Which client embedded this page: `electron`, an editor webview (`vscode`,
+ * `intellij` or `visualstudio`) or `browser`, as the shell reports it. Only an
+ * editor dock routes file clicks to the editor.
  */
 let DOCK_HOST = ''
 /**
  * The hosts that own an editor: a clicked file is handed to them instead of
  * being opened in the dock. `electron` and `browser` keep the app's own preview.
  */
-const EDITOR_HOSTS = new Set(['vscode', 'intellij'])
+const EDITOR_HOSTS = new Set(['vscode', 'intellij', 'visualstudio'])
 
 function el(tag, props) {
   return React.createElement.apply(React, arguments)
