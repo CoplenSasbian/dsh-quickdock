@@ -26,7 +26,7 @@ page is what the VS Code, JetBrains and Visual Studio docks embed.
   published, their build and tool names, and whether DSH has them mounted right now.
 - **Bilingual**, following DSH's language.
 
-## How the three fit together
+## How the docks fit together
 
 This repository is the **host half**: it serves the conversation and the bridge, and the
 editor docks are its clients. Install it in DSH and they all work; the editor docks require
