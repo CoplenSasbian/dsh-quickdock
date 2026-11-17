@@ -153,6 +153,45 @@ test('app proxy: a stale cookie is dropped and the token is used again', async (
   }
 });
 
+test('app proxy: an HTML document is marked as a dock before its scripts', async () => {
+  const app = await listen((request, response) => {
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    response.end('<!doctype html><html><head><title>x</title></head><body><script>app()</script></body></html>');
+  });
+
+  const { startAppProxy } = await import(PROXY);
+  const proxy = await startAppProxy({ upstreamUrl: `http://127.0.0.1:${app.port}/?token=secret&dock=1` });
+  try {
+    const page = await fetch(proxy.origin + '/', { headers: { accept: 'text/html' } });
+    assert.strictEqual(page.status, 200);
+    const body = await page.text();
+    // The client half keys off this global; it must exist before app scripts run.
+    assert.match(body, /<head><script>globalThis\.__DSH_DOCK__=true<\/script><title>/);
+    assert.ok(body.indexOf('__DSH_DOCK__') < body.indexOf('app()'));
+    assert.strictEqual(Number(page.headers.get('content-length')), Buffer.byteLength(body));
+  } finally {
+    proxy.dispose();
+    await close(app.server);
+  }
+});
+
+test('app proxy: JSON and other documents are not rewritten', async () => {
+  const app = await listen((request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end('{"hello":"world"}');
+  });
+
+  const { startAppProxy } = await import(PROXY);
+  const proxy = await startAppProxy({ upstreamUrl: `http://127.0.0.1:${app.port}/?token=secret&dock=1` });
+  try {
+    const response = await fetch(proxy.origin + '/api/data', { headers: { accept: 'application/json' } });
+    assert.strictEqual(await response.text(), '{"hello":"world"}');
+  } finally {
+    proxy.dispose();
+    await close(app.server);
+  }
+});
+
 test('app proxy: an unreachable app is a 502, not a crash', async () => {
   const { startAppProxy } = await import(PROXY);
   const proxy = await startAppProxy({ upstreamUrl: 'http://127.0.0.1:9/?token=x&dock=1' });

@@ -5,8 +5,60 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follo
 
 ## [Unreleased]
 
+### Fixed
+
+- **Dock mode survives a reload without `?dock=1`**: a top-level dock (an IDE
+  webview that cannot type into a subframe) is not an iframe, so losing the query
+  - the SPA rewriting its URL, or a reload at the bare app origin - left the page
+  rendering the main window's header, tabs and its "Dock" button inside the dock.
+  The Host now marks every HTML document it serves through the app proxy with
+  `__DSH_DOCK__` before any app script runs, and the client also enters dock mode
+  on an explicit `quickdock:context {dock: true}`; a top-level page that booted in
+  the main layout asks for that context (`quickdock:ready`) until it arrives. The
+  header Dock button is hidden once the page is a dock.
+- **A file link whose `title` is relative opens in the editor again**: the DSH
+  chat renders a file chip as a button whose `title` is `test/event_test.cpp`
+  while the visible text is only the base name. The click router only accepted
+  relative paths from leaf text (and mistook the chip's slash for a Unix root,
+  posting `/event_test.cpp`), so an editor dock opened nothing. Attribute values
+  may now carry the relative path, and an absolute path is only recognised at a
+  boundary - never in the middle of `test/event_test.cpp`.
+- **A hidden rail no longer leaves an empty band**: dock mode hides the collapsed
+  sidebar rail (56px) and an opened right rail, but the app's grid keeps a track
+  for both, so a wide dock showed empty columns beside the conversation (the VS
+  Code extension has the same shape). The dock CSS now ends the conversation
+  column at the last grid line and collapses the sidebar track while the sidebar
+  is collapsed.
+
 ### Added
 
+- **`GET /quickdock/api/app-url` hands a client the app as a top-level document**:
+  the authenticated, proxy-served URL (`http://127.0.0.1:<proxy>/?dock=1`). Some
+  embedded browsers (JCEF) cannot commit input-method text into a subframe - the
+  caret blinks, the candidate window opens, the character never arrives, English
+  typing works - so an IDE dock can load the app itself and bring its own chrome
+  instead of framing the shell page. The token and the cookie stay on the Host's
+  side, as for `view=vscode`; `meta` advertises the `app-url` capability, and a
+  build without the route answers 404 so a client falls back to the shell page.
+- **`view=intellij` names a JetBrains IDE**: the same trimmed chrome and
+  app-proxy transport as `vscode`, but the app is told `host: 'intellij'`, so a
+  path clicked in the docked conversation opens in the IDE instead of the dock's
+  own preview, and the dock registers as `type: 'intellij'` (`meta.views` lists
+  it). `client.js` now routes file clicks for every editor view (`EDITOR_HOSTS`)
+  rather than only `vscode`; a QuickDock build that predates a view name simply
+  does not list it, which is how a client knows to fall back.
+- **A dock can review exactly what the agent changed**: `GET
+  /quickdock/api/file-events?since=&wait=` reports the files DSH's own file tools
+  wrote or deleted, from a cursor, as a bounded ring with long-poll. It comes from
+  the filesystem service's `fs/observed` event, so only mutations that go through
+  DSH are reported - a Gradle or Maven build, a formatter or anything else a shell
+  command runs writes to the disk directly and never appears, which is what lets
+  an editor open a review diff without drowning in generated output. `meta`
+  advertises the `file-events` capability (see `API.md`).
+- **The README is for users now**: what the plugin gives you, how to install it
+  in DSH, first run, settings and troubleshooting; build/test/layout notes moved to
+  `DEVELOPING.md` (the API, bridge, context and design contracts stay where they
+  were).
 - **A dock can show what editor tools it has**: the title bar gained a list button
   that opens a panel with the MCP servers this dock published - name, build, url,
   tool names - and whether the bridge has them mounted right now

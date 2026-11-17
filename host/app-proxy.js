@@ -22,6 +22,16 @@ import { connect as netConnect } from 'node:net'
 
 /** The auth cookie DSH mints on the token redirect. */
 const AUTH_COOKIE = /^(dsh-auth-[^=]+=[^;]+)/
+/**
+ * The marker the client half reads to know this document is a dock.
+ *
+ * The URL is not enough once the app is the top-level document (an IDE webview
+ * that cannot commit input method text into a subframe): the SPA may rewrite its
+ * own query string, and a reload then lands on `/`, which looks exactly like the
+ * main window (`window.self === window.top`). This proxy only ever serves pages
+ * to a dock, so the document itself can say so - before any app script runs.
+ */
+const DOCK_MARKER = '<script>globalThis.__DSH_DOCK__=true</script>'
 /** Request headers worth forwarding; hop-by-hop and cross-site hints are dropped. */
 const FORWARDED_HEADERS = [
   'accept',
@@ -52,6 +62,24 @@ function isDocumentRequest(request) {
   const destination = request.headers['sec-fetch-dest']
   if (destination === 'document' || destination === 'iframe') return true
   return String(request.headers.accept ?? '').includes('text/html')
+}
+
+/** Insert the dock marker right after `<head>`; the app's scripts come later. */
+export function markDockDocument(html) {
+  const head = /<head(?:\s[^>]*)?>/i.exec(html)
+  if (!head) return DOCK_MARKER + html
+  const at = head.index + head[0].length
+  return html.slice(0, at) + DOCK_MARKER + html.slice(at)
+}
+
+/** Buffer a response stream: only HTML documents take this path (tens of KB). */
+function readAll(stream) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    stream.on('data', (chunk) => chunks.push(chunk))
+    stream.on('end', () => resolve(Buffer.concat(chunks)))
+    stream.on('error', reject)
+  })
 }
 
 /** Headers forwarded to the app; the browser's cookie jar is not among them. */
@@ -169,6 +197,19 @@ export function startAppProxy(input) {
       } catch (_) {
         /* keep the header as served */
       }
+    }
+
+    // Mark the document itself: `?dock=1` alone is not durable (see DOCK_MARKER).
+    const contentType = String(headers['content-type'] || '')
+    if (document && request.method === 'GET' && upstreamResponse.statusCode === 200
+        && !headers['content-encoding'] && /text\/html/i.test(contentType)) {
+      const body = await readAll(upstreamResponse)
+      const marked = Buffer.from(markDockDocument(body.toString('utf8')), 'utf8')
+      delete headers['content-length']
+      headers['content-length'] = String(marked.length)
+      response.writeHead(200, headers)
+      response.end(marked)
+      return
     }
 
     response.writeHead(upstreamResponse.statusCode ?? 502, headers)

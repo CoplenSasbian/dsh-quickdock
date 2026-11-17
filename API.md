@@ -24,22 +24,27 @@ app is embedded.
 |---|---|---|
 | `electron` (default) | desktop window bar: drag, pin, collapse, close | embedded directly (`?token=…`) |
 | `vscode` | trimmed editor bar; pin/collapse/close are not rendered | served by the Host's app proxy |
+| `intellij` | the same trimmed bar, for a JetBrains IDE webview (JCEF) | served by the Host's app proxy |
 | `browser` | trimmed editor bar | embedded directly |
 | `frame` | alias for `electron`, kept for URLs written before views existed | direct |
 
 A client picks a view, never a transport. `electron` and `browser` are first-party
-documents, where DSH's page authentication works as designed. `vscode` is a
-webview: a third-party context for `127.0.0.1`, which never carries DSH's
-`SameSite=Strict` cookie — so the Host serves the app from its own loopback origin
-instead (see *App proxy*). An unknown `view` is a plain-text `400` listing the
-known ones.
+documents, where DSH's page authentication works as designed. `vscode` and
+`intellij` are webviews: a third-party context for `127.0.0.1`, which never
+carries DSH's `SameSite=Strict` cookie — so the Host serves the app from its own
+loopback origin instead (see *App proxy*). The view's name is also what the app
+is told it runs inside (`host` in the shell's context message), and that is what
+makes a clicked path open in the embedding editor; a client that needs its own
+name uses its own view rather than borrowing `vscode`. An unknown `view` is a
+plain-text `400` listing the known ones.
 
 ## Endpoints
 
 ### `GET /quickdock?view=<view>`
 
 The shell page: a draggable title bar and an iframe with the authenticated DSH
-Web UI (`/?token=…&dock=1`, or the app proxy's root for `view=vscode`).
+Web UI (`/?token=…&dock=1`, or the app proxy's root for `view=vscode` and
+`view=intellij`).
 
 An embedding client may add three parameters:
 
@@ -116,15 +121,69 @@ What the main window polls (every 2 s) to notice a handoff.
 `seq` increments per request: when it moves, the Client half calls
 `uiWorkspace.openSession(sessionId)` and focuses the window.
 
+### `GET /quickdock/api/file-events?since=<seq>&wait=<ms>`
+
+What **DSH's own file tools** wrote, from a cursor. This is the feed an editor
+reads to open a review diff for exactly the agent's changes:
+
+```json
+{
+  "ok": true,
+  "seq": 12,
+  "events": [
+    { "seq": 11, "path": "C:\\work\\proj\\src\\a.ts", "kind": "write", "at": 1763350000000 },
+    { "seq": 12, "path": "C:\\work\\proj\\src\\old.ts", "kind": "delete", "at": 1763350000900 }
+  ],
+  "dropped": 0
+}
+```
+
+- `since` — the last `seq` the caller saw; only newer events come back. Pass the
+  answer's `seq` next time. Events are **not consumed**: two docks may follow the
+  same feed.
+- `wait` — long-poll budget in milliseconds (default 10 000, capped at 25 000):
+  the answer is sent as soon as one event arrives, otherwise when the budget
+  runs out. `wait=0` answers immediately.
+- `path` — the path DSH displays for the file. For the local backend it is an
+  absolute path; a remote backend may report a workspace-relative path or a URI,
+  so a client resolves it against the directory it edits.
+- `kind` — `write` (created, edited, moved to) or `delete`.
+- `dropped` — events the bounded ring had already discarded before `since`, so a
+  caller can tell "nothing happened" from "I was away too long".
+
+The feed comes from DSH's filesystem service (`fs/observed`): only a mutation
+that goes through it is reported. A build tool, a formatter or any other process
+started from a shell writes to the disk directly and never appears here - which
+is the point of the filter. `meta.capabilities` lists `file-events` when the Host
+serves this route.
+
+### `GET /quickdock/api/app-url`
+
+The app itself, as a document a client can load **top level**:
+
+```json
+{ "ok": true, "url": "http://127.0.0.1:57128/?dock=1" }
+```
+
+This exists for an editor whose embedded browser cannot route input-method
+commits into a subframe (JCEF: the caret blinks, the candidate window opens, the
+character never arrives - English typing works). Such a client loads this URL
+instead of `/quickdock?view=…`, so the app's composer is the browser's main frame,
+and brings its own chrome. The URL is the app proxy's origin: the DSH token and
+cookie never reach the client, exactly as for `view=vscode`. `meta.capabilities`
+lists `app-url` when the Host serves it; a 404 means "keep using the shell page".
+
 ### `GET /quickdock/api/meta`
 
 ```json
-{ "name": "dsh-quickdock", "apiVersion": 2, "components": { "service": true, "dock": true }, "capabilities": ["dock-target", "handoff", "app-proxy", "dock-contexts", "turn-attribution"], "views": ["electron", "vscode", "browser"], "mcpBridge": { "enabled": true, "origin": "http://127.0.0.1:58935", "route": "/workspace-mcp", "tokenRequired": false }, "version": "0.6.0" }
+{ "name": "dsh-quickdock", "apiVersion": 2, "components": { "service": true, "dock": true }, "capabilities": ["dock-target", "handoff", "app-proxy", "dock-contexts", "turn-attribution", "file-events", "app-url"], "views": ["electron", "vscode", "intellij", "browser"], "mcpBridge": { "enabled": true, "origin": "http://127.0.0.1:58935", "route": "/workspace-mcp", "tokenRequired": false }, "version": "0.6.0" }
 ```
 
 `views` is the list a client may pass as `?view=`; `app-proxy` means the Host can
-embed the app for a webview (`view=vscode`), so a client that cannot carry
-cookies has a supported way in.
+embed the app for a webview (`view=vscode`, `view=intellij`), so a client that
+cannot carry cookies has a supported way in. A build older than a client's view
+name simply does not list it, which is how a client knows to fall back (the
+IntelliJ plugin asks for `intellij` and uses `vscode` when it is absent).
 
 `mcpBridge` says where a dock's MCP endpoint is registered. The dock-side
 shortcuts are on this listener, so a client needs only the object above and never
@@ -140,8 +199,8 @@ reach sessions inside that directory.
 
 ## App proxy
 
-`view=vscode` serves the DSH app from an ephemeral loopback origin owned by the
-Host instead of embedding `127.0.0.1:<dsh port>` directly.
+`view=vscode` (and `view=intellij`) serves the DSH app from an ephemeral loopback
+origin owned by the Host instead of embedding `127.0.0.1:<dsh port>` directly.
 
 Why: DSH hands out its page through a one-shot `?token=`, answers that with
 `303 → ./` and an httpOnly, `SameSite=Strict` cookie, and authenticates every
@@ -188,6 +247,35 @@ The client page relays both directions over `postMessage` (the shell's `window.p
 The warning icon is built from `dock-target`'s `workspace.matches`, not from a
 message: it shows while the tools are on and the session on screen works outside
 every `workspace=` directory the client declared (`API.md`, `GET /quickdock?view=`).
+
+### A dock that cannot frame the app (top-level mode)
+
+A browser that cannot commit input-method text into a subframe (JCEF: the caret
+blinks, the candidate window opens, the character never arrives, English works)
+loads the app through `GET /quickdock/api/app-url` and draws the bar itself. The
+messages are the same table above; this is what such a bar must do, so two clients
+cannot drift:
+
+| element | state from | rule |
+|---|---|---|
+| title | `quickdock:title` | the app's session title; keep the last one |
+| sidebar toggle | `quickdock:sidebar-state` | post `quickdock:toggle-sidebar`; highlight while expanded |
+| new session | `quickdock:sidebar-state` | post `quickdock:new-session`; **hidden while the sidebar is expanded** - the sidebar carries its own button (this is the shell bar's CSS rule, not a second one) |
+| editor tools | client-owned | icon shows on/off, tooltip carries the tool count |
+| handoff | `quickdock:session` | `POST /quickdock/api/handoff` with that `sessionId`; disabled while it is empty |
+| workspace warning | `GET /quickdock/api/dock-target` | show while `workspace.matches === false`, with an explanation in the tooltip |
+| session follow | `dock-target` | poll about every 1.2 s: post `quickdock:open-session` when `sessionId` changes, reload on `reloadSeq` |
+
+The Host page is not involved in that mode: the client also registers the dock
+context itself (`POST /quickdock/api/dock-context`, `type: 'intellij'`), because
+the shell page is what used to do it. Everything else - `dock-target`, `bind`,
+`handoff`, `mcp-register` - is unchanged.
+
+Today the VS Code extension takes the bar from the shell page and the IntelliJ
+plugin implements the table above in Swing (`dock/DockToolbar.kt`,
+`dock/DockIcons.kt`). A new editor should implement this table, not fork the shell
+page: the shell page stays the path for windows and webviews that can type into a
+frame, the table is the path for one that cannot.
 
 ## Browser bridge (DSH origin, cookie-authenticated)
 

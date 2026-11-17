@@ -23,6 +23,12 @@ export const VIEWS = Object.freeze({
   electron: { app: 'direct' },
   /** An IDE webview: trimmed bar, no window controls; the app comes through the app proxy. */
   vscode: { app: 'proxy' },
+  /**
+   * A JetBrains IDE webview (JCEF): same chrome and transport as `vscode`, but
+   * its own name, so the app knows which editor to hand a clicked file to and a
+   * dock registers as `type: 'intellij'`.
+   */
+  intellij: { app: 'proxy' },
   /** A plain browser tab: trimmed bar, the app is embedded directly. */
   browser: { app: 'direct' }
 })

@@ -1,110 +1,114 @@
 # dsh-quickdock
 
-A DeepSeek Harness (DSH) plugin that puts **DSH's own Web UI** in a small
-always-on-top window.
+**DSH in a small always-on-top window** — click **Dock** in a session header and
+DSH's own conversation opens right there, pinned over whatever else you are doing.
 
-Click **Dock** in a session header and an Electron window opens on that
-conversation. The window is the real app — conversations, tool cards, approvals,
-model/permission controls — so it can never drift from the main window.
-
-```
-DSH main window [Dock] ──► Host binds the session ──► Electron window
-                                                       │
-                                          shell page localhost:47910 (title bar + iframe)
-                                                       │
-                                          iframe ──► DSH Web UI (?dock=1)
-```
+The window is the real app: conversations, tool cards, approvals, model and
+permission controls. It never drifts from the main window, because it *is* the
+main window's Web UI in a frame.
 
 ## What you get
 
-- **The app itself**: no re-implemented conversation UI; new DSH features appear
-  in the dock automatically;
-- **Follows the conversation**: Dock binds the session you are looking at and the
-  window navigates to it;
-- **Title bar**: drag the window, toggle the sidebar (expands over the whole
-  window, collapses when you pick a session), pin on top, OS close/minimise;
-- **Stable loopback port, no token**: `http://127.0.0.1:47910` by default (change
-  it in Settings → QuickDock when taken), and the shell page says which client is
-  looking at it: `?view=electron` for the window, `?view=vscode` for an IDE
-  webview (trimmed chrome, the app served through the Host's app proxy) or
-  `?view=browser` for a plain tab;
-- **Tools from an IDE, scoped to the folder it edits**: a dock registers its MCP
-  endpoint on this same port (`POST /quickdock/api/mcp-register`) and only
-  sessions whose working directory is inside that folder mount them. A list button
-  in the title bar opens **the tool panel**: which servers this dock published,
-  their build and tool names, and whether they are mounted right now
-  (`GET /quickdock/api/mcp-servers`);
-- Bilingual (English / 简体中文), following DSH's language.
+- **A dock for the conversation you are in.** Dock binds the session you are
+  looking at and the window follows it. New DSH features appear in the dock
+  automatically — nothing is re-implemented.
+- **A frame you can live with.** Drag to move, toggle the sidebar (it expands
+  over the whole window), pin on top, collapse to a small floating ball, or use
+  the OS close/minimise buttons.
+- **One page, four clients.** The same shell page serves the desktop window
+  (`view=electron`), an editor webview — `view=vscode` for VS Code,
+  `view=intellij` for JetBrains, both with a trimmed chrome and served through the
+  plugin's app proxy — and a plain browser tab (`view=browser`).
+- **A real editor dock.** With the **DSH Dock for VS Code** extension or the
+  **DSH Dock for JetBrains IDEs** plugin the same page sits in the editor's side
+  panel; a path clicked in the docked conversation opens in the editor instead of
+  the dock's own preview, and the editor gives DSH's agent read (and optionally
+  write) access to your workspace.
+- **A tool panel.** The list button in the title bar shows which MCP servers this
+  dock published, their build and tool names, and whether DSH has them mounted
+  right now.
+- **Bilingual**, following DSH's language.
 
 ## Requirements
 
-- Windows 10/11
-- Node.js 20+
-- DSH ≥ 0.2.0
+- Windows 10/11, DSH 0.2.0 or newer (desktop app or `dsh web`).
+- About 100 MB of disk for the window's runtime (Electron), downloaded once.
 
 ## Install
 
-```bash
-npm install
-```
+From DSH's plugin page (**Settings → Plugins**), install `dsh-quickdock` — either
+from its package name or from a local folder.
 
-The Host half needs `@deepseek-ai/schemastery` for the config schema; the window
-needs Electron.
-
-The first **Dock** click downloads Electron (~100 MB, mirror, once) into
-`%LOCALAPPDATA%\dsh-quickdock\electron\<version>\`. To prepare it up front:
+From a terminal, for a profile the desktop app does not manage:
 
 ```bash
-node scripts/ensure-electron.mjs
-# or point at an existing binary
-set DSH_QUICKDOCK_ELECTRON_PATH=D:\path\to\electron.exe
-```
-
-Install it in DSH (local package from the plugin page, or):
-
-```bash
+dsh plugin --profile web add dsh-quickdock
+# or, from a checkout / tarball:
 dsh plugin install C:\path\to\dsh-quickdock
 ```
 
-## Configuration
+The **desktop** profile is managed by the app itself; `dsh plugin --profile
+desktop …` refuses to run, so use the plugin page there.
 
-| Field | Default | Meaning |
+## First run
+
+1. Open DSH and click **Dock** in a session header.
+2. The first click downloads the window runtime (~100 MB) into
+   `%LOCALAPPDATA%\dsh-quickdock\electron\<version>\`; later opens are instant. To
+   prepare it in advance, or to use an existing binary:
+
+   ```bash
+   node scripts/ensure-electron.mjs
+   set DSH_QUICKDOCK_ELECTRON_PATH=D:\path\to\electron.exe
+   ```
+
+3. The window opens on the session you docked. Pin it, drag it, collapse it to the
+   ball — the geometry is remembered.
+
+## Settings
+
+**DSH → Settings → QuickDock**
+
+| Field | Default | What it does |
 |---|---|---|
-| `port` | `47910` | Loopback port for the shell page and API. Edit it under Settings → QuickDock → Connection and press **Apply and restart**: the listener rebinds, the window reopens on the new address. `0` disables the listener |
-| `windowControls` | `custom` | `system` uses the OS close/minimise buttons (recommended) |
-| `clickThrough` | `true` | Set `false` when embedding a foreign page |
-| `width` / `inputHeight` | `480` / `820` | Dock window size |
-| `alwaysOnTop` | `false` | Start pinned (the 📌 button toggles it any time) |
-| `autoLaunch` | `false` | Open with the plugin instead of on the first click |
-| `prefetchElectron` | `true` | Prepare Electron at mount so the first click is instant |
-| `rememberGeometry` | `true` | Remember the window position |
-| `ballSize` | `64` | Diameter of the floating whale ball the window collapses into (24–160) |
-| `headerButton` / `headerButtonOrder` | `true` / `1010` | Header Dock button |
-| `mcpBridge` / `mcpBridgeToken` | `true` / `''` | Serve the per-workspace MCP bridge: a dock registers its endpoint for a directory and only sessions inside it get the tools (see `MCP-BRIDGE.md`). Empty token accepts loopback only |
+| `port` | `47910` | Loopback port for the shell page and its API. Change it when taken and press **Apply and restart**. `0` turns the listener off |
+| `windowControls` | `custom` | `system` draws the OS close/minimise buttons (recommended) |
+| `clickThrough` | `true` | Clicks pass through the frame's empty areas; turn off when embedding a foreign page |
+| `width` / `inputHeight` | `480` / `820` | Window size |
+| `alwaysOnTop` | `false` | Start pinned (the pin button toggles it any time) |
+| `autoLaunch` | `false` | Open the window with the plugin instead of on the first Dock click |
+| `prefetchElectron` | `true` | Prepare the runtime at startup so the first click is instant |
+| `rememberGeometry` | `true` | Remember where the window was |
+| `ballSize` | `64` | Diameter of the floating ball the window collapses into (24–160) |
+| `headerButton` / `headerButtonOrder` | `true` / `1010` | The Dock button in the session header |
+| `mcpBridge` / `mcpBridgeToken` | `true` / `''` | Serve the per-workspace MCP bridge that editor docks register with. An empty token accepts loopback callers only |
 
-## Development
+## Troubleshooting
 
-```bash
-npm test          # unit tests
-npm run check     # repository checks (locale keys, encoding)
-npm run lint      # eslint
-```
+| You see | What to do |
+|---|---|
+| Window is blank, or stays on the loading screen | Open `%LOCALAPPDATA%\dsh-quickdock\dock.log`; a plugin update usually fixes a stale window |
+| The first Dock click takes minutes | The runtime is downloading: check your proxy, or set `DSH_QUICKDOCK_ELECTRON_PATH` to an existing `electron.exe` |
+| “Port already in use” in DSH's log | Another program has `47910`: change the port under Settings → QuickDock → Connection and press **Apply and restart** |
+| The dock never appears in VS Code | The port must match on both sides (VS Code setting `dshVsdock.port`); see the DSH Dock extension's README |
+| Editor tools do not show up in a session | That session's folder is not one the editor has open — the dock's title bar shows an amber triangle; the list button shows what is mounted |
+| Nothing works after an update | Restart DSH: the Host half is loaded at startup |
 
-Logs: `%LOCALAPPDATA%\dsh-quickdock\host.log` (Host) and `dock.log` (window).
+## Privacy
 
-## Layout
+- Everything is loopback: the shell page, the plugin's API and the workspace MCP
+  bridge listen on `127.0.0.1` only. Nothing leaves your machine.
+- The bridge maps a directory to an MCP endpoint: a session whose working
+  directory is inside that directory mounts the tools, and nothing else does.
+- With `mcpBridgeToken` empty, only loopback callers are accepted; set a token if
+  something non-local can reach the port.
 
-```
-index.js / service.js / dock.js   entry points (one row mounts both components)
-client.js                         header button, download badge, dock-mode shims
-host/                             listener, shell page, bridge, Electron supervisor, workspace MCP bridge
-runtime/                          Electron process (window, system controls, preload)
-locale/                           English / Chinese catalogs
-API.md                            contract and postMessage message table
-MCP-BRIDGE.md                     per-workspace MCP registration for IDE docks
-DOCK-CONTEXT.md                   per-dock context: identity, binding
-DESIGN.md                         architecture notes
-```
+## More
+
+- [CHANGELOG](CHANGELOG.md) — what changed in each version.
+- Contracts, for anyone writing another client: [API.md](API.md),
+  [MCP-BRIDGE.md](MCP-BRIDGE.md), [DOCK-CONTEXT.md](DOCK-CONTEXT.md),
+  [DESIGN.md](DESIGN.md).
 
 ## License
 

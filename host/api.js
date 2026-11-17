@@ -67,9 +67,26 @@ const ROUTES = [
     handle: ({ app }) => app.handoffInfo()
   },
   {
+    // What DSH's own file tools wrote, from a cursor: the feed an editor reads to
+    // open a review diff for exactly the agent's changes. `wait` long-polls, so a
+    // dock that supports it does not have to poll on a timer.
+    method: 'GET',
+    path: 'file-events',
+    handle: ({ app, url }) =>
+      app.fileEventsSince(url.searchParams.get('since') || 0, url.searchParams.get('wait') || 0)
+  },
+  {
     method: 'GET',
     path: 'meta',
     handle: ({ app }) => app.meta()
+  },
+  {
+    // The app as a top-level document (the app proxy's origin), for a client
+    // whose embedded browser cannot type into a subframe and therefore brings
+    // its own chrome instead of loading the shell page (see API.md).
+    method: 'GET',
+    path: 'app-url',
+    handle: ({ app }) => app.appUrlInfo()
   },
   {
     // An IDE dock hands over its MCP endpoint together with the directory it

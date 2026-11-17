@@ -10,9 +10,14 @@
  *   embedded webview that cannot carry DSH's `SameSite=Strict` cookie).
  *
  * Clients pick a view, never a transport: `view=electron` for the desktop
- * window, `view=vscode` for an IDE webview, `view=browser` for a plain tab.
- * `view=frame` is the name every shell URL used before variants existed and
- * still means `electron`.
+ * window, `view=vscode` / `view=intellij` for an editor webview (VS Code,
+ * JetBrains), `view=browser` for a plain tab. `view=frame` is the name every
+ * shell URL used before variants existed and still means `electron`.
+ *
+ * An editor view is more than chrome: the shell passes its name to the app as
+ * `host`, and the app uses it to decide that a clicked file belongs to the
+ * embedding editor (see `client.js` `EDITOR_HOSTS`). A name the app does not
+ * know still renders, it just loses that hand-off.
  */
 
 import { DEFAULT_VIEW, VIEWS, VIEW_ALIASES } from './constants.js'

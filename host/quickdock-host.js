@@ -23,6 +23,7 @@ import { startAppProxy } from './app-proxy.js'
 import { DshFacade } from './dsh.js'
 import { BRIDGE_ROUTE, bridgeOrigin, createBridgeClient } from './dock-mcp.js'
 import { DockContexts } from './dock-contexts.js'
+import { FileEvents } from './file-events.js'
 import { TurnAttribution } from './turn-attribution.js'
 import { TurnOwners } from './turn-owners.js'
 import { DEFAULT_ELECTRON_VERSION, ElectronResolver } from './electron-resolver.js'
@@ -164,7 +165,7 @@ export class QuickDockHost {
     this.disposers = []
     /** The loopback listener that serves the shell page and the API. */
     this.server = null
-    /** Loopback proxy for embedded views (`view=vscode`), started on demand. */
+    /** Loopback proxy for embedded views (`view=vscode` / `view=intellij`), started on demand. */
     this.appProxy = null
     /** The app origin the current proxy serves. */
     this.appProxyOrigin = ''
@@ -196,6 +197,8 @@ export class QuickDockHost {
     this.dockMcpServersLive = new Map()
     /** Which dock started the running turn of each session (see turn-owners.js). */
     this.turnOwners = new TurnOwners({ trace: (line) => this.trace(line) })
+    /** What DSH's own file tools wrote, for a dock to review (see file-events.js). */
+    this.fileEvents = new FileEvents({ trace: (line) => this.trace(line) })
     this.turnAttribution = new TurnAttribution({
       owners: this.turnOwners,
       trace: (line) => this.trace(line),
@@ -526,6 +529,25 @@ export class QuickDockHost {
       + '?view=electron&dock=' + encodeURIComponent(this.dockId)
   }
 
+  /**
+   * The app itself, as a document a client can load directly.
+   *
+   * The shell page is the right document for a window and for a webview that can
+   * type into a framed page. An IDE whose embedded browser cannot route input
+   * method commits into a subframe (JCEF drops them: candidates appear, the text
+   * never lands) loads the app as the top-level document instead and brings its
+   * own chrome; this answers that URL. It is the app proxy's origin, so the DSH
+   * token and cookie never reach the client - same guarantee as `view=vscode`.
+   * @returns {Promise<{ok: boolean, url?: string, error?: string}>} answer.
+   */
+  async appUrlInfo() {
+    const source = this.webUiUrl()
+    if (!source) return { ok: false, error: 'the DSH Web UI is not available in this composition' }
+    const origin = await this.ensureAppProxy(source)
+    if (!origin) return { ok: false, error: 'the QuickDock app proxy could not start' }
+    return { ok: true, url: origin + '/?dock=1' }
+  }
+
   /* ------------------------------ lifecycle ------------------------------ */
 
   /**
@@ -553,6 +575,7 @@ export class QuickDockHost {
       this.#startServer()
       this.#registerBridge()
       this.#attachTurnAttribution()
+      this.#attachFileEvents()
     }
     const version = readVersion(ROOT_DIR)
     this.state.version = version
@@ -1141,6 +1164,23 @@ export class QuickDockHost {
     this.ctx.effect(() => dispose, label)
   }
 
+  /**
+   * Follow DSH's own file writes, so a dock can review exactly those.
+   *
+   * `fs/observed` is emitted by the filesystem service's callers after a
+   * mutation completes - the tools a model uses to write, edit, move or delete a
+   * file. A build tool started from a shell never passes that seam, so a dock
+   * reading this feed opens a diff for what the agent changed and nothing else.
+   */
+  #attachFileEvents() {
+    const detach = this.fileEvents.attach(this.ctx)
+    this.#disposeOn(() => {
+      detach()
+      this.fileEvents.dispose()
+    }, 'quickdock: file events')
+    this.trace('file events: following fs/observed for dock reviews')
+  }
+
   /* ------------------------------ operations ------------------------------ */
 
   /** Adopt a theme reported by the Client half (used by the shell page). */
@@ -1345,13 +1385,27 @@ export class QuickDockHost {
     return bridgeOrigin(this.dsh.webApp?.getAdvertisedUrl?.() || this.dsh.webServer?.getOrigin?.())
   }
 
+  /**
+   * The file writes DSH's own tools reported after a cursor.
+   *
+   * A dock passes the sequence it last saw and gets everything after it, waiting
+   * up to `wait` for the next write when nothing happened yet. Reads never
+   * consume: two docks (or two editor windows) can follow the same feed.
+   * @param {number|string} since last sequence the caller saw.
+   * @param {number|string} [wait] long-poll budget in milliseconds.
+   * @returns {Promise<{ok: boolean, seq: number, events: object[], dropped: number}>} snapshot.
+   */
+  fileEventsSince(since, wait) {
+    return this.fileEvents.wait(since, wait)
+  }
+
   /** Plugin metadata for the Client and for diagnostics. */
   meta() {
     return {
       name: 'dsh-quickdock',
       apiVersion: API_VERSION,
       components: this.state.components,
-      capabilities: ['dock-target', 'handoff', 'app-proxy', 'dock-contexts', 'turn-attribution'],
+      capabilities: ['dock-target', 'handoff', 'app-proxy', 'dock-contexts', 'turn-attribution', 'file-events', 'app-url'],
       dockId: this.dockId,
       // Which shell variants a client may ask for; the pick also decides whether
       // the app comes through the proxy (see host/views.js).

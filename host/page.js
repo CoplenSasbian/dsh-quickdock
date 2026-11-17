@@ -41,8 +41,9 @@ export class PageRenderer {
    * Render the frame shell for one client.
    * @param {string} src absolute, already-authenticated Web UI URL (or the app proxy's).
    * @param {{view?: string, systemControls?: boolean, ballIcon?: string, dockMcp?: boolean}} [options]
-   *   `view` picks the chrome: `electron` (desktop window), `vscode` or
-   *   `browser` (trimmed editor bar); the default is `electron`. `dockMcp` shows
+   *   `view` picks the chrome: `electron` (desktop window), an editor view
+   *   (`vscode`, `intellij`) or `browser` (trimmed editor bar); the default is
+   *   `electron`. `dockMcp` shows
    *   the editor-tools toggle: the embedding client owns that server, so it is
    *   the only one that can ask for the button.
    * @returns {string} complete HTML document.
@@ -373,7 +374,8 @@ ${theme}
       });
     }
 
-    /* The embedding page (a VS Code webview) answers with the real state. */
+    /* The embedding page (an IDE webview: VS Code, JetBrains) answers with the
+       real state. */
     window.addEventListener('message', function (event) {
       if (window.parent === window || event.source !== window.parent) return;
       var data = event.data;

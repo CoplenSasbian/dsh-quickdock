@@ -31,10 +31,16 @@ const BRIDGE = '/api/quickdock'
  */
 let DOCK_ID = ''
 /**
- * Which client embedded this page: `electron`, `vscode` or `browser`, as the
- * shell reports it. Only an editor dock routes file clicks to the editor.
+ * Which client embedded this page: `electron`, an editor webview (`vscode` or
+ * `intellij`) or `browser`, as the shell reports it. Only an editor dock routes
+ * file clicks to the editor.
  */
 let DOCK_HOST = ''
+/**
+ * The hosts that own an editor: a clicked file is handed to them instead of
+ * being opened in the dock. `electron` and `browser` keep the app's own preview.
+ */
+const EDITOR_HOSTS = new Set(['vscode', 'intellij'])
 
 function el(tag, props) {
   return React.createElement.apply(React, arguments)
@@ -1223,12 +1229,17 @@ function DownloadBadge() {
 /**
  * True when this page is the app *inside* the dock window.
  *
- * Two signals, because the SPA may rewrite its own URL after boot (dropping the
+ * Three signals, because the SPA may rewrite its own URL after boot (dropping the
  * query before client modules run):
  *   - `?dock=1`, appended by the frame shell;
- *   - this document is an iframe (`window.self !== window.top`).
+ *   - this document is an iframe (`window.self !== window.top`);
+ *   - the Host marked the document it served to a dock, which is the only
+ *     signal that survives both the SPA rewriting its URL and a top-level dock
+ *     (an IDE webview that cannot type into a frame) being reloaded at the app
+ *     origin without the query.
  */
 function insideDockWindow() {
+  if (globalThis.__DSH_DOCK__ === true) return true
   try {
     if (new URLSearchParams(location.search).has('dock')) return true
   } catch (error) { /* ignore */ }
@@ -1241,6 +1252,9 @@ function insideDockWindow() {
 
 /** Style element id, so a second apply() does not stack sheets. */
 const DOCK_STYLE_ID = PLUGIN_ID + '-dock-layout'
+
+/** Whether the dock layout has already been applied to this document. */
+let DOCK_MODE_ACTIVE = false
 
 /**
  * Layout fixes that only make sense in the dock window.
@@ -1300,6 +1314,16 @@ function applyDockMode() {
 html[data-qd-dock] [class*="rightbarCol"] {
   display: none !important;
 }
+/* Hiding a rail does not free its track: the app's grid keeps a column for the
+   collapsed sidebar rail (56px) and for an opened right rail (a few hundred px),
+   which shows up as empty bands on the left/right of a wide dock. The
+   conversation takes them. */
+html[data-qd-dock] [class*="centerCol"] {
+  grid-column-end: -1 !important;
+}
+html[data-qd-dock] [data-sidebar-collapsed="true"] {
+  grid-template-columns: 0 minmax(0, 1fr) 0 !important;
+}
 /* Drawer width only (<768px - DSH's own breakpoint for data-sidebar-drawer):
    the sidebar floats over the whole window instead of squeezing the
    conversation into a sliver. Wider windows keep the shipped column layout:
@@ -1338,6 +1362,12 @@ html[data-qd-dock][data-qd-overlay] [class*="sidebarCol"] {
 }
 /* The shell title bar owns the sidebar toggle; the app's floating one is noise. */
 html[data-qd-dock] [data-qd-dock-hide="1"] {
+  display: none !important;
+}
+/* The Dock button opens *this* dock from the main window; inside the dock it
+   would only offer to send the session to itself, so it goes away - including
+   when the dock layout is entered after boot, when the slot already rendered. */
+#dsh-quickdock-send, #dsh-quickdock-more {
   display: none !important;
 }
 html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
@@ -1401,9 +1431,12 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
   function pathFromText(text, allowRelative) {
     const cleaned = String(text).replace(/\s+/g, ' ').trim()
     if (cleaned.length === 0 || cleaned.length > 200) return ''
-    const match = /(?:[A-Za-z]:[\\/]|\/)[^\n\r<>"|?*]*/.exec(cleaned)
+    // Only a path that *starts* at a boundary is absolute: `test/event_test.cpp`
+    // is a relative path, and treating its slash as the root would open
+    // `/event_test.cpp`.
+    const match = /(?:^|[\s(\[])((?:[A-Za-z]:[\\/]|\/)[^\n\r<>"|?*]*)/.exec(cleaned)
     if (match) {
-      let path = match[0].trim()
+      let path = match[1].trim()
       // The row decorates the path: a size, a line-count delta, a quote, a paren.
       path = path.replace(/\s+\d+(?:[.,]\d+)?\s*[KMGT]?B\b.*$/i, '')
       path = path.replace(/\s+[+-]\d+\s+[+-]\d+\s*$/, '')
@@ -1427,10 +1460,13 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
   function pathFromNode(node, allowRelative) {
     if (!node || typeof node.getAttribute !== 'function') return ''
     // Any attribute may carry it (`title`, `data-path`, an unknown `data-*`), and
-    // an `href` often keeps it in a query string.
+    // an `href` often keeps it in a query string. Attributes may name the file
+    // relatively (`title="test/event_test.cpp"`) even when the visible text is
+    // just the base name: a file-link chip does exactly that, and the embedding
+    // editor resolves relative paths against its own folders.
     if (node.attributes) {
       for (const attribute of node.attributes) {
-        const path = pathFromText(attribute.value, false)
+        const path = pathFromText(attribute.value, true)
         if (path) return path
       }
     }
@@ -1450,7 +1486,7 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
    * is dispatched, and stopping the earlier event is the only way to win.
    */
   function routeFileClick(event) {
-    if (DOCK_HOST !== 'vscode' || event.button !== 0) return
+    if (!EDITOR_HOSTS.has(DOCK_HOST) || event.button !== 0) return
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
     let node = event.target
     for (let depth = 0; node && node !== document.body && depth < 6; depth += 1) {
@@ -1492,17 +1528,12 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
   }
 
   window.addEventListener('message', function (event) {
-    // Only our embedding shell may drive the layout.
+    // Only our embedding host may drive the layout.
     if (event.source !== window.parent) return
     const data = event.data
     if (!data) return
-    if (data.type === 'quickdock:context') {
-      // The shell names this dock. It repeats the message on `quickdock:ready`,
-      // so a page that booted before its parent is ready still gets an id.
-      if (data.id) DOCK_ID = String(data.id)
-      if (data.host) DOCK_HOST = String(data.host)
-      return
-    }
+    // `quickdock:context` is handled by the always-on listener in apply(): it also
+    // turns the dock layout on when a top-level page booted without `?dock=1`.
     if (data.type === 'quickdock:toggle-sidebar') {
       // The user is driving now: the boot-time collapse must not fight the click.
       clearInterval(collapseOnStart)
@@ -2343,36 +2374,92 @@ function QuickDockSettings() {
   return el('div', { style: { display: 'flex', flexDirection: 'column', padding: '4px 0 24px' } }, rows)
 }
 
-function apply(ctx) {
-  if (insideDockWindow()) {
-    // This page is the dock, not the window that opens it: no header button, no
-    // download badge - only the layout fixes below.
-    applyDockMode()
-    startDockSubmissions(ctx)
-    try {
-      ctx.inject(['uiWorkspace'], function (uiCtx) {
-        // The Dock button in the main window bound a session: follow it. The shell
-        // forwards the target over postMessage because the frames are cross-origin.
-        window.addEventListener('message', function (event) {
-          if (event.source !== window.parent) return
-          const data = event.data
-          if (!data || data.type !== 'quickdock:open-session' || !data.sessionId) return
-          try {
-            uiCtx.uiWorkspace.openSession(String(data.sessionId))
-          } catch (error) {
-            console.warn('[dsh-quickdock] open-session failed:', error)
-          }
-        })
-        // Ask the shell for the target once this app can navigate.
-        setTimeout(function () {
-          try { window.parent.postMessage({ type: 'quickdock:ready' }, '*') } catch (error) { /* ignore */ }
-        }, 300)
+/**
+ * Turn this page into the dock, once.
+ *
+ * Called at boot when the page already knows it is a dock, and again when the
+ * embedding Host says so: a top-level dock (an IDE that cannot commit input
+ * method text into a subframe) is not framed, so `window.self !== window.top`
+ * cannot identify it, and the app's SPA may reload without `?dock=1`. The Host
+ * still knows what the page is, and says it over `quickdock:context`.
+ */
+function enterDockMode(ctx) {
+  if (DOCK_MODE_ACTIVE) return
+  DOCK_MODE_ACTIVE = true
+  // This page is the dock, not the window that opens it: no header button, no
+  // download badge - only the layout fixes below.
+  applyDockMode()
+  startDockSubmissions(ctx)
+  try {
+    ctx.inject(['uiWorkspace'], function (uiCtx) {
+      // The Dock button in the main window bound a session: follow it. The host
+      // forwards the target over postMessage because the documents differ.
+      window.addEventListener('message', function (event) {
+        if (event.source !== window.parent) return
+        const data = event.data
+        if (!data || data.type !== 'quickdock:open-session' || !data.sessionId) return
+        try {
+          uiCtx.uiWorkspace.openSession(String(data.sessionId))
+        } catch (error) {
+          console.warn('[dsh-quickdock] open-session failed:', error)
+        }
       })
-    } catch (error) {
-      console.warn('[dsh-quickdock] uiWorkspace unavailable in the dock window:', error)
-    }
+      // Ask the host for the target once this app can navigate.
+      setTimeout(function () {
+        try { window.parent.postMessage({ type: 'quickdock:ready' }, '*') } catch (error) { /* ignore */ }
+      }, 300)
+    })
+  } catch (error) {
+    console.warn('[dsh-quickdock] uiWorkspace unavailable in the dock window:', error)
+  }
+}
+
+function apply(ctx) {
+  // The Host names this dock, and in a top-level dock it may be the only one
+  // that still knows the page is one: honour it before the URL-based signals.
+  // Keep listening, because the page can boot in the main layout after a reload
+  // at the app origin (no `?dock=1`) and the dock must still come back.
+  try {
+    window.addEventListener('message', function (event) {
+      if (event.source !== window.parent) return
+      const data = event.data
+      if (!data || data.type !== 'quickdock:context') return
+      if (data.id) DOCK_ID = String(data.id)
+      if (data.host) DOCK_HOST = String(data.host)
+      if (data.dock === true) enterDockMode(ctx)
+    })
+  } catch (error) {
+    console.warn('[dsh-quickdock] dock context listener unavailable:', error)
+  }
+
+  if (insideDockWindow()) {
+    enterDockMode(ctx)
     return
   }
+
+  // A top-level dock cannot prove it is one from the page, so ask the Host: an
+  // IDE's bridge answers `quickdock:ready` with `quickdock:context`, and that
+  // flips the layout above. Nothing answers in a browser tab, so the retries
+  // stop on their own; they exist because the host installs its bridge at load
+  // end, which can be after this module applied.
+  try {
+    let contextAttempts = 0
+    const askForContext = setInterval(function () {
+      contextAttempts += 1
+      if (DOCK_MODE_ACTIVE || contextAttempts > 6) {
+        clearInterval(askForContext)
+        return
+      }
+      try {
+        window.postMessage({ type: 'quickdock:ready' }, '*')
+      } catch (error) {
+        clearInterval(askForContext)
+      }
+    }, 500)
+  } catch (error) {
+    console.warn('[dsh-quickdock] dock context request unavailable:', error)
+  }
+
   // The header button is switchable; the answer arrives after registration, so the
   // component hides itself instead of the slot being filled late (which DSH drops).
   bridge('config-get').then(function (settings) {

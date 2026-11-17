@@ -58,6 +58,26 @@ test('shell: view=vscode trims the window chrome and embeds the app proxy', asyn
   }
 });
 
+test('shell: view=intellij is an editor view that names the JetBrains host', async () => {
+  const { app, get } = await start();
+  try {
+    const page = await get('/quickdock?view=intellij');
+    assert.strictEqual(page.status, 200);
+    assert.match(page.body, /data-qd-view="intellij"/);
+    assert.match(page.body, /qd-frame-bar--editor/);
+    assert.doesNotMatch(page.body, /<button[^>]*data-action="pin"/, 'no dead window controls in an IDE tab');
+    assert.match(page.body, /host: 'intellij'/, 'the app must be told which editor embedded it');
+    assert.ok(app.appProxy, 'the embedded view starts the app proxy');
+    assert.match(
+      page.body,
+      new RegExp('<iframe src="' + app.appProxy.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/\\?dock=1&amp;qd=')
+    );
+  } finally {
+    app.appProxy?.dispose?.();
+    app.appProxy = null;
+  }
+});
+
 test('shell: the old view=frame URL still renders the desktop window', async () => {
   const { app, get } = await start();
   const page = await get('/quickdock?view=frame');
@@ -137,11 +157,24 @@ test('api: meta describes the remaining contract', async () => {
   const { app, get } = await start();
   const meta = JSON.parse((await get('/quickdock/api/meta')).body);
   assert.strictEqual(meta.apiVersion, 2);
-  assert.deepStrictEqual(meta.capabilities, ['dock-target', 'handoff', 'app-proxy', 'dock-contexts', 'turn-attribution']);
-  assert.deepStrictEqual(meta.views, ['electron', 'vscode', 'browser']);
+  assert.deepStrictEqual(meta.capabilities, ['dock-target', 'handoff', 'app-proxy', 'dock-contexts', 'turn-attribution', 'file-events', 'app-url']);
+  assert.deepStrictEqual(meta.views, ['electron', 'vscode', 'intellij', 'browser']);
   assert.equal('mcp' in meta, false, 'the legacy MCP pairing surface is gone');
   assert.strictEqual(meta.name, 'dsh-quickdock');
   assert.strictEqual(app.meta().components.service, true);
+});
+
+test('api: app-url answers the proxy-served app, for a client that loads it directly', async () => {
+  const { app, get } = await start();
+  try {
+    const answer = JSON.parse((await get('/quickdock/api/app-url')).body);
+    assert.strictEqual(answer.ok, true, 'the proxy starts on request');
+    assert.ok(app.appProxy, 'the app proxy is running');
+    assert.match(answer.url, /^http:\/\/127\.0\.0\.1:\d+\/\?dock=1$/, 'a top-level app URL, not a shell page');
+  } finally {
+    app.appProxy?.dispose?.();
+    app.appProxy = null;
+  }
 });
 
 test('api: an unknown path returns a readable 404', async () => {
