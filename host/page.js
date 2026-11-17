@@ -384,7 +384,7 @@ ${theme}
       mcpPanelTimer = setInterval(loadMcpServers, 5000);
     }
 
-    if (mcpInfoButton && mcpPanel && dockMcpRequested && window.parent !== window) {
+    if (mcpInfoButton && mcpPanel && dockMcpRequested && embedded()) {
       mcpInfoButton.hidden = false;
       mcpInfoButton.addEventListener('click', function () { setMcpPanel(mcpPanel.hidden) });
       mcpPanel.querySelector('.qd-mcp-close').addEventListener('click', function () { setMcpPanel(false) });
