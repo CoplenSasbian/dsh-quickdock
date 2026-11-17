@@ -1447,9 +1447,12 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
       return path
     }
     if (!allowRelative) return ''
-    // A row that only shows `src/dir/file.ts` or `file.ts`: the embedding editor
-    // resolves it against its own folders, which is enough to open the right file.
-    const relative = /(?:^|\s)([A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)*\.[A-Za-z0-9]{1,8})\s*$/.exec(cleaned)
+    // A row that only shows `src/dir/file.ts`: the embedding editor resolves it
+    // against its own folders, which is enough to open the right file. A bare
+    // `file.ts` is not accepted here: many DOM class names (`tool.call.toolview`)
+    // look exactly like one, and clicking a card would then invent a path instead
+    // of finding the real one inside it.
+    const relative = /(?:^|\s)([A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)*[\\/][A-Za-z0-9_.-]*\.[A-Za-z0-9]{1,8})\s*$/.exec(cleaned)
     if (!relative) return ''
     return relative[1]
   }
@@ -1470,7 +1473,17 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     }
     // Only a leaf's text is trusted: an ancestor's text also holds the label,
     // the size and whatever else the row shows.
-    if (node.children && node.children.length > 0) return ''
+    if (node.children && node.children.length > 0) {
+      // A tool card can put the path in a child (the underlined chip) while the
+      // click lands on the card itself; inspect leaf children before giving up.
+      for (let index = 0; index < Math.min(node.children.length, 4); index += 1) {
+        const child = node.children[index]
+        if (!child || (child.children && child.children.length > 0)) continue
+        const nested = pathFromNode(child, allowRelative)
+        if (nested) return nested
+      }
+      return ''
+    }
     return pathFromText(node.textContent || '', allowRelative)
   }
 
