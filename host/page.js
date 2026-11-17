@@ -226,6 +226,26 @@ ${theme}
       }).catch(function () { /* dock-target recreates the context on demand */ });
     } catch (error) { dockId = ''; /* storage denied: legacy binding */ }
 
+    /* The embedding client can be a webview parent (VS Code, JetBrains' frame)
+       or the host of a top-level WebView2 document (Visual Studio). Both are
+       "embedded" for the editor-tools switch, and both need the messages that
+       used to go to window.parent. */
+    var hostBridge = (typeof window.chrome !== 'undefined' && window.chrome.webview) ? window.chrome.webview : null;
+
+    function embedded() {
+      return window.parent !== window || Boolean(hostBridge);
+    }
+
+    function toHost(message) {
+      if (hostBridge) {
+        try { hostBridge.postMessage(JSON.stringify(message)); } catch (error) { /* ignore */ }
+        return;
+      }
+      if (window.parent !== window) {
+        try { window.parent.postMessage(message, '*') } catch (error) { /* ignore */ }
+      }
+    }
+
     /* ---- shell -> app ---- */
     function tell(message) {
       if (!frame || !origin) return;
@@ -272,13 +292,12 @@ ${theme}
       refreshWorkspaceWarning();
     }
 
-    if (mcpButton && dockMcpRequested && window.parent !== window) {
+    if (mcpButton && dockMcpRequested && embedded()) {
       mcpButton.hidden = false;
       mcpButton.addEventListener('click', function () {
         if (mcpButton.hasAttribute('data-pending')) return;
         mcpButton.setAttribute('data-pending', '');
-        try { window.parent.postMessage({ type: 'quickdock:mcp-toggle' }, '*') }
-        catch (error) { mcpButton.removeAttribute('data-pending') }
+        toHost({ type: 'quickdock:mcp-toggle' });
       });
     }
     if (dockMcpRequested) applyMcpState(new URLSearchParams(location.search).get('mcp') === '1', '');
@@ -374,14 +393,22 @@ ${theme}
       });
     }
 
-    /* The embedding page (an IDE webview: VS Code, JetBrains) answers with the
-       real state. */
-    window.addEventListener('message', function (event) {
-      if (window.parent === window || event.source !== window.parent) return;
-      var data = event.data;
+    /* The embedding client (an IDE webview, or a WebView2 host of this top-level
+       document for Visual Studio) answers with the real state. */
+    function onHostState(data) {
       if (!data || data.type !== 'quickdock:mcp-state') return;
       applyMcpState(data.on, data.detail);
-    });
+    }
+    if (hostBridge) {
+      hostBridge.addEventListener('message', function (event) {
+        try { onHostState(JSON.parse(String(event.data))) } catch (error) { /* not ours */ }
+      });
+    } else if (window.parent !== window) {
+      window.addEventListener('message', function (event) {
+        if (event.source !== window.parent) return;
+        onHostState(event.data);
+      });
+    }
     // The app reports which session it currently shows; the handoff button asks
     // the main DSH window to open the same one.
     var currentSessionId = '';
@@ -465,12 +492,12 @@ ${theme}
       }
       if (data.type === 'quickdock:open-file') {
         // The app wants a file opened, and in an editor dock the editor owns that
-        // window: hand it up to the embedding page (window.parent), which knows
-        // how to open it. The desktop window has no parent to tell.
-        if (dockView === 'electron' || window.parent === window) return;
+        // window: hand it up to the embedding page, which knows how to open it.
+        // The desktop window has no editor to tell.
+        if (dockView === 'electron' || !embedded()) return;
         var file = typeof data.path === 'string' ? data.path : '';
         if (!file) return;
-        try { window.parent.postMessage({ type: 'quickdock:open-file', path: file }, '*') } catch (error) { /* ignore */ }
+        toHost({ type: 'quickdock:open-file', path: file });
         return;
       }
       if (data.type === 'quickdock:ready') {
