@@ -490,6 +490,13 @@ ${theme}
         }
         return;
       }
+      if (data.type === 'quickdock:debug-click') {
+        // Diagnostic only: a WebView2 app reports the click it found and the
+        // host it believes it is embedded in, so the dock log can tell routing
+        // failures from delivery failures.
+        toHost(data);
+        return;
+      }
       if (data.type === 'quickdock:open-file') {
         // The app wants a file opened, and in an editor dock the editor owns that
         // window: hand it up to the embedding page, which knows how to open it.

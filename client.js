@@ -1486,12 +1486,22 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
    * is dispatched, and stopping the earlier event is the only way to win.
    */
   function routeFileClick(event) {
-    if (!EDITOR_HOSTS.has(DOCK_HOST) || event.button !== 0) return
+    if (event.button !== 0) return
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
     let node = event.target
     for (let depth = 0; node && node !== document.body && depth < 6; depth += 1) {
       const path = pathFromNode(node, depth >= 4)
       if (path) {
+        // A WebView2 host (Visual Studio) has no DOM parent it can talk to, so
+        // report what the click found even when this host is not an editor: the
+        // dock log needs to show whether the click was seen and which host the
+        // app believes it is embedded in.
+        if (window.chrome && window.chrome.webview) {
+          try {
+            window.parent.postMessage({ type: 'quickdock:debug-click', host: DOCK_HOST, path: path }, '*')
+          } catch (error) { /* ignore */ }
+        }
+        if (!EDITOR_HOSTS.has(DOCK_HOST)) return
         // DSH's own handler would open its preview inside the dock: stop it and
         // let the embedding editor open the file instead. The element is appended
         // after a NUL so a click that opens nothing still says what was clicked.
