@@ -1447,13 +1447,11 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
       return path
     }
     if (!allowRelative) return ''
-    // A row that only shows `src/dir/file.ts`: the embedding editor resolves it
-    // against its own folders, which is enough to open the right file.
+    // A row that only shows `src/dir/file.ts` or `file.ts`: the embedding editor
+    // resolves it against its own folders, which is enough to open the right file.
     const relative = /(?:^|\s)([A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)*\.[A-Za-z0-9]{1,8})\s*$/.exec(cleaned)
     if (!relative) return ''
-    const path = relative[1]
-    if (!/[\\/]/.test(path)) return ''
-    return path
+    return relative[1]
   }
 
   /** The path a clicked node stands for: attributes first, then its own text. */
