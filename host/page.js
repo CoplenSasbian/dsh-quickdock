@@ -502,9 +502,28 @@ ${theme}
         // window: hand it up to the embedding page, which knows how to open it.
         // The desktop window has no editor to tell.
         if (dockView === 'electron' || !embedded()) return;
-        var file = typeof data.path === 'string' ? data.path : '';
-        if (!file) return;
-        toHost({ type: 'quickdock:open-file', path: file });
+        var raw = typeof data.path === 'string' ? data.path : '';
+        if (!raw) return;
+        var nul = raw.indexOf('\u0000');
+        var file = nul >= 0 ? raw.slice(0, nul) : raw;
+        var suffix = nul >= 0 ? raw.slice(nul) : '';
+        // DSH shows a path relative to the session's working directory, which is
+        // not necessarily one of the editor's open folders. Resolve it once,
+        // here, from the bound session QuickDock already tracks - every client
+        // then receives an absolute path it can open.
+        if (
+          file &&
+          !/^[A-Za-z]:[\\/]/.test(file) &&
+          file.charAt(0) !== '/' &&
+          workspaceInfo &&
+          typeof workspaceInfo.session === 'string' &&
+          workspaceInfo.session
+        ) {
+          var base = workspaceInfo.session.replace(/[\\/]+$/, '');
+          var separator = base.indexOf('\\') >= 0 ? '\\' : '/';
+          file = base + separator + file.replace(/^[\\/]+/, '');
+        }
+        toHost({ type: 'quickdock:open-file', path: file + suffix });
         return;
       }
       if (data.type === 'quickdock:ready') {
