@@ -395,10 +395,25 @@ ${theme}
 
     /* The embedding client (an IDE webview, or a WebView2 host of this top-level
        document for Visual Studio) answers with the real state. */
+    function forwardToApp(message) {
+      if (!frame) return;
+      try { frame.contentWindow.postMessage(message, '*'); } catch (error) { /* frame gone */ }
+    }
     function onHostState(data) {
-      if (!data || data.type !== 'quickdock:mcp-state') return;
+      if (!data) return;
+      if (data.type === 'quickdock:add-to-chat') {
+        forwardToApp(data);
+        return;
+      }
+      if (data.type !== 'quickdock:mcp-state') return;
       applyMcpState(data.on, data.detail);
     }
+    // IDE webviews (VS Code) post to this document directly; WebView2 hosts
+    // (Visual Studio) go through chrome.webview.
+    window.addEventListener('message', function (event) {
+      if (event.source === frame.contentWindow) return;
+      onHostState(event.data);
+    });
     if (hostBridge) {
       hostBridge.addEventListener('message', function (event) {
         try { onHostState(JSON.parse(String(event.data))) } catch (error) { /* not ours */ }

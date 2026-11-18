@@ -1782,6 +1782,88 @@ function findToggle() {
 }
 
 /**
+ * Insert one editor location into the composer as an `@path` reference.
+ *
+ * Plain text is enough: DSH parses `@path` in a sent message into a file
+ * reference, and the line range after it tells the agent which part was selected.
+ */
+function addToChat(sessions, data) {
+  const path = typeof data.path === 'string' ? data.path : ''
+  if (!path) return
+  const sessionId = String(data.sessionId || readCurrentSessionId() || '')
+  const state = sessionId && sessions.list && sessions.list.getSnapshot
+    ? sessions.list.getSnapshot().byId[sessionId]
+    : undefined
+  const cwd = state && state.cwd ? String(state.cwd) : ''
+  const relative = relativeMention(cwd, path)
+  const startLine = Number(data.line) || 0
+  const endLine = Number(data.endLine) || startLine
+  const lineText = startLine <= 0
+    ? ''
+    : endLine > startLine
+      ? ' (lines ' + startLine + '-' + endLine + ')'
+      : ' (line ' + startLine + ')'
+  const text = (relative ? '@' + quoteMention(relative) : path) + lineText + ' '
+
+  // The session input machine gets the proper draft edit (caret, undo, history).
+  if (sessionId) {
+    try {
+      const actx = sessions.scope(sessionId)
+      if (actx && typeof actx.bail === 'function') {
+        if (actx.bail(actx, 'slash/input-insert-text', { text: text, continue: false }) === true) return
+      }
+    } catch (error) {
+      /* fall through to the DOM */
+    }
+  }
+  insertComposerText(text)
+}
+
+/** The workspace-relative form of an absolute editor path, or '' when outside it. */
+function relativeMention(cwd, path) {
+  if (!cwd) return ''
+  const root = String(cwd).replace(/\\/g, '/').replace(/\/+$/, '')
+  const full = String(path).replace(/\\/g, '/')
+  if (full.toLowerCase() === root.toLowerCase()) return ''
+  if (full.toLowerCase().startsWith(root.toLowerCase() + '/')) return full.slice(root.length + 1)
+  return ''
+}
+
+/** Quote a mention whose path contains whitespace, as the `@` grammar expects. */
+function quoteMention(path) {
+  return /\s/.test(path) ? '"' + path + '"' : path
+}
+
+/** Last resort: put the text at the caret in whatever composer is on screen. */
+function insertComposerText(text) {
+  const active = document.activeElement
+  const editable = active && (active.tagName === 'TEXTAREA' || active.isContentEditable)
+    ? active
+    : document.querySelector('[contenteditable="true"], textarea')
+  if (!editable) return false
+  editable.focus()
+  if (editable.tagName === 'TEXTAREA') {
+    const start = typeof editable.selectionStart === 'number' ? editable.selectionStart : editable.value.length
+    const end = typeof editable.selectionEnd === 'number' ? editable.selectionEnd : start
+    editable.setRangeText(text, start, end, 'end')
+    try {
+      editable.dispatchEvent(new InputEvent('input', {
+        bubbles: true, inputType: 'insertText', data: text
+      }))
+    } catch (error) {
+      editable.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    return true
+  }
+  try {
+    document.execCommand('insertText', false, text)
+    return true
+  } catch (error) {
+    return false
+  }
+}
+
+/**
  * Tell the shell which session is on screen, so its handoff button can ask the
  * main DSH window to show the same one.
  *
@@ -2455,6 +2537,26 @@ function apply(ctx) {
     })
   } catch (error) {
     console.warn('[dsh-quickdock] dock context listener unavailable:', error)
+  }
+
+  // A file the editor wants in the conversation (right-click → Add to DSH).
+  // The IDE sends an absolute path and the selection; this side turns it into
+  // the `@relative/path` mention the composer understands and inserts it into
+  // the session's input machine.
+  try {
+    ctx.inject(['sessions'], function (sessionsCtx) {
+      window.addEventListener('message', function (event) {
+        const data = event.data
+        if (!data || data.type !== 'quickdock:add-to-chat') return
+        try {
+          addToChat(sessionsCtx.sessions, data)
+        } catch (error) {
+          console.warn('[dsh-quickdock] add-to-chat failed:', error)
+        }
+      })
+    })
+  } catch (error) {
+    console.warn('[dsh-quickdock] add-to-chat listener unavailable:', error)
   }
 
   if (insideDockWindow()) {
