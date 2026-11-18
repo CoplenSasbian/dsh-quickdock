@@ -1454,8 +1454,12 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     // of finding the real one inside it. The path need not be the whole text: a
     // card title reads `Edit · include\HeliosView2\Window.h 1KB +2 -2`.
     const relative = /(?:^|[\s(\[])([A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+[\\/]?\.[A-Za-z0-9]{1,8})(?=[\s)\],;:]|$)/.exec(cleaned)
-    if (!relative) return ''
-    return relative[1]
+    if (relative) return relative[1]
+    if (!allowRelative) return ''
+    // A file at the workspace root is shown as its bare name. Require a single
+    // dot in the base so a DOM class such as `tool.call.toolview` never matches.
+    const bare = /(?:^|\s)([A-Za-z0-9_@-]+\.[A-Za-z0-9]{1,8})(?=[\s)\],;:]|$)/.exec(cleaned)
+    return bare ? bare[1] : ''
   }
 
   /** The path a clicked node stands for: attributes first, then its own text. */
@@ -1469,6 +1473,9 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     // editor resolves relative paths against its own folders.
     if (node.attributes) {
       for (const attribute of node.attributes) {
+        // `class` is a layout name, never a file; allowing it made cards post
+        // `tool.call.toolview` as a path.
+        if (attribute.name === 'class' || attribute.name === 'className') continue
         const path = pathFromText(attribute.value, true)
         if (path) return path
       }
