@@ -1502,7 +1502,10 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
     let node = event.target
     for (let depth = 0; node && node !== document.body && depth < 6; depth += 1) {
-      const path = pathFromNode(node, depth >= 4)
+      // Relative paths are as valid as absolute ones: the editor resolves them
+      // against its own folders, and the regex above already rejects the DOM
+      // class names (`tool.call.toolview`) that used to look like a bare file.
+      const path = pathFromNode(node, true)
       if (path) {
         // A WebView2 host (Visual Studio) has no DOM parent it can talk to, so
         // report what the click found even when this host is not an editor: the
