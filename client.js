@@ -1451,8 +1451,9 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     // against its own folders, which is enough to open the right file. A bare
     // `file.ts` is not accepted here: many DOM class names (`tool.call.toolview`)
     // look exactly like one, and clicking a card would then invent a path instead
-    // of finding the real one inside it.
-    const relative = /(?:^|\s)([A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)*[\\/][A-Za-z0-9_.-]*\.[A-Za-z0-9]{1,8})\s*$/.exec(cleaned)
+    // of finding the real one inside it. The path need not be the whole text: a
+    // card title reads `Edit · include\HeliosView2\Window.h 1KB +2 -2`.
+    const relative = /(?:^|[\s(\[])([A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+[\\/]?\.[A-Za-z0-9]{1,8})(?=[\s)\],;:]|$)/.exec(cleaned)
     if (!relative) return ''
     return relative[1]
   }

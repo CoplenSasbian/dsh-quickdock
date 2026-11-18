@@ -519,9 +519,15 @@ ${theme}
           typeof workspaceInfo.session === 'string' &&
           workspaceInfo.session
         ) {
-          var base = workspaceInfo.session.replace(/[\\/]+$/, '');
-          var separator = base.indexOf('\\') >= 0 ? '\\' : '/';
-          file = base + separator + file.replace(/^[\\/]+/, '');
+          // Build the separators from their codes: this code is itself inside a
+          // template literal, and a literal backslash would be lost on the way.
+          var backslash = String.fromCharCode(92);
+          var slash = String.fromCharCode(47);
+          var trimEnd = new RegExp('[' + backslash + backslash + slash + ']+$');
+          var trimStart = new RegExp('^[' + backslash + backslash + slash + ']+');
+          var base = workspaceInfo.session.replace(trimEnd, '');
+          var separator = base.indexOf(backslash) >= 0 ? backslash : slash;
+          file = base + separator + file.replace(trimStart, '');
         }
         toHost({ type: 'quickdock:open-file', path: file + suffix });
         return;
