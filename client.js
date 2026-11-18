@@ -1458,8 +1458,9 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
   }
 
   /** The path a clicked node stands for: attributes first, then its own text. */
-  function pathFromNode(node, allowRelative) {
+  function pathFromNode(node, allowRelative, depth) {
     if (!node || typeof node.getAttribute !== 'function') return ''
+    const level = depth || 0
     // Any attribute may carry it (`title`, `data-path`, an unknown `data-*`), and
     // an `href` often keeps it in a query string. Attributes may name the file
     // relatively (`title="test/event_test.cpp"`) even when the visible text is
@@ -1474,12 +1475,11 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     // Only a leaf's text is trusted: an ancestor's text also holds the label,
     // the size and whatever else the row shows.
     if (node.children && node.children.length > 0) {
-      // A tool card can put the path in a child (the underlined chip) while the
-      // click lands on the card itself; inspect leaf children before giving up.
+      // A tool card can put the path in a nested child (the underlined chip)
+      // while the click lands on the card itself; look inside before giving up.
+      if (level >= 3) return ''
       for (let index = 0; index < Math.min(node.children.length, 4); index += 1) {
-        const child = node.children[index]
-        if (!child || (child.children && child.children.length > 0)) continue
-        const nested = pathFromNode(child, allowRelative)
+        const nested = pathFromNode(node.children[index], allowRelative, level + 1)
         if (nested) return nested
       }
       return ''
