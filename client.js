@@ -1456,9 +1456,10 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     const relative = /(?:^|[\s(\[])([A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+[\\/]?\.[A-Za-z0-9]{1,8})(?=[\s)\],;:]|$)/.exec(cleaned)
     if (relative) return relative[1]
     if (!allowRelative) return ''
-    // A file at the workspace root is shown as its bare name. Require a single
-    // dot in the base so a DOM class such as `tool.call.toolview` never matches.
-    const bare = /(?:^|\s)([A-Za-z0-9_@-]+\.[A-Za-z0-9]{1,8})(?=[\s)\],;:]|$)/.exec(cleaned)
+    // A file at the workspace root is shown as its bare name. The extension must
+    // be letters: an SVG path such as `12.5` is a decimal, not a file, and a DOM
+    // class such as `tool.call.toolview` has a dot in the base.
+    const bare = /(?:^|\s)([A-Za-z0-9_@-]+\.[A-Za-z]{1,8})(?=[\s)\],;:]|$)/.exec(cleaned)
     return bare ? bare[1] : ''
   }
 
