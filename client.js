@@ -36,6 +36,9 @@ let DOCK_ID = ''
  * editor dock routes file clicks to the editor.
  */
 let DOCK_HOST = ''
+/** Client services the dock title bar drives directly (no synthetic DOM clicks). */
+let dockLayout = null
+let dockWorkspace = null
 /**
  * The hosts that own an editor: a clicked file is handed to them instead of
  * being opened in the dock. `electron` and `browser` keep the app's own preview.
@@ -1570,6 +1573,15 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
     if (data.type === 'quickdock:toggle-sidebar') {
       // The user is driving now: the boot-time collapse must not fight the click.
       clearInterval(collapseOnStart)
+      if (dockLayout && typeof dockLayout.toggleSidebar === 'function') {
+        try {
+          dockLayout.toggleSidebar()
+          setTimeout(reportSidebarState, 80)
+          return
+        } catch (error) {
+          /* fall back to the app's own button */
+        }
+      }
       const toggle = findToggle()
       if (toggle) {
         try { toggle.click() } catch (error) { /* ignore */ }
@@ -1578,6 +1590,14 @@ html[data-qd-dock][data-qd-trim-sidebar] [class*="panelList"] {
       return
     }
     if (data.type === 'quickdock:new-session') {
+      if (dockWorkspace && typeof dockWorkspace.startSession === 'function') {
+        try {
+          dockWorkspace.startSession()
+          return
+        } catch (error) {
+          /* fall back to the app's own button */
+        }
+      }
       // The shell owns the shortcut button while the sidebar is hidden; the app's
       // own button stays in the DOM and its click handler does the work.
       const create = document.querySelector('button[class*="newSession"]')
@@ -2505,6 +2525,14 @@ function enterDockMode(ctx) {
   // download badge - only the layout fixes below.
   applyDockMode()
   startDockSubmissions(ctx)
+  // The title bar's buttons drive services, not DOM clicks: a programmatic
+  // `.click()` is untrusted and a newer DSH ignores it for layout actions.
+  try {
+    ctx.inject(['layout'], function (layoutCtx) { dockLayout = layoutCtx.layout })
+  } catch (error) { /* DOM fallback */ }
+  try {
+    ctx.inject(['uiWorkspace'], function (workspaceCtx) { dockWorkspace = workspaceCtx.uiWorkspace })
+  } catch (error) { /* DOM fallback */ }
   try {
     ctx.inject(['uiWorkspace'], function (uiCtx) {
       // The Dock button in the main window bound a session: follow it. The host
